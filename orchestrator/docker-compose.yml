@@ -1,0 +1,13 @@
+services:
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: ai-job-orchestrator-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: sqlite:///./data/app.db
+    volumes:
+      - ./data:/app/data
