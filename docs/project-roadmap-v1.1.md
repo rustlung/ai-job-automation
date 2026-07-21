@@ -43,6 +43,8 @@
 
 # Phase 1. Orchestrator foundation
 
+Статус: завершена.
+
 ## Цель
 
 Создать базовый backend-слой оркестратора, который будет работать на стороне homeserver.
@@ -121,6 +123,8 @@ Health endpoint реализован и проверен тестами.
 
 # Phase 1.2. Storage foundation
 
+Статус: завершен.
+
 ## Цель
 
 Создать надежный слой хранения данных.
@@ -174,15 +178,20 @@ SQLite
 
 ## Результат Phase 1
 
-После завершения фазы:
+Фаза завершена.
 
 - существует backend оркестратора;
-- приложение запускается локально и через Docker;
-- есть подключение к SQLite;
-- есть фундамент для будущих моделей данных;
+- приложение запускается локально и через Docker Compose;
+- `GET /health` успешно отвечает локально и на homeserver;
+- есть подключение к SQLite через SQLAlchemy;
+- Alembic подключен к SQLAlchemy metadata и выполняется внутри контейнера;
+- persistent storage расположен в `orchestrator/data`;
+- deployment orchestrator выполняется на homeserver через sparse checkout каталога `orchestrator`;
 - архитектура готова к дальнейшему расширению и миграции PostgreSQL.
 
 # Phase 2. Worker foundation
+
+Статус: следующая активная фаза.
 
 ## Цель
 
