@@ -1,0 +1,12 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.env
+.env.*
+.idea/
+.vscode/
+.git/
+.gitignore
+Dockerfile

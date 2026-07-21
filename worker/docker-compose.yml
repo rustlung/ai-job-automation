@@ -1,0 +1,12 @@
+services:
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: ai-job-worker-api
+    restart: unless-stopped
+    env_file:
+      - path: ./api/.env
+        required: false
+    ports:
+      - "8001:8000"
