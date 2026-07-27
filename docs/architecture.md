@@ -286,12 +286,31 @@ HTTP API.
 
 # 8. Локальная LLM
 
-Планируется использование локальной модели на worker.
+Локальная модель используется на worker как local-first AI layer.
 
-Предполагаемый стек:
+Реализованный стек:
 
 -   Ollama;
--   Qwen/Llama/Mistral модели.
+-   модель `qwen3:4b-instruct`;
+-   Worker API в Docker;
+-   Ollama нативно на Windows 11 host.
+
+Worker API обращается к Ollama через:
+
+``` text
+http://host.docker.internal:11434
+```
+
+Внутри Worker API интеграция изолирована по слоям:
+
+-   HTTP route;
+-   service layer;
+-   Pydantic schemas;
+-   Ollama HTTP client.
+
+Ollama client не находится внутри route handler.
+Ответ локальной модели запрашивается как structured output через JSON Schema,
+разбирается как JSON и валидируется через Pydantic.
 
 Основной сценарий:
 

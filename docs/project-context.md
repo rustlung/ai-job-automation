@@ -13,7 +13,7 @@
 
 Текущее состояние: - docs/current-state.md
 
-План развития: - docs/project-roadmap.md
+План развития: - docs/project-roadmap-v1.1.md
 
 ---
 

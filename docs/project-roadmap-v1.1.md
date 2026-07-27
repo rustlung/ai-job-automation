@@ -261,7 +261,7 @@ response
 
 # Phase 3. Local LLM integration
 
-Статус: следующая активная фаза.
+Статус: завершена.
 
 ## Цель
 
@@ -290,7 +290,42 @@ structured result
 
 ---
 
+# Phase 3.1. Ollama setup on worker
+
+Статус: завершен.
+
+## Результат
+
+- Ollama установлена нативно на Windows 11 worker;
+- модель `qwen3:4b-instruct` выбрана как первая рабочая локальная модель;
+- Ollama API доступен на порту `11434`;
+- Ollama использует NVIDIA RTX 3060 Laptop;
+- контейнер Worker API обращается к Ollama через `http://host.docker.internal:11434`.
+
+---
+
+# Phase 3.2. Ollama integration in Worker API
+
+Статус: завершен.
+
+## Результат
+
+- создан изолированный асинхронный Ollama HTTP client;
+- HTTP route, service, schemas и integration client разделены;
+- реализован `POST /local-ai/analyze`;
+- реализован `GET /health/ollama`;
+- базовый `GET /health` не зависит от доступности Ollama;
+- используется structured output через JSON Schema;
+- ответ модели разбирается как JSON и валидируется через Pydantic;
+- Worker API возвращает валидированный structured result;
+- реализована контролируемая обработка timeout, connection error и malformed response;
+- тесты клиента, сервиса, схем и API не требуют реальной Ollama, GPU или интернета.
+
+---
+
 # Phase 4. First workflow slice
+
+Статус: следующая активная фаза.
 
 ## Цель
 

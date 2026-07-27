@@ -171,3 +171,91 @@ curl http://localhost:8001/health
 ``` bash
 curl http://<worker-local-ip>:8001/health
 ```
+
+### Local LLM
+
+Ollama устанавливается нативно на Windows 11 worker.
+Docker-контейнер worker обращается к Ollama через:
+
+``` text
+http://host.docker.internal:11434
+```
+
+Загрузить модель:
+
+``` powershell
+ollama pull qwen3:4b-instruct
+```
+
+Или запустить модель:
+
+``` powershell
+ollama run qwen3:4b-instruct
+```
+
+Проверить список моделей:
+
+``` powershell
+ollama list
+```
+
+Проверить Ollama API с Windows host:
+
+``` powershell
+curl http://localhost:11434/api/tags
+```
+
+Проверить доступ к Ollama API из worker-контейнера:
+
+``` powershell
+docker compose exec api curl http://host.docker.internal:11434/api/tags
+```
+
+Worker использует настройки из `worker/api/.env`:
+
+``` text
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+OLLAMA_MODEL=qwen3:4b-instruct
+OLLAMA_REQUEST_TIMEOUT_SECONDS=120
+OLLAMA_KEEP_ALIVE=5m
+```
+
+Не коммитить локальный `.env`.
+
+После изменения кода или настроек пересобрать worker:
+
+``` powershell
+docker compose up -d --build
+```
+
+Проверить Worker API:
+
+``` powershell
+curl http://localhost:8001/health
+curl http://localhost:8001/health/ollama
+```
+
+Проверить локальный AI endpoint:
+
+``` powershell
+$body = @{
+  text = "Ищем Python-разработчика с опытом FastAPI, PostgreSQL, Docker и интеграций с внешними API."
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+  -Uri http://localhost:8001/local-ai/analyze `
+  -Method Post `
+  -ContentType "application/json; charset=utf-8" `
+  -Body $body
+```
+
+PowerShell 7 предпочтителен для ручных русскоязычных API-запросов, чтобы корректно передавать UTF-8 и кириллицу.
+
+Проверить endpoint с homeserver:
+
+``` bash
+curl http://<worker-local-ip>:8001/health/ollama
+```
+
+Для `POST /local-ai/analyze` с кириллицей с homeserver использовать клиент, который явно отправляет UTF-8.
+Не фиксировать реальные IP-адреса, локальные `.env` и чувствительные данные в Git.
