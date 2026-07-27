@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-07-27
+
+### Added
+
+- базовый FastAPI API worker;
+- Docker Compose для worker;
+- endpoint проверки состояния;
+- развертывание worker на Windows 11;
+- подтвержденная связь homeserver → worker по HTTP.
+
 ## 2026-07-21
 
 ### Added

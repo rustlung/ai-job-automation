@@ -191,7 +191,7 @@ SQLite
 
 # Phase 2. Worker foundation
 
-Статус: следующая активная фаза.
+Статус: завершена.
 
 ## Цель
 
@@ -236,7 +236,32 @@ response
 
 ---
 
+# Phase 2.1. Worker API foundation
+
+Статус: завершен.
+
+## Цель
+
+Создать базовый FastAPI-компонент worker для будущих вычислительных и сетевых задач.
+
+## Результат
+
+- создан отдельный компонент `worker`;
+- реализован FastAPI API worker;
+- работает endpoint `GET /health`;
+- worker запускается через Docker Compose на Windows 11;
+- контейнер worker успешно работает на целевом ноутбуке;
+- наружу опубликован порт `8001`;
+- homeserver успешно получает ответ от worker по локальной сети;
+- worker не имеет прямого доступа к SQLite базе orchestrator;
+- связь между homeserver/orchestrator и worker строится через HTTP API;
+- для деплоя worker используется sparse checkout каталога `worker`.
+
+---
+
 # Phase 3. Local LLM integration
+
+Статус: следующая активная фаза.
 
 ## Цель
 
