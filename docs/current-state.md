@@ -1,6 +1,6 @@
 # Current State
 
-2026-07-27
+2026-07-28
 
 Работает:
 ✅ Ubuntu server
@@ -26,10 +26,22 @@
 ✅ Обработка ошибок интеграции Ollama
 ✅ Реальный локальный AI-запрос с русскоязычным текстом
 ✅ Доступ к Local AI endpoint с homeserver
+✅ Vacancy persistence API
+✅ VacancyAnalysis persistence API
+✅ Idempotent vacancy upsert
+✅ Idempotent analysis upsert
+✅ Alembic migrations на homeserver
+✅ First n8n workflow slice
+✅ n8n → orchestrator
+✅ n8n → worker
+✅ Worker → Ollama
+✅ Сохранение AI-анализа в SQLite
+✅ Повторные workflow-прогоны без дублей
 
 Phase 1 — Orchestrator foundation завершена.
 Phase 2.1 — Worker API foundation завершена.
 Phase 3 — Local LLM integration завершена.
+Phase 4 — First workflow slice завершена.
 
 Создан и развернут на homeserver базовый backend оркестрационного слоя на FastAPI.
 Работает endpoint `GET /health`.
@@ -47,10 +59,27 @@ Ollama установлена нативно на Windows 11 worker, модел�
 Worker API предоставляет технический endpoint `POST /local-ai/analyze` со structured output, JSON Schema и Pydantic-валидацией.
 Это еще не полноценный анализ вакансий и не production pipeline.
 
-Следующий этап: Phase 4 — First workflow slice.
+Первый end-to-end pipeline работает в тестовом режиме:
+
+``` text
+n8n
+→ orchestrator vacancy upsert
+→ worker local AI analysis
+→ orchestrator analysis upsert
+→ SQLite
+```
+
+Реализованы persistence API для вакансий и результатов AI-анализа.
+Повторное сохранение вакансии и анализа выполняется идемпотентно: дубликаты не создаются, измененные поля обновляются с сохранением id.
+Первый n8n workflow slice использует environment variables и не хранит секреты в экспортированном workflow.
+
+Следующий этап определяется по `docs/project-roadmap-v1.1.md`.
 
 Не реализовано:
 ⬜ HH parser
-⬜ полноценный анализ вакансий
+⬜ массовая обработка вакансий
+⬜ production filtering
 ⬜ персональный профиль пользователя
 ⬜ внешняя LLM
+⬜ Telegram workflow
+⬜ полноценный ежедневный pipeline

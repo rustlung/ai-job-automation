@@ -312,6 +312,31 @@ Ollama client не находится внутри route handler.
 Ответ локальной модели запрашивается как structured output через JSON Schema,
 разбирается как JSON и валидируется через Pydantic.
 
+Реализованный первый end-to-end flow:
+
+``` text
+n8n
+↓
+Orchestrator API
+↓
+Worker API
+↓
+Ollama
+↓
+Orchestrator API
+↓
+SQLite
+```
+
+Текущий workflow является техническим smoke-срезом: он создает тестовую
+вакансию, сохраняет ее в orchestrator, отправляет описание в Worker API,
+получает structured local AI result от Ollama и сохраняет результат анализа
+обратно в orchestrator.
+
+Это не является готовым production pipeline: HH parser, массовая обработка,
+production filtering, персональный профиль, внешняя LLM и уведомления еще не
+реализованы.
+
 Основной сценарий:
 
 Локальная модель:

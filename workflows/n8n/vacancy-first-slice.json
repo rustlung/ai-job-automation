@@ -1,0 +1,175 @@
+{
+  "name": "AI Job Automation — First Slice",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -656,
+        16
+      ],
+      "id": "e06b24d2-8b80-47da-adf6-04a4b17dc926",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{\n  {\n    source: \"manual\",\n    external_id: \"n8n-first-slice-001\",\n    url: \"https://example.com/vacancies/n8n-first-slice-001\",\n    title: \"Python Backend Developer\",\n    company: \"Test Company\",\n    location: \"Удалённо\",\n    salary_text: \"150 000–200 000 ₽\",\n    description: \"Ищем Python-разработчика для создания backend-сервисов на FastAPI и PostgreSQL. Требуются Docker, REST API и интеграции с внешними сервисами.\",\n    published_at: \"2026-07-28T12:00:00+03:00\"\n  }\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -448,
+        16
+      ],
+      "id": "26c5863a-e111-459b-8eae-c5fa54fdfdc8",
+      "name": "Test Vacancy"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ORCHESTRATOR_API_URL }}/vacancies",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -240,
+        16
+      ],
+      "id": "99eb4a8e-0106-47e4-9e56-0445dccbfe9b",
+      "name": "Save Vacancy"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.WORKER_API_URL }}/local-ai/analyze",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  {\n    text: $node[\"Test Vacancy\"].json.description\n  }\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -32,
+        16
+      ],
+      "id": "b4663769-6402-42b7-b995-ab4a2d653bdd",
+      "name": "Analyze Vacancy"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ORCHESTRATOR_API_URL }}/vacancies/{{ $node[\"Save Vacancy\"].json.vacancy.id }}/analyses",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  {\n    provider: $env.AI_PROVIDER,\n    model: $env.AI_MODEL,\n    prompt_version: $env.AI_PROMPT_VERSION,\n    relevance: $node[\"Analyze Vacancy\"].json.relevance,\n    summary: $node[\"Analyze Vacancy\"].json.summary,\n    reason: $node[\"Analyze Vacancy\"].json.reason\n  }\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        176,
+        16
+      ],
+      "id": "6b3d1c98-e7c0-4fc1-a892-f1fdc338494c",
+      "name": "Save Analysis"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{\n  {\n    vacancy_id: $node[\"Save Vacancy\"].json.vacancy.id,\n    vacancy_created: $node[\"Save Vacancy\"].json.created,\n    analysis_id: $node[\"Save Analysis\"].json.analysis.id,\n    analysis_created: $node[\"Save Analysis\"].json.created,\n    relevance: $node[\"Save Analysis\"].json.analysis.relevance,\n    summary: $node[\"Save Analysis\"].json.analysis.summary,\n    reason: $node[\"Save Analysis\"].json.analysis.reason\n  }\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        384,
+        16
+      ],
+      "id": "ab1b7763-aa27-41aa-bfea-01f62c0ed546",
+      "name": "Workflow Result"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Test Vacancy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test Vacancy": {
+      "main": [
+        [
+          {
+            "node": "Save Vacancy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Vacancy": {
+      "main": [
+        [
+          {
+            "node": "Analyze Vacancy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Vacancy": {
+      "main": [
+        [
+          {
+            "node": "Save Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Analysis": {
+      "main": [
+        [
+          {
+            "node": "Workflow Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Result": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "6de57917-091d-442a-aace-b6421a1953de",
+  "meta": {
+    "instanceId": "0db81f0753baa06bf8dd01a6aa413440970bcc829c805aa818d17d0924efde58"
+  },
+  "nodeGroups": [],
+  "id": "uBJr9P7gBwt9HjsV",
+  "tags": []
+}

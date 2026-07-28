@@ -259,3 +259,57 @@ curl http://<worker-local-ip>:8001/health/ollama
 
 Для `POST /local-ai/analyze` с кириллицей с homeserver использовать клиент, который явно отправляет UTF-8.
 Не фиксировать реальные IP-адреса, локальные `.env` и чувствительные данные в Git.
+
+## n8n Workflow Configuration
+
+Workflow `AI Job Automation — First Slice` запускается в n8n на homeserver.
+Конфигурация сервисов задается через environment variables в `docker-compose.yml` n8n.
+
+Минимальные переменные для текущего workflow:
+
+``` text
+ORCHESTRATOR_API_URL=<orchestrator-api-url>
+WORKER_API_URL=<worker-api-url>
+AI_PROVIDER=local_ollama
+AI_MODEL=qwen3:4b-instruct
+AI_PROMPT_VERSION=v1
+```
+
+Не фиксировать реальные IP-адреса, локальные URL, токены или секреты в Git.
+
+После изменения environment variables пересоздать контейнер n8n:
+
+``` bash
+docker compose up -d --force-recreate
+```
+
+Проверить переменные внутри контейнера:
+
+``` bash
+docker compose exec n8n printenv ORCHESTRATOR_API_URL
+docker compose exec n8n printenv WORKER_API_URL
+docker compose exec n8n printenv AI_PROVIDER
+docker compose exec n8n printenv AI_MODEL
+docker compose exec n8n printenv AI_PROMPT_VERSION
+```
+
+В workflow использовать expressions через `$env`, например:
+
+``` text
+{{ $env.ORCHESTRATOR_API_URL }}
+{{ $env.WORKER_API_URL }}
+{{ $env.AI_PROVIDER }}
+{{ $env.AI_MODEL }}
+{{ $env.AI_PROMPT_VERSION }}
+```
+
+Если текущая версия n8n блокирует доступ к environment variables в node expressions, в конфигурации n8n используется:
+
+``` text
+N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+```
+
+Credentials создаются только в UI n8n.
+Secret values не должны экспортироваться в workflow.
+Credentials exports не коммитятся.
+Workflow export хранится отдельно в Git в каталоге `workflows/n8n/`.

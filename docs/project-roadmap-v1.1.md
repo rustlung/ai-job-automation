@@ -325,7 +325,7 @@ structured result
 
 # Phase 4. First workflow slice
 
-Статус: следующая активная фаза.
+Статус: завершена.
 
 ## Цель
 
@@ -349,9 +349,61 @@ notification
 
 Первый вертикальный срез системы.
 
+## Phase 4.1. Vacancy persistence foundation
+
+Статус: завершен.
+
+## Результат
+
+- создана сущность `Vacancy` в orchestrator;
+- реализован идемпотентный `POST /vacancies`;
+- реализовано чтение вакансии по id;
+- реализовано чтение вакансии по `source` + `external_id`;
+- повторный POST не создает дубликат;
+- измененные поля обновляются с сохранением id;
+- миграция Alembic применена на homeserver;
+- persistence после пересоздания контейнера подтвержден.
+
+## Phase 4.2. Vacancy AI analysis persistence
+
+Статус: завершен.
+
+## Результат
+
+- создана сущность `VacancyAnalysis`;
+- результат анализа связан с `Vacancy` через foreign key;
+- реализован `POST /vacancies/{vacancy_id}/analyses`;
+- реализован `GET /vacancies/{vacancy_id}/analyses`;
+- реализован `GET /vacancy-analyses/{analysis_id}`;
+- повторный анализ не создает дубликат;
+- обновление анализа сохраняет тот же id;
+- миграция Alembic применена на homeserver;
+- persistence после перезапуска контейнера подтвержден.
+
+## Phase 4.3. First n8n workflow slice
+
+Статус: завершен.
+
+## Результат
+
+Реализован первый технический end-to-end workflow:
+
+``` text
+n8n
+→ orchestrator vacancy upsert
+→ worker local AI analysis
+→ orchestrator analysis upsert
+```
+
+Workflow использует environment variables для адресов сервисов и параметров AI.
+Тестовая вакансия сохраняется в orchestrator, description отправляется в Worker API, Worker API вызывает локальную Ollama, structured result сохраняется обратно в orchestrator.
+Повторные прогоны проходят без дублей.
+
 ---
 
 # Phase 5. Vacancy collector
+
+Статус: следующая активная фаза.
 
 ## Цель
 

@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-07-28
+
+### Added
+
+- Vacancy persistence API;
+- VacancyAnalysis persistence API;
+- Alembic migrations для `vacancies` и `vacancy_analyses`;
+- идемпотентный upsert вакансий;
+- идемпотентный upsert результатов анализа;
+- первый сквозной n8n workflow;
+- использование environment variables в n8n;
+- сохранение structured local AI result в orchestrator.
+
+### Verified
+
+- миграции на homeserver;
+- persistence после пересоздания контейнера;
+- сетевое взаимодействие n8n, orchestrator и worker;
+- повторные прогоны без дублей;
+- локальная Ollama возвращает валидированный результат.
+
 ## 2026-07-27
 
 ### Added
