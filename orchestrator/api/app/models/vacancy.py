@@ -1,9 +1,13 @@
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Index, String, Text, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
+
+if TYPE_CHECKING:
+    from app.models.vacancy_analysis import VacancyAnalysis
 
 
 def utc_now() -> datetime:
@@ -36,4 +40,9 @@ class Vacancy(Base):
         default=utc_now,
         onupdate=utc_now,
         nullable=False,
+    )
+    analyses: Mapped[list["VacancyAnalysis"]] = relationship(
+        back_populates="vacancy",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
