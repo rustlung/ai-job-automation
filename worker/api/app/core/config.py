@@ -12,6 +12,11 @@ class Settings:
         self.ollama_model = getenv("OLLAMA_MODEL", "qwen3:4b-instruct")
         self.ollama_request_timeout_seconds = float(getenv("OLLAMA_REQUEST_TIMEOUT_SECONDS", "120"))
         self.ollama_keep_alive = getenv("OLLAMA_KEEP_ALIVE", "5m")
+        self.hh_base_url = getenv("HH_BASE_URL", "https://hh.ru")
+        self.hh_user_agent = getenv("HH_USER_AGENT", "AIJobAutomation/0.1 (contact: configured-locally)")
+        self.hh_request_timeout_seconds = float(getenv("HH_REQUEST_TIMEOUT_SECONDS", "30"))
+        self.hh_request_delay_seconds = float(getenv("HH_REQUEST_DELAY_SECONDS", "1"))
+        self.hh_max_response_bytes = int(getenv("HH_MAX_RESPONSE_BYTES", "1048576"))
 
 
 @lru_cache
