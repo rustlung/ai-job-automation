@@ -37,6 +37,8 @@ def test_parser_extracts_card_fields() -> None:
     assert first.location == "Москва"
     assert first.salary_text == "87 000 ₽ за месяц, на руки"
     assert first.is_remote is True
+    assert first.responsibility_snippet == "Разработка backend-сервисов на Python и FastAPI..."
+    assert first.requirement_snippet == "Опыт с PostgreSQL, Docker и внешними API."
 
 
 def test_parser_extracts_salary_without_remote() -> None:
@@ -44,6 +46,8 @@ def test_parser_extracts_salary_without_remote() -> None:
 
     assert second.salary_text == "от 2 000 $ до вычета налогов"
     assert second.is_remote is False
+    assert second.responsibility_snippet == "Поддержка API и интеграций."
+    assert second.requirement_snippet is None
 
 
 def test_parser_keeps_missing_salary_as_none() -> None:
@@ -51,6 +55,8 @@ def test_parser_keeps_missing_salary_as_none() -> None:
 
     assert third.salary_text is None
     assert third.is_remote is False
+    assert third.responsibility_snippet is None
+    assert third.requirement_snippet == "Нужен опыт с очередями и REST API."
 
 
 def test_parser_does_not_treat_unrelated_numbers_as_salary_or_remote() -> None:
@@ -59,6 +65,8 @@ def test_parser_does_not_treat_unrelated_numbers_as_salary_or_remote() -> None:
     assert fourth.location == "Удалённо"
     assert fourth.salary_text is None
     assert fourth.is_remote is False
+    assert fourth.responsibility_snippet is None
+    assert fourth.requirement_snippet is None
 
 
 def test_parser_does_not_treat_experience_label_as_salary() -> None:
@@ -77,6 +85,32 @@ def test_parser_response_has_no_published_at_text() -> None:
     first = HHSearchParser().parse(load_fixture())[0]
 
     assert "published_at_text" not in first.model_dump()
+
+
+def test_parser_snippet_normalization_preserves_ellipsis() -> None:
+    first = HHSearchParser().parse(load_fixture())[0]
+
+    assert first.responsibility_snippet.endswith("...")
+
+
+def test_parser_extracts_nested_snippet_text_and_normalizes_spaces() -> None:
+    html = """
+    <div data-qa="vacancy-serp__vacancy">
+      <a data-qa="serp-item__title" href="/vacancy/777777">Python Developer</a>
+      <span data-qa="vacancy-serp__vacancy-employer">Company</span>
+      <div data-qa="vacancy-serp__vacancy_snippet_responsibility">
+        Разработка <span>backend&nbsp;сервисов</span>    и\u202fAPI...
+      </div>
+      <div data-qa="vacancy-serp__vacancy_snippet_requirement">
+        Опыт <span>Python</span> и  FastAPI.
+      </div>
+    </div>
+    """
+
+    vacancy = HHSearchParser().parse(html)[0]
+
+    assert vacancy.responsibility_snippet == "Разработка backend сервисов и API..."
+    assert vacancy.requirement_snippet == "Опыт Python и FastAPI."
 
 
 @pytest.mark.parametrize(

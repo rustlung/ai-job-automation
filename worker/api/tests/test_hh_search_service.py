@@ -19,6 +19,8 @@ class FakeHHParser:
                 title="Python Developer",
                 company="Test Company",
                 is_remote=False,
+                responsibility_snippet="Разработка backend-сервисов.",
+                requirement_snippet=None,
             )
         ]
 

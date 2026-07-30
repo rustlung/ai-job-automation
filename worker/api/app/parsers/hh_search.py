@@ -37,6 +37,8 @@ SALARY_SELECTORS = [
     '[data-qa="vacancy-card-compensation"]',
 ]
 REMOTE_SELECTOR = '[data-qa="vacancy-label-work-schedule-remote"]'
+RESPONSIBILITY_SNIPPET_SELECTOR = '[data-qa="vacancy-serp__vacancy_snippet_responsibility"]'
+REQUIREMENT_SNIPPET_SELECTOR = '[data-qa="vacancy-serp__vacancy_snippet_requirement"]'
 COMPENSATION_CONTAINER_SELECTOR = 'div[class*="compensation-labels"]'
 SALARY_MARKERS = (
     "₽",
@@ -130,6 +132,8 @@ class HHSearchParser:
             location=self._text(self._select_first(card, LOCATION_SELECTORS)),
             salary_text=self._extract_salary_text(card),
             is_remote=card.select_one(REMOTE_SELECTOR) is not None,
+            responsibility_snippet=self._extract_snippet(card, RESPONSIBILITY_SNIPPET_SELECTOR),
+            requirement_snippet=self._extract_snippet(card, REQUIREMENT_SNIPPET_SELECTOR),
         )
 
     def _normalize_vacancy_url(self, href: str) -> str:
@@ -173,6 +177,9 @@ class HHSearchParser:
             if text is not None and self._looks_like_salary(text):
                 return text
         return None
+
+    def _extract_snippet(self, card: Tag, selector: str) -> str | None:
+        return self._normalize_text(self._text(card.select_one(selector)))
 
     def _normalize_text(self, text: str | None) -> str | None:
         if text is None:

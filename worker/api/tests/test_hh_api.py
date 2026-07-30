@@ -43,6 +43,8 @@ def make_preview(count: int = 1) -> HHSearchPreviewResponse:
                 company="Test Company",
                 salary_text="87 000 ₽ за месяц, на руки",
                 is_remote=True,
+                responsibility_snippet="Разработка backend-сервисов.",
+                requirement_snippet="Опыт Python.",
             )
         )
     return HHSearchPreviewResponse(count=len(vacancies), vacancies=vacancies)
@@ -59,6 +61,8 @@ def test_search_preview_success(client: TestClient, monkeypatch: pytest.MonkeyPa
     assert vacancy["external_id"] == "123456"
     assert vacancy["salary_text"] == "87 000 ₽ за месяц, на руки"
     assert vacancy["is_remote"] is True
+    assert vacancy["responsibility_snippet"] == "Разработка backend-сервисов."
+    assert vacancy["requirement_snippet"] == "Опыт Python."
     assert "published_at_text" not in vacancy
     assert "experience_text" not in vacancy
 

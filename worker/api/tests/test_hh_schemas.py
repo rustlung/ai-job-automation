@@ -14,6 +14,8 @@ def valid_payload() -> dict[str, object]:
         "location": "Удалённо",
         "salary_text": "150 000-200 000 ₽",
         "is_remote": True,
+        "responsibility_snippet": "Разработка backend-сервисов.",
+        "requirement_snippet": "Опыт Python и FastAPI.",
     }
 
 
@@ -23,6 +25,8 @@ def test_hh_search_vacancy_accepts_valid_payload() -> None:
     assert vacancy.source == "hh"
     assert vacancy.external_id == "123456"
     assert vacancy.is_remote is True
+    assert vacancy.responsibility_snippet == "Разработка backend-сервисов."
+    assert vacancy.requirement_snippet == "Опыт Python и FastAPI."
 
 
 def test_hh_search_vacancy_accepts_remote_false() -> None:
@@ -37,10 +41,23 @@ def test_hh_search_vacancy_accepts_remote_false() -> None:
 def test_hh_search_vacancy_trims_strings() -> None:
     payload = valid_payload()
     payload["title"] = "  Python Developer  "
+    payload["responsibility_snippet"] = "  Разработка API.  "
 
     vacancy = HHSearchVacancy(**payload)
 
     assert vacancy.title == "Python Developer"
+    assert vacancy.responsibility_snippet == "Разработка API."
+
+
+def test_hh_search_vacancy_normalizes_snippet_spaces() -> None:
+    payload = valid_payload()
+    payload["responsibility_snippet"] = "Разработка&nbsp;&nbsp;backend\u00a0сервисов"
+    payload["requirement_snippet"] = "Опыт\u202fPython    и FastAPI"
+
+    vacancy = HHSearchVacancy(**payload)
+
+    assert vacancy.responsibility_snippet == "Разработка backend сервисов"
+    assert vacancy.requirement_snippet == "Опыт Python и FastAPI"
 
 
 def test_hh_search_vacancy_rejects_empty_required_field() -> None:
@@ -73,11 +90,15 @@ def test_hh_search_vacancy_accepts_optional_fields_missing() -> None:
     payload = valid_payload()
     payload.pop("location")
     payload.pop("salary_text")
+    payload.pop("responsibility_snippet")
+    payload.pop("requirement_snippet")
 
     vacancy = HHSearchVacancy(**payload)
 
     assert vacancy.location is None
     assert vacancy.salary_text is None
+    assert vacancy.responsibility_snippet is None
+    assert vacancy.requirement_snippet is None
 
 
 def test_hh_search_vacancy_rejects_unknown_fields() -> None:
