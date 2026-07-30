@@ -13,7 +13,7 @@ def valid_payload() -> dict[str, object]:
         "company": "Test Company",
         "location": "Удалённо",
         "salary_text": "150 000-200 000 ₽",
-        "published_at_text": "сегодня",
+        "is_remote": True,
     }
 
 
@@ -22,6 +22,16 @@ def test_hh_search_vacancy_accepts_valid_payload() -> None:
 
     assert vacancy.source == "hh"
     assert vacancy.external_id == "123456"
+    assert vacancy.is_remote is True
+
+
+def test_hh_search_vacancy_accepts_remote_false() -> None:
+    payload = valid_payload()
+    payload["is_remote"] = False
+
+    vacancy = HHSearchVacancy(**payload)
+
+    assert vacancy.is_remote is False
 
 
 def test_hh_search_vacancy_trims_strings() -> None:
@@ -63,18 +73,25 @@ def test_hh_search_vacancy_accepts_optional_fields_missing() -> None:
     payload = valid_payload()
     payload.pop("location")
     payload.pop("salary_text")
-    payload.pop("published_at_text")
 
     vacancy = HHSearchVacancy(**payload)
 
     assert vacancy.location is None
     assert vacancy.salary_text is None
-    assert vacancy.published_at_text is None
 
 
 def test_hh_search_vacancy_rejects_unknown_fields() -> None:
     payload = valid_payload()
     payload["description"] = "Not available on search card"
+
+    with pytest.raises(ValidationError):
+        HHSearchVacancy(**payload)
+
+
+@pytest.mark.parametrize("field", ["published_at_text", "experience_text"])
+def test_hh_search_vacancy_rejects_removed_fields(field: str) -> None:
+    payload = valid_payload()
+    payload[field] = "not part of search card contract"
 
     with pytest.raises(ValidationError):
         HHSearchVacancy(**payload)

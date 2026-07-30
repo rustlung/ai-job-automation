@@ -1,5 +1,6 @@
 import logging
 import re
+from html import unescape
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup, Tag
@@ -35,10 +36,23 @@ SALARY_SELECTORS = [
     '[data-qa="vacancy-serp__vacancy-compensation"]',
     '[data-qa="vacancy-card-compensation"]',
 ]
-PUBLISHED_AT_SELECTORS = [
-    '[data-qa="vacancy-serp__vacancy-date"]',
-    '[data-qa="vacancy-card-date"]',
-]
+REMOTE_SELECTOR = '[data-qa="vacancy-label-work-schedule-remote"]'
+COMPENSATION_CONTAINER_SELECTOR = 'div[class*="compensation-labels"]'
+SALARY_MARKERS = (
+    "₽",
+    "руб.",
+    "руб",
+    "$",
+    "€",
+    "₸",
+    "за месяц",
+    "на руки",
+    "до вычета налогов",
+    "до налогов",
+    "до вычета",
+    "после вычета налогов",
+)
+WHITESPACE_PATTERN = re.compile(r"\s+")
 
 
 class HHSearchParser:
@@ -61,7 +75,13 @@ class HHSearchParser:
                 logger.warning("hh_search_card_skipped card_index=%s reason=validation_error", index)
                 continue
 
-            logger.info("hh_search_card_parsed card_index=%s external_id=%s", index, vacancy.external_id)
+            logger.info(
+                "hh_search_card_parsed card_index=%s external_id=%s salary_found=%s is_remote=%s",
+                index,
+                vacancy.external_id,
+                vacancy.salary_text is not None,
+                vacancy.is_remote,
+            )
             vacancies.append(vacancy)
 
         logger.info(
@@ -75,14 +95,13 @@ class HHSearchParser:
     def _find_cards(self, soup: BeautifulSoup) -> list[Tag]:
         seen: set[int] = set()
         cards: list[Tag] = []
-        for selector in CARD_SELECTORS:
-            for card in soup.select(selector):
-                if not isinstance(card, Tag):
-                    continue
-                identity = id(card)
-                if identity not in seen:
-                    seen.add(identity)
-                    cards.append(card)
+        for card in soup.select(", ".join(CARD_SELECTORS)):
+            if not isinstance(card, Tag):
+                continue
+            identity = id(card)
+            if identity not in seen:
+                seen.add(identity)
+                cards.append(card)
         return cards
 
     def _parse_card(self, card: Tag) -> HHSearchVacancy:
@@ -109,8 +128,8 @@ class HHSearchParser:
             title=title,
             company=company,
             location=self._text(self._select_first(card, LOCATION_SELECTORS)),
-            salary_text=self._text(self._select_first(card, SALARY_SELECTORS)),
-            published_at_text=self._text(self._select_first(card, PUBLISHED_AT_SELECTORS)),
+            salary_text=self._extract_salary_text(card),
+            is_remote=card.select_one(REMOTE_SELECTOR) is not None,
         )
 
     def _normalize_vacancy_url(self, href: str) -> str:
@@ -131,6 +150,41 @@ class HHSearchParser:
             if isinstance(element, Tag):
                 return element
         return None
+
+    def _extract_salary_text(self, card: Tag) -> str | None:
+        for container in card.select(COMPENSATION_CONTAINER_SELECTOR):
+            salary_text = self._extract_salary_from_container(container)
+            if salary_text is not None:
+                return salary_text
+
+        salary_element = self._select_first(card, SALARY_SELECTORS)
+        salary_text = self._normalize_text(self._text(salary_element))
+        if salary_text is not None and self._looks_like_salary(salary_text):
+            return salary_text
+
+        return self._extract_salary_from_container(card)
+
+    def _extract_salary_from_container(self, container: Tag) -> str | None:
+        for span in container.find_all("span"):
+            if not isinstance(span, Tag) or span.has_attr("data-qa"):
+                continue
+
+            text = self._normalize_text(self._text(span))
+            if text is not None and self._looks_like_salary(text):
+                return text
+        return None
+
+    def _normalize_text(self, text: str | None) -> str | None:
+        if text is None:
+            return None
+        normalized = unescape(text)
+        normalized = normalized.replace("\u00a0", " ").replace("\u202f", " ")
+        normalized = WHITESPACE_PATTERN.sub(" ", normalized).strip()
+        return normalized or None
+
+    def _looks_like_salary(self, text: str) -> bool:
+        normalized = text.lower()
+        return any(marker in normalized for marker in SALARY_MARKERS)
 
     @staticmethod
     def _text(element: Tag | None) -> str | None:

@@ -18,6 +18,7 @@ class FakeHHParser:
                 url="https://hh.ru/vacancy/123456",
                 title="Python Developer",
                 company="Test Company",
+                is_remote=False,
             )
         ]
 

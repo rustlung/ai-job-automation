@@ -41,6 +41,8 @@ def make_preview(count: int = 1) -> HHSearchPreviewResponse:
                 url="https://hh.ru/vacancy/123456",
                 title="Python Developer",
                 company="Test Company",
+                salary_text="87 000 ₽ за месяц, на руки",
+                is_remote=True,
             )
         )
     return HHSearchPreviewResponse(count=len(vacancies), vacancies=vacancies)
@@ -53,7 +55,12 @@ def test_search_preview_success(client: TestClient, monkeypatch: pytest.MonkeyPa
 
     assert response.status_code == 200
     assert response.json()["count"] == 1
-    assert response.json()["vacancies"][0]["external_id"] == "123456"
+    vacancy = response.json()["vacancies"][0]
+    assert vacancy["external_id"] == "123456"
+    assert vacancy["salary_text"] == "87 000 ₽ за месяц, на руки"
+    assert vacancy["is_remote"] is True
+    assert "published_at_text" not in vacancy
+    assert "experience_text" not in vacancy
 
 
 def test_search_preview_empty_result(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:

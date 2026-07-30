@@ -10,7 +10,6 @@ TITLE_MAX_LENGTH = 255
 COMPANY_MAX_LENGTH = 255
 LOCATION_MAX_LENGTH = 255
 SALARY_TEXT_MAX_LENGTH = 255
-PUBLISHED_AT_TEXT_MAX_LENGTH = 64
 
 
 RequiredShortString = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
@@ -30,10 +29,7 @@ class HHSearchVacancy(BaseModel):
     company: RequiredShortString
     location: OptionalShortString | None = None
     salary_text: OptionalShortString | None = None
-    published_at_text: Annotated[
-        str,
-        StringConstraints(strip_whitespace=True, min_length=1, max_length=PUBLISHED_AT_TEXT_MAX_LENGTH),
-    ] | None = None
+    is_remote: bool
 
     @field_validator("url")
     @classmethod
@@ -43,7 +39,7 @@ class HHSearchVacancy(BaseModel):
             raise ValueError("url must be a valid HTTP or HTTPS URL")
         return value
 
-    @field_validator("location", "salary_text", "published_at_text", mode="before")
+    @field_validator("location", "salary_text", mode="before")
     @classmethod
     def strip_optional_strings(cls, value: object) -> object:
         if isinstance(value, str):

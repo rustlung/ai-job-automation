@@ -8,8 +8,17 @@
         </a>
         <span data-qa="vacancy-serp__vacancy-employer">Test Company</span>
         <span data-qa="vacancy-serp__vacancy-address">Москва</span>
-        <span data-qa="vacancy-serp__vacancy-compensation">150 000-200 000 ₽</span>
-        <span data-qa="vacancy-serp__vacancy-date">сегодня</span>
+        <div class="compensation-labels--sanitised compensation-labels_magritte--sanitised">
+          <span class="magritte-text___sanitised">87&nbsp;000 ₽ за месяц, на руки</span>
+          <div>
+            <span data-qa="vacancy-serp__vacancy-work-experience-between1And3">
+              Опыт 1-3 года
+            </span>
+          </div>
+          <div>
+            <span data-qa="vacancy-label-work-schedule-remote">Можно удалённо</span>
+          </div>
+        </div>
       </div>
 
       <div data-qa="vacancy-serp__vacancy">
@@ -17,8 +26,15 @@
           FastAPI Developer
         </a>
         <span data-qa="vacancy-serp__vacancy-employer">Another Company</span>
-        <span data-qa="vacancy-serp__vacancy-address">Удалённо</span>
-        <span data-qa="vacancy-serp__vacancy-date">вчера</span>
+        <span data-qa="vacancy-serp__vacancy-address">Казань</span>
+        <div class="compensation-labels--sanitised">
+          <span>от 2&nbsp;000 $ до вычета налогов</span>
+          <div>
+            <span data-qa="vacancy-serp__vacancy-work-experience-noExperience">
+              Нет опыта
+            </span>
+          </div>
+        </div>
       </div>
 
       <div data-qa="vacancy-card">
@@ -27,11 +43,33 @@
         </a>
         <span data-qa="vacancy-card-company">Integration LLC</span>
         <span data-qa="vacancy-card-location">Санкт-Петербург</span>
-        <span data-qa="vacancy-card-compensation">до 250 000 ₽</span>
+        <div class="compensation-labels--sanitised">
+          <div>
+            <span data-qa="vacancy-serp__vacancy-work-experience-between1And3">
+              Опыт 1-3 года
+            </span>
+          </div>
+        </div>
       </div>
 
       <div data-qa="vacancy-serp__vacancy">
-        <a data-qa="serp-item__title" href="/vacancy/444444">Broken Card</a>
+        <a data-qa="serp-item__title" href="/vacancy/444444">Data Engineer</a>
+        <span data-qa="vacancy-serp__vacancy-employer">Numbers Company</span>
+        <span data-qa="vacancy-serp__vacancy-address">Удалённо</span>
+        <div class="compensation-labels--sanitised">
+          <span>Более 100 сотрудников</span>
+          <span>5 дней в неделю</span>
+          <span>3 проекта в год</span>
+          <div>
+            <span data-qa="vacancy-serp__vacancy-work-experience-between1And3">
+              Опыт 1-3 года
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div data-qa="vacancy-serp__vacancy">
+        <a data-qa="serp-item__title" href="/vacancy/555555">Broken Card</a>
       </div>
     </main>
   </body>
