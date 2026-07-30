@@ -20,6 +20,14 @@ def test_parser_extracts_valid_cards_and_skips_broken_card(caplog) -> None:
     assert "hh_search_card_skipped" in caplog.text
 
 
+def test_parser_does_not_duplicate_cards_from_nested_containers() -> None:
+    vacancies = HHSearchParser().parse(load_fixture())
+    external_ids = [vacancy.external_id for vacancy in vacancies]
+
+    assert len(vacancies) == 4
+    assert len(set(external_ids)) == len(external_ids)
+
+
 def test_parser_normalizes_absolute_url() -> None:
     first = HHSearchParser().parse(load_fixture())[0]
     second = HHSearchParser().parse(load_fixture())[1]
@@ -41,6 +49,13 @@ def test_parser_extracts_card_fields() -> None:
     assert first.requirement_snippet == "Опыт с PostgreSQL, Docker и внешними API."
 
 
+def test_parser_extracts_snippets_from_outer_vacancy_info_wrapper() -> None:
+    vacancies = HHSearchParser().parse(load_fixture())
+
+    assert vacancies[0].responsibility_snippet == "Разработка backend-сервисов на Python и FastAPI..."
+    assert vacancies[0].requirement_snippet == "Опыт с PostgreSQL, Docker и внешними API."
+
+
 def test_parser_extracts_salary_without_remote() -> None:
     second = HHSearchParser().parse(load_fixture())[1]
 
@@ -57,6 +72,17 @@ def test_parser_keeps_missing_salary_as_none() -> None:
     assert third.is_remote is False
     assert third.responsibility_snippet is None
     assert third.requirement_snippet == "Нужен опыт с очередями и REST API."
+
+
+def test_parser_does_not_mix_snippets_between_neighboring_vacancies() -> None:
+    first, second, third, fourth = HHSearchParser().parse(load_fixture())
+
+    assert first.requirement_snippet == "Опыт с PostgreSQL, Docker и внешними API."
+    assert second.requirement_snippet is None
+    assert third.responsibility_snippet is None
+    assert fourth.responsibility_snippet is None
+    assert fourth.requirement_snippet is None
+    assert "соседнюю вакансию" not in fourth.model_dump_json()
 
 
 def test_parser_does_not_treat_unrelated_numbers_as_salary_or_remote() -> None:

@@ -18,6 +18,7 @@ CARD_SELECTORS = [
     '[data-qa="vacancy-serp__vacancy_standard"]',
     '[data-qa="vacancy-card"]',
 ]
+VACANCY_INFO_SELECTOR = 'div[class*="vacancy-info--"]'
 TITLE_SELECTORS = [
     '[data-qa="serp-item__title"]',
     '[data-qa="vacancy-serp__vacancy-title"]',
@@ -97,14 +98,63 @@ class HHSearchParser:
     def _find_cards(self, soup: BeautifulSoup) -> list[Tag]:
         seen: set[int] = set()
         cards: list[Tag] = []
-        for card in soup.select(", ".join(CARD_SELECTORS)):
-            if not isinstance(card, Tag):
+
+        for title in soup.select(", ".join(TITLE_SELECTORS)):
+            if not isinstance(title, Tag):
+                continue
+            card = self._find_card_for_title(title)
+            if card is None:
                 continue
             identity = id(card)
-            if identity not in seen:
-                seen.add(identity)
-                cards.append(card)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            cards.append(card)
         return cards
+
+    def _find_card_for_title(self, title: Tag) -> Tag | None:
+        fallback_card: Tag | None = None
+
+        for ancestor in title.parents:
+            if not isinstance(ancestor, Tag):
+                continue
+            if not self._contains_single_title(ancestor):
+                continue
+
+            if self._matches_vacancy_info(ancestor):
+                return ancestor
+
+            if fallback_card is None and self._looks_like_vacancy_card(ancestor):
+                fallback_card = ancestor
+
+        return fallback_card
+
+    def _contains_single_title(self, container: Tag) -> bool:
+        return len(container.select(", ".join(TITLE_SELECTORS))) == 1
+
+    def _matches_vacancy_info(self, container: Tag) -> bool:
+        class_value = container.get("class")
+        if not isinstance(class_value, list):
+            return False
+        return any(isinstance(class_name, str) and "vacancy-info--" in class_name for class_name in class_value)
+
+    def _looks_like_vacancy_card(self, container: Tag) -> bool:
+        return self._select_first(container, COMPANY_SELECTORS) is not None and (
+            self._select_first(container, LOCATION_SELECTORS) is not None
+            or container.select_one(COMPENSATION_CONTAINER_SELECTOR) is not None
+            or container.select_one(REMOTE_SELECTOR) is not None
+            or container.select_one(RESPONSIBILITY_SNIPPET_SELECTOR) is not None
+            or container.select_one(REQUIREMENT_SNIPPET_SELECTOR) is not None
+            or self._has_known_card_data_qa(container)
+        )
+
+    @staticmethod
+    def _has_known_card_data_qa(container: Tag) -> bool:
+        return container.get("data-qa") in {
+            "vacancy-serp__vacancy",
+            "vacancy-serp__vacancy_standard",
+            "vacancy-card",
+        }
 
     def _parse_card(self, card: Tag) -> HHSearchVacancy:
         title_link = self._select_first(card, TITLE_SELECTORS)
