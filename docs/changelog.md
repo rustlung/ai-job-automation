@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-07-31
+
+### Added
+
+- HH search page client and parser;
+- HH search preview endpoint;
+- salary extraction from search cards;
+- remote flag extraction from search cards;
+- responsibility and requirement snippets;
+- HH full vacancy client and parser;
+- full vacancy details endpoint;
+- full description normalization;
+- skills extraction;
+- schedule, working hours and address extraction;
+- publication date extraction;
+- centralized Worker application logging;
+- `LOG_LEVEL` environment configuration.
+
+### Changed
+
+- HH search URLs use `enable_snippets=true` for responsibility and requirement snippets;
+- HH card contract aligned with current real HTML markup;
+- full vacancy contract kept minimal and focused on detailed AI analysis;
+- application INFO events are now visible in Docker stdout.
+
+### Verified
+
+- real HH search page on target Worker;
+- real full vacancy page on target Worker;
+- Russian text and canonical URL;
+- salary and snippets;
+- description without footer, forms or buttons;
+- skills and publication date;
+- invalid external URL returns 422;
+- application events appear in `docker compose logs`.
+
 ## 2026-07-28
 
 ### Added

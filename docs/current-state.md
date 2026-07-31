@@ -1,6 +1,6 @@
 # Current State
 
-2026-07-28
+2026-07-31
 
 Работает:
 ✅ Ubuntu server
@@ -37,11 +37,27 @@
 ✅ Worker → Ollama
 ✅ Сохранение AI-анализа в SQLite
 ✅ Повторные workflow-прогоны без дублей
+✅ HH search page HTTP client
+✅ HH search results parser
+✅ Salary extraction from HH search cards
+✅ Remote flag extraction from HH search cards
+✅ HH responsibility and requirement snippets
+✅ POST /hh/search-preview
+✅ HH full vacancy HTTP client
+✅ HH full vacancy parser
+✅ POST /hh/vacancy-details
+✅ Full description normalization
+✅ HH skills extraction
+✅ HH publication date extraction
+✅ Worker application logs in Docker
+✅ HH real-network verification on target Worker
 
 Phase 1 — Orchestrator foundation завершена.
 Phase 2.1 — Worker API foundation завершена.
 Phase 3 — Local LLM integration завершена.
 Phase 4 — First workflow slice завершена.
+Phase 5.1 — HH search page parser завершена и принята.
+Phase 5.2 — HH full vacancy parser завершена и принята.
 
 Создан и развернут на homeserver базовый backend оркестрационного слоя на FastAPI.
 Работает endpoint `GET /health`.
@@ -73,13 +89,33 @@ n8n
 Повторное сохранение вакансии и анализа выполняется идемпотентно: дубликаты не создаются, измененные поля обновляются с сохранением id.
 Первый n8n workflow slice использует environment variables и не хранит секреты в экспортированном workflow.
 
+HH HTML parsing является рабочей частью Worker API.
+`POST /hh/search-preview` получает одну страницу поисковой выдачи HH, извлекает краткие карточки вакансий, зарплату, признак удалённости, `responsibility_snippet` и `requirement_snippet`.
+Для получения snippets в URL поисковой выдачи нужен параметр `enable_snippets=true`; без него HH может вернуть карточки без кратких обязанностей и требований.
+
+`POST /hh/vacancy-details` получает одну полную страницу вакансии HH и возвращает нормализованный `HHVacancyDetails`: title, company, salary, полный description, skills, schedule, working hours, address и published_at при наличии.
+Полный HTML обрабатывается без Playwright и Selenium.
+Реальные сетевые проверки HH выполняются на целевом Windows 11 Worker без VPN; с текущим VPN-маршрутом HH возвращал HTTP 451.
+
+Worker application logging настроен централизованно через `LOG_LEVEL=INFO`.
+Application events уровня INFO выводятся в stdout контейнера и видны через `docker compose logs`; полный HTML и полный description не логируются.
+
 Следующий этап определяется по `docs/project-roadmap-v1.1.md`.
 
 Не реализовано:
-⬜ HH parser
+⬜ пагинация HH
+⬜ несколько поисковых профилей HH
+⬜ массовый сбор вакансий
+⬜ предварительный AI-фильтр поисковых карточек
+⬜ автоматическая загрузка полной страницы после фильтра
+⬜ запись полных HH данных в orchestrator
+⬜ n8n HH collector workflow
+⬜ расписание HH collector
 ⬜ массовая обработка вакансий
 ⬜ production filtering
 ⬜ персональный профиль пользователя
 ⬜ внешняя LLM
 ⬜ Telegram workflow
 ⬜ полноценный ежедневный pipeline
+⬜ итоговый P1/P2/P3 анализ
+⬜ автоматическая отправка откликов

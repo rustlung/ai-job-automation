@@ -27,7 +27,7 @@ Self-hosted AI-система для автоматизации поиска и 
 
 - `docs/architecture.md` — архитектура системы;
 - `docs/current-state.md` — текущее состояние проекта;
-- `docs/project-roadmap.md` — план развития;
+- `docs/project-roadmap-v1.1.md` — план развития;
 - `docs/project-context.md` — правила работы с проектом.
 
 ## Статус проекта

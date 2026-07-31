@@ -214,6 +214,12 @@ docker compose exec api curl http://host.docker.internal:11434/api/tags
 Worker использует настройки из `worker/api/.env`:
 
 ``` text
+LOG_LEVEL=INFO
+HH_BASE_URL=https://hh.ru
+HH_USER_AGENT=AIJobAutomation/0.1 (contact: configured-locally)
+HH_REQUEST_TIMEOUT_SECONDS=30
+HH_REQUEST_DELAY_SECONDS=1
+HH_MAX_RESPONSE_BYTES=1048576
 OLLAMA_BASE_URL=http://host.docker.internal:11434
 OLLAMA_MODEL=qwen3:4b-instruct
 OLLAMA_REQUEST_TIMEOUT_SECONDS=120
@@ -221,6 +227,11 @@ OLLAMA_KEEP_ALIVE=5m
 ```
 
 Не коммитить локальный `.env`.
+Не перезаписывать рабочий `worker/api/.env` файлом `.env.example`, если в нем уже есть локальные настройки.
+После изменения `.env` контейнер нужно пересоздать.
+
+HH проверяется на Worker без VPN. С текущим VPN-маршрутом HH возвращал HTTP 451.
+Worker API не использует авторизацию HH, cookies, proxy, Playwright или Selenium.
 
 После изменения кода или настроек пересобрать worker:
 
@@ -259,6 +270,73 @@ curl http://<worker-local-ip>:8001/health/ollama
 
 Для `POST /local-ai/analyze` с кириллицей с homeserver использовать клиент, который явно отправляет UTF-8.
 Не фиксировать реальные IP-адреса, локальные `.env` и чувствительные данные в Git.
+
+### HH Verification
+
+Проверить Worker API:
+
+``` powershell
+Invoke-RestMethod http://localhost:8001/health
+```
+
+Проверить поисковую выдачу HH.
+Для получения snippets нужен параметр `enable_snippets=true`:
+
+``` powershell
+$searchBody = @{
+  url = "https://hh.ru/search/vacancy?text=Python&enable_snippets=true"
+} | ConvertTo-Json
+
+$searchResponse = Invoke-RestMethod `
+  -Uri http://localhost:8001/hh/search-preview `
+  -Method Post `
+  -ContentType "application/json; charset=utf-8" `
+  -Body $searchBody
+
+$searchResponse | Format-List
+$searchResponse.vacancies | Select-Object -First 5
+```
+
+Проверить одну полную карточку вакансии:
+
+``` powershell
+$detailsBody = @{
+  url = "https://hh.ru/vacancy/123456789"
+} | ConvertTo-Json
+
+$detailsResponse = Invoke-RestMethod `
+  -Uri http://localhost:8001/hh/vacancy-details `
+  -Method Post `
+  -ContentType "application/json; charset=utf-8" `
+  -Body $detailsBody
+
+$detailsResponse | Format-List
+$detailsResponse.description.Length
+$detailsResponse.description -split "`n" | Select-Object -First 30
+$detailsResponse.skills
+$detailsResponse.published_at
+```
+
+URL в примере нужно заменить на актуальный публичный URL вакансии HH.
+Не использовать resume id, cookies, персональные query parameters, токены или локальные секреты.
+
+Проверить application logs:
+
+``` powershell
+docker compose logs -f api
+```
+
+В логах должны быть видны application events Worker:
+
+``` text
+hh_vacancy_fetch_started
+hh_vacancy_fetch_succeeded
+hh_vacancy_parse_started
+hh_vacancy_parse_succeeded
+hh_vacancy_details_completed
+```
+
+В логах не должны появляться полный HTML, полный description, cookies, XSRF token или содержимое `.env`.
 
 ## n8n Workflow Configuration
 

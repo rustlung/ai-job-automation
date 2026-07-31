@@ -54,7 +54,7 @@ AI_PROMPT_VERSION
 ### Ограничения
 
 - тестовая вакансия задается вручную;
-- нет HH parser;
+- n8n workflow еще не подключен к HH parser;
 - нет batch processing;
 - нет расписания;
 - нет уведомлений;
@@ -70,3 +70,44 @@ workflows/n8n/vacancy-first-slice.json
 ```
 
 Промежуточные версии workflow в Git не хранятся.
+
+## Планируемый HH collection flow
+
+Статус: planned, not yet implemented.
+
+Этот workflow пока не подключен в n8n. Он описывает направление развития
+после проверки HH parser endpoints на Worker.
+
+Планируемый поток:
+
+``` text
+Schedule / Manual Trigger
+→ Build HH search URLs
+→ Worker /hh/search-preview
+→ Local preliminary analysis
+→ Worker /hh/vacancy-details for selected vacancies
+→ Orchestrator vacancy upsert
+→ Detailed analysis
+→ Orchestrator analysis upsert
+```
+
+Планируемая роль двухступенчатой обработки:
+
+-   `POST /hh/search-preview` получает одну страницу поисковой выдачи HH и
+    возвращает краткие карточки;
+-   локальная LLM выполняет дешевый предварительный отсев;
+-   `POST /hh/vacancy-details` вызывается только для перспективных
+    вакансий;
+-   полное description используется для подробного анализа;
+-   orchestrator сохраняет выбранные вакансии и результаты анализа.
+
+Ограничения текущего состояния:
+
+-   нет реализованного n8n HH collector workflow;
+-   нет автоматического построения поисковых URL;
+-   нет пагинации;
+-   нет batch processing;
+-   нет автоматического предварительного AI-фильтра;
+-   нет автоматической загрузки полных карточек;
+-   нет production P1/P2/P3 scoring;
+-   нет автоматической отправки откликов.

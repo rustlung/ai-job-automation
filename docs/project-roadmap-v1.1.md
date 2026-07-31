@@ -403,7 +403,7 @@ Workflow использует environment variables для адресов сер
 
 # Phase 5. Vacancy collector
 
-Статус: следующая активная фаза.
+Статус: выполняется.
 
 ## Цель
 
@@ -428,6 +428,108 @@ Storage
  |
 Processing
 ```
+
+---
+
+# Phase 5.1. HH search page parser
+
+Статус: завершен.
+
+## Результат
+
+- реализован HH search page HTTP client на Worker;
+- реализован parser одной страницы поисковой выдачи HH;
+- добавлен диагностический endpoint `POST /hh/search-preview`;
+- извлекаются краткие карточки вакансий;
+- извлекаются `salary_text`, `is_remote`, `responsibility_snippet` и `requirement_snippet`;
+- для получения snippets используется `enable_snippets=true`;
+- поврежденная карточка не ломает разбор всей страницы;
+- автоматические тесты не выполняют реальные запросы к HH;
+- реальная проверка выполнена на целевом Windows 11 Worker без VPN.
+
+Краткий контракт поисковой карточки:
+
+- source;
+- external_id;
+- url;
+- title;
+- company;
+- location;
+- salary_text;
+- is_remote;
+- responsibility_snippet;
+- requirement_snippet.
+
+Ограничения:
+
+- нет пагинации;
+- нет массового обхода результатов;
+- нет загрузки полных карточек вакансий;
+- нет записи в orchestrator;
+- нет AI-фильтрации.
+
+---
+
+# Phase 5.2. HH full vacancy parser
+
+Статус: завершен.
+
+## Результат
+
+- реализован HH full vacancy HTTP client на Worker;
+- реализован отдельный parser полной карточки вакансии HH;
+- реализован отдельный service;
+- добавлен диагностический endpoint `POST /hh/vacancy-details`;
+- извлекаются полный `description`, `skills`, `salary_text`, `schedule_text`, `working_hours_text`, `address` и `published_at`;
+- description очищается от HTML и сохраняет смысловую структуру;
+- кнопки, формы, footer, related vacancies и рекламные блоки не попадают в description;
+- canonical URL очищается от tracking query parameters и сверяется с `external_id`;
+- внешний URL отклоняется валидацией;
+- parser и integration errors преобразуются в контролируемые API-ответы;
+- application logging Worker настроен так, что HH INFO-события видны в Docker stdout;
+- реальная проверка выполнена на целевом Windows 11 Worker без VPN.
+
+Контракт полной карточки `HHVacancyDetails`:
+
+- source;
+- external_id;
+- url;
+- title;
+- company;
+- salary_text;
+- description;
+- skills;
+- schedule_text;
+- working_hours_text;
+- address;
+- published_at.
+
+Ограничения:
+
+- нет batch processing;
+- нет автоматической загрузки полной карточки после предварительного фильтра;
+- нет записи полных HH данных в orchestrator;
+- нет n8n HH collector workflow;
+- нет итогового P1/P2/P3 анализа;
+- нет автоматической отправки откликов.
+
+---
+
+## Оставшиеся части Phase 5
+
+Phase 5 не считается полностью завершенной.
+
+Остаются:
+
+- предварительный AI-фильтр поисковых карточек;
+- пагинация;
+- batch processing;
+- автоматическое получение полных карточек после отбора;
+- запись данных в orchestrator;
+- n8n HH collector workflow.
+
+Следующий этап по текущему roadmap всё ещё находится внутри Phase 5:
+реализация collector pipeline поверх уже проверенных HH parser endpoints.
 
 ---
 
