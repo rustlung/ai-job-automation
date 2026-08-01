@@ -3,25 +3,15 @@ import re
 import time
 from collections.abc import Callable
 from datetime import datetime, timezone
-from html import unescape
 from urllib.parse import urlsplit
 
 from app.schemas.hh import HHSearchVacancy, HHVacancyDetails
 from app.schemas.vacancy import NormalizedVacancy, normalize_description_text, normalize_inline_text
+from app.services.vacancy_identity import normalize_for_identity_compare
 
 logger = logging.getLogger(__name__)
 
 VACANCY_ID_PATTERN = re.compile(r"/vacancy/(\d+)(?:/)?$")
-COMPARE_WHITESPACE_PATTERN = re.compile(r"\s+")
-DASH_TRANSLATION = str.maketrans(
-    {
-        "–": "-",
-        "—": "-",
-        "−": "-",
-    }
-)
-
-
 class VacancyNormalizationError(Exception):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
@@ -127,14 +117,10 @@ class VacancyNormalizationService:
         if details_url_id != vacancy_details.external_id:
             raise VacancyIdentityMismatchError("details_url_id_mismatch")
 
-        if self._normalize_for_identity_compare(search_vacancy.title) != self._normalize_for_identity_compare(
-            vacancy_details.title
-        ):
+        if normalize_for_identity_compare(search_vacancy.title) != normalize_for_identity_compare(vacancy_details.title):
             raise VacancyFieldConflictError("title_conflict")
 
-        if self._normalize_for_identity_compare(search_vacancy.company) != self._normalize_for_identity_compare(
-            vacancy_details.company
-        ):
+        if normalize_for_identity_compare(search_vacancy.company) != normalize_for_identity_compare(vacancy_details.company):
             raise VacancyFieldConflictError("company_conflict")
 
     def _extract_url_external_id(self, url: str, reason: str) -> str:
@@ -167,15 +153,6 @@ class VacancyNormalizationService:
         if search_salary is not None:
             return search_salary, "search"
         return None, "none"
-
-    @staticmethod
-    def _normalize_for_identity_compare(value: str) -> str:
-        normalized = unescape(value)
-        normalized = normalized.replace("\u00a0", " ").replace("\u202f", " ")
-        normalized = normalized.translate(DASH_TRANSLATION)
-        normalized = COMPARE_WHITESPACE_PATTERN.sub(" ", normalized).strip()
-        normalized = normalized.rstrip(".").strip()
-        return normalized.casefold()
 
     @staticmethod
     def _duration_ms(started_at: float) -> int:
