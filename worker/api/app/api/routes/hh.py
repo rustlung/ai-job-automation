@@ -21,6 +21,12 @@ from app.schemas.hh import (
     HHVacancyDetails,
     HHVacancyDetailsRequest,
 )
+from app.schemas.hh_collection import HHSearchCollectionRequest, HHSearchCollectionResult
+from app.services.hh_search_collection import (
+    HHSearchCollectionIdentityConflictError,
+    HHSearchCollectionService,
+    HHSearchCollectionUnknownProfileError,
+)
 from app.services.hh_search import HHSearchService
 from app.services.hh_vacancy import HHVacancyService
 
@@ -29,6 +35,10 @@ router = APIRouter()
 
 def get_hh_search_service() -> HHSearchService:
     return HHSearchService.from_settings(get_settings())
+
+
+def get_hh_search_collection_service() -> HHSearchCollectionService:
+    return HHSearchCollectionService.from_settings(get_settings())
 
 
 def get_hh_vacancy_service() -> HHVacancyService:
@@ -52,6 +62,17 @@ async def preview_hh_search(request: HHSearchPreviewRequest) -> HHSearchPreviewR
         raise HTTPException(status_code=502, detail="HH returned unexpected content") from exc
     except HHResponseTooLargeError as exc:
         raise HTTPException(status_code=502, detail="HH response is too large") from exc
+
+
+@router.post("/hh/collect-search", response_model=HHSearchCollectionResult)
+async def collect_hh_search(request: HHSearchCollectionRequest) -> HHSearchCollectionResult:
+    service = get_hh_search_collection_service()
+    try:
+        return await service.collect(request)
+    except HHSearchCollectionUnknownProfileError as exc:
+        raise HTTPException(status_code=422, detail=f"Unknown HH search profile: {exc.profile_id}") from exc
+    except HHSearchCollectionIdentityConflictError as exc:
+        raise HTTPException(status_code=409, detail="HH search collection identity conflict") from exc
 
 
 @router.post("/hh/vacancy-details", response_model=HHVacancyDetails)

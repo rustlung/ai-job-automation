@@ -18,6 +18,9 @@ class Settings:
         self.hh_request_timeout_seconds = float(getenv("HH_REQUEST_TIMEOUT_SECONDS", "30"))
         self.hh_request_delay_seconds = float(getenv("HH_REQUEST_DELAY_SECONDS", "1"))
         self.hh_max_response_bytes = int(getenv("HH_MAX_RESPONSE_BYTES", "1048576"))
+        self.hh_ai_resume_search_url = getenv("HH_AI_RESUME_SEARCH_URL", "")
+        self.hh_python_resume_search_url = getenv("HH_PYTHON_RESUME_SEARCH_URL", "")
+        self.hh_collection_max_raw_vacancies = int(getenv("HH_COLLECTION_MAX_RAW_VACANCIES", "2000"))
 
 
 @lru_cache
