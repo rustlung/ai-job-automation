@@ -57,3 +57,13 @@ def vacancy_analysis_payload() -> dict[str, object]:
         "summary": "Вакансия Python backend-разработчика с релевантным стеком.",
         "reason": "Совпадают Python, FastAPI, PostgreSQL, Docker и интеграции с внешними API.",
     }
+
+
+@pytest.fixture
+def vacancy_processing_event_payload() -> dict[str, object]:
+    return {
+        "run_id": "manual-run-001",
+        "stage": "discovered",
+        "status": "started",
+        "metadata": {"source": "hh", "note": "Первичное обнаружение"},
+    }

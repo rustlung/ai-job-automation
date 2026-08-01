@@ -8,6 +8,7 @@ from app.database.base import Base
 
 if TYPE_CHECKING:
     from app.models.vacancy_analysis import VacancyAnalysis
+    from app.models.vacancy_processing_event import VacancyProcessingEvent
 
 
 def utc_now() -> datetime:
@@ -42,6 +43,11 @@ class Vacancy(Base):
         nullable=False,
     )
     analyses: Mapped[list["VacancyAnalysis"]] = relationship(
+        back_populates="vacancy",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    processing_events: Mapped[list["VacancyProcessingEvent"]] = relationship(
         back_populates="vacancy",
         cascade="all, delete-orphan",
         passive_deletes=True,
