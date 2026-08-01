@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone
 
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -41,6 +42,7 @@ class VacancyService:
         return vacancy
 
     def upsert(self, vacancy_input: VacancyCreate) -> VacancyUpsertResult:
+        effective_seen_at = self._effective_seen_at(vacancy_input.seen_at)
         logger.info(
             "vacancy_create_started source=%s external_id=%s description_length=%s",
             vacancy_input.source,
@@ -51,14 +53,20 @@ class VacancyService:
         try:
             vacancy = self.repository.get_by_source_external_id(vacancy_input.source, vacancy_input.external_id)
             if vacancy is None:
-                vacancy = self.repository.create(vacancy_input)
+                vacancy = self.repository.create(vacancy_input, effective_seen_at)
                 self.session.commit()
                 self.session.refresh(vacancy)
                 logger.info(
-                    "vacancy_created vacancy_id=%s source=%s external_id=%s",
+                    (
+                        "vacancy_first_seen vacancy_id=%s source=%s external_id=%s created=true "
+                        "seen_count=%s first_seen_at=%s last_seen_at=%s"
+                    ),
                     vacancy.id,
                     vacancy.source,
                     vacancy.external_id,
+                    vacancy.seen_count,
+                    vacancy.first_seen_at,
+                    vacancy.last_seen_at,
                 )
                 return VacancyUpsertResult(created=True, vacancy=vacancy)
 
@@ -68,9 +76,21 @@ class VacancyService:
                 vacancy.source,
                 vacancy.external_id,
             )
-            updated = self.repository.update_from_input(vacancy, vacancy_input)
+            updated = self.repository.update_from_input(vacancy, vacancy_input, effective_seen_at)
             self.session.commit()
             self.session.refresh(vacancy)
+            logger.info(
+                (
+                    "vacancy_seen_again vacancy_id=%s source=%s external_id=%s created=false "
+                    "seen_count=%s first_seen_at=%s last_seen_at=%s"
+                ),
+                vacancy.id,
+                vacancy.source,
+                vacancy.external_id,
+                vacancy.seen_count,
+                vacancy.first_seen_at,
+                vacancy.last_seen_at,
+            )
             if updated:
                 logger.info(
                     "vacancy_updated vacancy_id=%s source=%s external_id=%s updated=true",
@@ -95,3 +115,11 @@ class VacancyService:
                 vacancy_input.external_id,
             )
             raise VacancyDatabaseError("Database error") from exc
+
+    @staticmethod
+    def _effective_seen_at(seen_at: datetime | None) -> datetime:
+        if seen_at is None:
+            return datetime.now(timezone.utc)
+        if seen_at.tzinfo is None or seen_at.utcoffset() is None:
+            raise ValueError("seen_at must include timezone information")
+        return seen_at.astimezone(timezone.utc)

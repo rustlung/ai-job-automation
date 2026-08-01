@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated
 from urllib.parse import urlparse
 
@@ -35,6 +35,7 @@ class VacancyCreate(BaseModel):
         StringConstraints(strip_whitespace=True, min_length=1, max_length=DESCRIPTION_MAX_LENGTH),
     ]
     published_at: datetime | None = None
+    seen_at: datetime | None = None
 
     @field_validator("url")
     @classmethod
@@ -59,6 +60,13 @@ class VacancyCreate(BaseModel):
             raise ValueError("published_at must include timezone information")
         return value
 
+    @field_validator("seen_at")
+    @classmethod
+    def validate_seen_at_timezone(cls, value: datetime | None) -> datetime | None:
+        if value is not None and (value.tzinfo is None or value.utcoffset() is None):
+            raise ValueError("seen_at must include timezone information")
+        return value.astimezone(timezone.utc) if value is not None else None
+
 
 class VacancyRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -73,9 +81,19 @@ class VacancyRead(BaseModel):
     salary_text: str | None
     description: str
     published_at: datetime | None
+    first_seen_at: datetime
+    last_seen_at: datetime
+    seen_count: int = Field(ge=1)
     collected_at: datetime
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("first_seen_at", "last_seen_at")
+    @classmethod
+    def ensure_seen_dates_are_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
 
 
 class VacancyUpsertResult(BaseModel):

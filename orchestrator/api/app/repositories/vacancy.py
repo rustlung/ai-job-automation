@@ -22,8 +22,15 @@ class VacancyRepository:
     def count(self) -> int:
         return len(self.session.scalars(select(Vacancy.id)).all())
 
-    def create(self, vacancy_input: VacancyCreate) -> Vacancy:
-        vacancy = Vacancy(**vacancy_input.model_dump(), collected_at=self._now())
+    def create(self, vacancy_input: VacancyCreate, seen_at: datetime | None = None) -> Vacancy:
+        effective_seen_at = seen_at or self._now()
+        vacancy = Vacancy(
+            **vacancy_input.model_dump(exclude={"seen_at"}),
+            first_seen_at=effective_seen_at,
+            last_seen_at=effective_seen_at,
+            seen_count=1,
+            collected_at=self._now(),
+        )
         self.session.add(vacancy)
         try:
             self.session.flush()
@@ -32,19 +39,37 @@ class VacancyRepository:
             raise
         return vacancy
 
-    def update_from_input(self, vacancy: Vacancy, vacancy_input: VacancyCreate) -> bool:
+    def update_from_input(self, vacancy: Vacancy, vacancy_input: VacancyCreate, seen_at: datetime | None = None) -> bool:
         changed = False
-        for field, value in vacancy_input.model_dump().items():
-            if getattr(vacancy, field) != value:
+        for field, value in vacancy_input.model_dump(exclude={"seen_at"}).items():
+            if not self._values_equal(getattr(vacancy, field), value):
                 setattr(vacancy, field, value)
                 changed = True
 
-        if changed:
-            vacancy.collected_at = self._now()
-            vacancy.updated_at = self._now()
-            self.session.flush()
+        effective_seen_at = seen_at or self._now()
+        last_seen_at = self._ensure_utc(vacancy.last_seen_at)
+        if last_seen_at < effective_seen_at:
+            vacancy.last_seen_at = effective_seen_at
+        vacancy.seen_count += 1
+        vacancy.collected_at = self._now()
+        vacancy.updated_at = self._now()
+        self.session.flush()
         return changed
 
     @staticmethod
     def _now() -> datetime:
         return datetime.now(timezone.utc)
+
+    @staticmethod
+    def _ensure_utc(value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    @classmethod
+    def _values_equal(cls, current: object, new: object) -> bool:
+        if isinstance(current, datetime) and isinstance(new, datetime):
+            if current.tzinfo is None or current.utcoffset() is None or new.tzinfo is None or new.utcoffset() is None:
+                return current.replace(tzinfo=None) == new.replace(tzinfo=None)
+            return cls._ensure_utc(current) == cls._ensure_utc(new)
+        return current == new

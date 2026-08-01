@@ -28,6 +28,14 @@ def test_vacancy_migration_upgrade_and_downgrade(tmp_path, monkeypatch) -> None:
     assert "ix_vacancies_source" in indexes
     assert "ix_vacancies_external_id" in indexes
     assert "ix_vacancies_created_at" in indexes
+    assert "ix_vacancies_first_seen_at" in indexes
+    assert "ix_vacancies_last_seen_at" in indexes
+    vacancy_columns = {column["name"]: column for column in inspector.get_columns("vacancies")}
+    assert vacancy_columns["first_seen_at"]["nullable"] is False
+    assert vacancy_columns["last_seen_at"]["nullable"] is False
+    assert vacancy_columns["seen_count"]["nullable"] is False
+    check_constraints = {constraint["name"] for constraint in inspector.get_check_constraints("vacancies")}
+    assert "ck_vacancies_seen_count_positive" in check_constraints
     analysis_indexes = {index["name"] for index in inspector.get_indexes("vacancy_analyses")}
     assert "ix_vacancy_analyses_vacancy_id" in analysis_indexes
     assert "ix_vacancy_analyses_created_at" in analysis_indexes
@@ -46,7 +54,11 @@ def test_vacancy_migration_upgrade_and_downgrade(tmp_path, monkeypatch) -> None:
     inspector = inspect(engine)
     assert "vacancies" in inspector.get_table_names()
     assert "vacancy_analyses" in inspector.get_table_names()
-    assert "vacancy_processing_events" not in inspector.get_table_names()
+    assert "vacancy_processing_events" in inspector.get_table_names()
+    downgraded_columns = {column["name"] for column in inspector.get_columns("vacancies")}
+    assert "first_seen_at" not in downgraded_columns
+    assert "last_seen_at" not in downgraded_columns
+    assert "seen_count" not in downgraded_columns
 
     command.upgrade(make_alembic_config(database_url), "head")
     inspector = inspect(engine)
@@ -71,11 +83,14 @@ def test_processing_event_migration_preserves_existing_tables_on_downgrade(tmp_p
                 """
                 INSERT INTO vacancies (
                     id, source, external_id, url, title, company, description,
-                    collected_at, created_at, updated_at
+                    first_seen_at, last_seen_at, seen_count, collected_at, created_at, updated_at
                 )
                 VALUES (
                     1, 'manual', 'migration-001', 'https://example.com/v/1',
                     'Python Developer', 'Test Company', 'Description',
+                    '2026-08-01T00:00:00+00:00',
+                    '2026-08-01T00:00:00+00:00',
+                    1,
                     '2026-08-01T00:00:00+00:00',
                     '2026-08-01T00:00:00+00:00',
                     '2026-08-01T00:00:00+00:00'
@@ -117,13 +132,106 @@ def test_processing_event_migration_preserves_existing_tables_on_downgrade(tmp_p
     inspector = inspect(engine)
     assert "vacancies" in inspector.get_table_names()
     assert "vacancy_analyses" in inspector.get_table_names()
-    assert "vacancy_processing_events" not in inspector.get_table_names()
+    assert "vacancy_processing_events" in inspector.get_table_names()
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT COUNT(*) FROM vacancies")) == 1
         assert connection.scalar(text("SELECT COUNT(*) FROM vacancy_analyses")) == 1
+        assert connection.scalar(text("SELECT COUNT(*) FROM vacancy_processing_events")) == 1
 
     command.upgrade(config, "head")
     assert "vacancy_processing_events" in inspect(engine).get_table_names()
+    engine.dispose()
+
+
+def test_seen_fields_migration_backfills_existing_rows(tmp_path, monkeypatch) -> None:
+    database_url = f"sqlite:///{tmp_path / 'seen-fields.db'}"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    get_settings.cache_clear()
+
+    config = make_alembic_config(database_url)
+    command.upgrade(config, "20260801_0001")
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        connection.execute(
+            text(
+                """
+                INSERT INTO vacancies (
+                    id, source, external_id, url, title, company, description,
+                    collected_at, created_at, updated_at
+                )
+                VALUES (
+                    1, 'manual', 'migration-seen-001', 'https://example.com/v/1',
+                    'Python Developer', 'Test Company', 'Description',
+                    '2026-08-01T07:00:00+00:00',
+                    '2026-08-01T08:00:00+00:00',
+                    '2026-08-01T09:00:00+00:00'
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO vacancy_analyses (
+                    id, vacancy_id, provider, model, prompt_version, relevance,
+                    summary, reason, created_at, updated_at
+                )
+                VALUES (
+                    1, 1, 'local_ollama', 'qwen3', 'v1', 8,
+                    'Summary', 'Reason',
+                    '2026-08-01T09:30:00+00:00',
+                    '2026-08-01T09:30:00+00:00'
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO vacancy_processing_events (
+                    id, vacancy_id, run_id, stage, status, metadata_json, created_at
+                )
+                VALUES (
+                    1, 1, 'run-1', 'discovered', 'started', '{}',
+                    '2026-08-01T10:00:00+00:00'
+                )
+                """
+            )
+        )
+
+    command.upgrade(config, "head")
+    inspector = inspect(engine)
+    columns = {column["name"]: column for column in inspector.get_columns("vacancies")}
+    assert columns["first_seen_at"]["nullable"] is False
+    assert columns["last_seen_at"]["nullable"] is False
+    assert columns["seen_count"]["nullable"] is False
+    indexes = {index["name"] for index in inspector.get_indexes("vacancies")}
+    assert "ix_vacancies_first_seen_at" in indexes
+    assert "ix_vacancies_last_seen_at" in indexes
+    check_constraints = {constraint["name"] for constraint in inspector.get_check_constraints("vacancies")}
+    assert "ck_vacancies_seen_count_positive" in check_constraints
+    with engine.connect() as connection:
+        row = connection.execute(
+            text("SELECT first_seen_at, last_seen_at, seen_count FROM vacancies WHERE id = 1")
+        ).one()
+        assert row.first_seen_at == "2026-08-01T08:00:00+00:00"
+        assert row.last_seen_at == "2026-08-01T09:00:00+00:00"
+        assert row.seen_count == 1
+        assert connection.scalar(text("SELECT COUNT(*) FROM vacancy_analyses")) == 1
+        assert connection.scalar(text("SELECT COUNT(*) FROM vacancy_processing_events")) == 1
+
+    command.downgrade(config, "-1")
+    inspector = inspect(engine)
+    downgraded_columns = {column["name"] for column in inspector.get_columns("vacancies")}
+    assert "first_seen_at" not in downgraded_columns
+    assert "last_seen_at" not in downgraded_columns
+    assert "seen_count" not in downgraded_columns
+    assert "vacancy_analyses" in inspector.get_table_names()
+    assert "vacancy_processing_events" in inspector.get_table_names()
+
+    command.upgrade(config, "head")
+    assert "first_seen_at" in {column["name"] for column in inspect(engine).get_columns("vacancies")}
     engine.dispose()
 
 

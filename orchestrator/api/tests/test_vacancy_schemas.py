@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 import pytest
 from pydantic import ValidationError
 
@@ -9,6 +11,41 @@ def test_vacancy_create_accepts_valid_payload(vacancy_payload: dict[str, object]
 
     assert vacancy.source == "manual"
     assert vacancy.location == "Удалённо"
+    assert vacancy.seen_at is None
+
+
+def test_vacancy_create_accepts_timezone_aware_seen_at(vacancy_payload: dict[str, object]) -> None:
+    vacancy_payload["seen_at"] = "2026-08-01T12:00:00+04:00"
+
+    vacancy = VacancyCreate(**vacancy_payload)
+
+    assert vacancy.seen_at == datetime(2026, 8, 1, 8, 0, tzinfo=timezone.utc)
+
+
+def test_vacancy_create_accepts_utc_seen_at(vacancy_payload: dict[str, object]) -> None:
+    vacancy_payload["seen_at"] = "2026-08-01T08:00:00Z"
+
+    vacancy = VacancyCreate(**vacancy_payload)
+
+    assert vacancy.seen_at == datetime(2026, 8, 1, 8, 0, tzinfo=timezone.utc)
+
+
+def test_vacancy_create_rejects_naive_seen_at(vacancy_payload: dict[str, object]) -> None:
+    vacancy_payload["seen_at"] = "2026-08-01T12:00:00"
+
+    with pytest.raises(ValidationError):
+        VacancyCreate(**vacancy_payload)
+
+
+@pytest.mark.parametrize("field", ["first_seen_at", "last_seen_at", "seen_count"])
+def test_vacancy_create_rejects_client_managed_seen_fields(
+    field: str,
+    vacancy_payload: dict[str, object],
+) -> None:
+    vacancy_payload[field] = "2026-08-01T08:00:00Z" if field.endswith("_at") else 1
+
+    with pytest.raises(ValidationError):
+        VacancyCreate(**vacancy_payload)
 
 
 def test_vacancy_create_trims_strings(vacancy_payload: dict[str, object]) -> None:
@@ -84,3 +121,6 @@ def test_vacancy_read_from_attributes(db_session, vacancy_payload: dict[str, obj
     read = VacancyRead.model_validate(vacancy)
 
     assert read.id == vacancy.id
+    assert read.first_seen_at == vacancy.first_seen_at.replace(tzinfo=timezone.utc)
+    assert read.last_seen_at == vacancy.last_seen_at.replace(tzinfo=timezone.utc)
+    assert read.seen_count == 1
