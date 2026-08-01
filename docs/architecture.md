@@ -676,39 +676,310 @@ HH может изменить:
 Parser защищён автоматическими тестами и контролируемыми ошибками, но
 требует наблюдения после изменений HTML HH.
 
+## 10.6. Normalization
+
+Статус: implemented.
+
+Worker реализует stateless-слой нормализации:
+
+``` text
+HHSearchVacancy
+HHVacancyDetails
+→ VacancyNormalizationService
+→ NormalizedVacancy
+```
+
+Диагностический endpoint:
+
+``` text
+POST /vacancies/normalize
+```
+
+`NormalizedVacancy` является внутренним контрактом между parsing layer и
+дальнейшей обработкой. Он содержит:
+
+-   source;
+-   external_id;
+-   url;
+-   title;
+-   company;
+-   location;
+-   salary_text;
+-   description;
+-   skills;
+-   schedule_text;
+-   working_hours_text;
+-   address;
+-   published_at;
+-   collected_at;
+-   search_is_remote;
+-   responsibility_snippet;
+-   requirement_snippet.
+
+Правила:
+
+-   URL, title, company, salary_text, description, skills, schedule,
+    working hours, address и published_at берутся из полной карточки, если
+    применимо;
+-   location и search_is_remote сохраняют сведения поисковой выдачи;
+-   snippets не добавляются в description;
+-   skills нормализуются и дедуплицируются без учета регистра;
+-   collected_at является timezone-aware и приводится к UTC;
+-   source, external_id, title и company проверяются на согласованность.
+
+При конфликте валидных search/details объектов Worker возвращает HTTP 409.
+Нормализация не выполняет сетевые запросы, не обращается к Orchestrator, не
+использует AI и не сохраняет данные.
+
+## 10.7. Deduplication
+
+Статус: implemented для точной batch-дедупликации на Worker.
+
+Worker реализует раннюю stateless-дедупликацию внутри одного batch:
+
+``` text
+HHSearchVacancy[] / NormalizedVacancy[]
+→ exact identity key: source + external_id
+→ unique ordered batch
+```
+
+Диагностические endpoints:
+
+``` text
+POST /vacancies/deduplicate/search
+POST /vacancies/deduplicate/normalized
+```
+
+Назначение Worker-дедупликации:
+
+-   сократить повторную обработку внутри одного запуска;
+-   не загружать полную страницу одной и той же вакансии несколько раз;
+-   сохранить порядок первого появления;
+-   объединить безопасные optional-поля;
+-   вернуть controlled conflict при несовместимых обязательных данных.
+
+Разные поддомены HH считаются одной вакансией, если совпадают `source` и
+`external_id`.
+
+Search batch объединяет salary, remote flag и snippets. Normalized batch
+дополнительно проверяет description после безопасной whitespace-нормализации,
+объединяет skills без учета регистра, выбирает минимальный collected_at и
+объединяет search_is_remote через OR.
+
+Не реализовано: fuzzy matching, Levenshtein, embeddings, cross-source
+deduplication и объединение разных external_id.
+
 ------------------------------------------------------------------------
 
-# 11. Хранение истории вакансий
+# 11. Хранение вакансий и обработки
 
-Обязательно реализовать.
+Статус: implemented для базовых сущностей Orchestrator.
 
 Цели:
 
 -   исключить повторную обработку;
--   не отправлять одинаковые вакансии каждый день;
--   отслеживать новые вакансии.
+-   хранить постоянное состояние вакансий;
+-   отслеживать новые и повторно найденные вакансии;
+-   хранить результаты AI-анализа;
+-   хранить append-only историю этапов обработки.
 
-Минимальная сущность:
+## 11.1. Vacancy persistence
 
-    vacancies
+`NormalizedVacancy` в будущем будет передаваться в Orchestrator через:
 
-Поля:
+``` text
+Orchestrator POST /vacancies
+```
 
--   hh_id;
+Сейчас endpoint уже реализован как идемпотентный upsert. Финальная защита
+постоянного хранилища:
+
+``` text
+UNIQUE(source, external_id)
+```
+
+Worker-дедупликация не заменяет constraint в БД. Orchestrator-upsert не
+заменяет раннюю batch-дедупликацию Worker.
+
+Текущие поля `Vacancy` включают:
+
+-   source;
+-   external_id;
 -   url;
 -   title;
 -   company;
--   salary;
--   first_seen;
--   last_seen;
--   status;
--   ai_score.
+-   location;
+-   salary_text;
+-   description;
+-   published_at;
+-   first_seen_at;
+-   last_seen_at;
+-   seen_count;
+-   collected_at;
+-   created_at;
+-   updated_at.
 
-В будущем:
+Один и тот же `external_id` с изменившимся description пока не ведет историю
+версий description. Это отдельная будущая задача.
 
--   история изменений;
--   изменение зарплаты;
--   изменение описания.
+## 11.2. Discovery state
+
+Статус: implemented.
+
+`POST /vacancies` принимает необязательный `seen_at`.
+
+При первом успешном upsert:
+
+-   `first_seen_at = effective_seen_at`;
+-   `last_seen_at = effective_seen_at`;
+-   `seen_count = 1`.
+
+При повторном успешном upsert для той же пары `source + external_id`:
+
+-   `first_seen_at` не изменяется;
+-   `last_seen_at = max(existing last_seen_at, effective_seen_at)`;
+-   `seen_count` увеличивается на 1;
+-   остальные поля обновляются по существующим правилам upsert.
+
+`effective_seen_at` — это переданный timezone-aware `seen_at`, приведенный к
+UTC, либо текущее серверное UTC-время. Naive datetime запрещен.
+
+Discovery counters показывают агрегированное состояние вакансии. Они не
+используют `run_id` и не заменяют подробную историю обработки.
+
+## 11.3. Processing history
+
+Статус: implemented.
+
+Orchestrator хранит append-only журнал:
+
+``` text
+vacancy_processing_events
+```
+
+Событие связано с вакансией:
+
+``` text
+vacancy_processing_events.vacancy_id
+→ vacancies.id
+→ ON DELETE CASCADE
+```
+
+API:
+
+``` text
+POST /vacancies/{vacancy_id}/processing-events
+GET /vacancies/{vacancy_id}/processing-events
+GET /processing-events/{event_id}
+GET /processing-runs/{run_id}/events
+```
+
+Поддерживаемые stage:
+
+-   discovered;
+-   details_fetched;
+-   normalized;
+-   deduplicated;
+-   preliminary_analyzed;
+-   fully_analyzed;
+-   saved;
+-   notified.
+
+Поддерживаемые status:
+
+-   started;
+-   succeeded;
+-   failed;
+-   skipped.
+
+Правила:
+
+-   история append-only: update/delete endpoints отсутствуют;
+-   повторный идентичный POST создает новое событие;
+-   failed требует error_code;
+-   не-failed запрещает error_code;
+-   succeeded для AI-этапов требует provider, model и prompt_version;
+-   metadata должны быть JSON object и ограничены 16 KiB UTF-8;
+-   полный HTML, полный description и полные AI responses в metadata не
+    хранятся.
+
+Полный AI-результат хранится в `VacancyAnalysis`, а не в event metadata.
+Processing events создаются только явными API-вызовами. Автоматическая запись
+событий из Worker или n8n пока не реализована.
+
+## 11.4. Текущее разделение Worker и Orchestrator
+
+Worker отвечает за:
+
+-   HTTP-запросы к HH;
+-   parsing search page;
+-   parsing full vacancy page;
+-   normalization;
+-   batch deduplication;
+-   local AI;
+-   вычислительные и сетевые операции.
+
+Worker преимущественно stateless и не владеет постоянной БД вакансий.
+
+Orchestrator отвечает за:
+
+-   постоянную SQLite БД;
+-   Vacancy;
+-   VacancyAnalysis;
+-   VacancyProcessingEvent;
+-   idempotent upsert;
+-   final unique constraint;
+-   first_seen_at;
+-   last_seen_at;
+-   seen_count;
+-   API постоянного хранилища.
+
+Планируемый архитектурный поток:
+
+``` text
+Worker
+→ NormalizedVacancy
+→ batch deduplication
+→ Orchestrator POST /vacancies
+→ Vacancy persistence
+→ explicit processing event calls
+→ AI analysis persistence
+```
+
+Автоматический end-to-end HH pipeline пока не реализован.
+
+## 11.5. Future AI evaluation decision
+
+Статус: planned.
+
+Для сравнительного теста локальной модели будет использоваться CRM-набор:
+
+-   5 вакансий P1;
+-   5 вакансий P2;
+-   5 вакансий P3;
+-   5 вакансий ALT.
+
+Итого: 20 вакансий.
+
+Тест должен выполняться вслепую: модель не получает CRM priority и ручные
+комментарии. Анализируются полные карточки, затем результат сравнивается с
+эталоном.
+
+ALT — самостоятельная категория. Она не относится напрямую к основному
+карьерному треку и не является разновидностью P3.
+
+Для теста планируется сохранять vacancy id, эталон CRM, модель,
+prompt_version, structured response, confidence, тип расхождения, время
+выполнения и необходимость ProxyAPI fallback.
+
+Возможные будущие архитектуры:
+
+-   только local LLM;
+-   local LLM + ProxyAPI fallback;
+-   local LLM только для prescreen;
+-   более крупная локальная модель.
+
+Тест качества local full-vacancy AI evaluation еще не выполнен.
 
 ------------------------------------------------------------------------
 

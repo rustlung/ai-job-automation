@@ -208,7 +208,7 @@ Git используется для фиксации проверенных из
 
 - architecture.md --- если изменились архитектурные решения;
 - current-state.md --- если появился рабочий компонент;
-- roadmap.md --- если изменился план;
+- project-roadmap-v1.1.md --- если изменился план;
 - decisions/ADR --- если принято важное решение;
 - lessons-learned.md --- если появился важный опыт.
 
@@ -244,6 +244,24 @@ Git используется для фиксации проверенных из
 - SQLite используется на текущем этапе с возможностью миграции
   PostgreSQL;
 - управление инфраструктурой не является частью workflow.
+
+Текущее распределение ответственности:
+
+- Worker реализует HH parsing, normalization, exact batch deduplication и
+  локальный AI как преимущественно stateless compute layer;
+- Orchestrator владеет постоянной БД, `Vacancy`, `VacancyAnalysis`,
+  `VacancyProcessingEvent`, idempotent upsert, discovery counters и final
+  `UNIQUE(source, external_id)`;
+- processing history находится в Orchestrator и создается только явными API
+  calls;
+- automatic HH collector pipeline пока не реализован.
+
+Планируемое AI-решение проверяется отдельно:
+
+- для сравнительного теста локальной модели используется CRM-набор 5 P1, 5 P2,
+  5 P3 и 5 ALT вакансий;
+- ALT является самостоятельной категорией, а не разновидностью P3;
+- решение о ProxyAPI fallback принимается после сравнительного теста.
 
 ---
 

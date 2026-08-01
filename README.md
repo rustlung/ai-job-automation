@@ -32,7 +32,8 @@ Self-hosted AI-система для автоматизации поиска и 
 
 ## Статус проекта
 
-Проект находится на этапе формирования базовой архитектуры.
+Проект находится на этапе реализации Phase 5 — Vacancy collector.
+Базовая распределенная архитектура уже работает: Orchestrator хранит данные на homeserver, Worker выполняет parsing, normalization, exact batch deduplication и локальный AI на Windows 11.
 
 Текущий рабочий статус:
 

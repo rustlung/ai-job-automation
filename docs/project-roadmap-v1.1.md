@@ -515,6 +515,120 @@ Processing
 
 ---
 
+# Phase 5.3. Vacancy normalization
+
+Статус: завершен.
+
+## Результат
+
+- реализован внутренний контракт `NormalizedVacancy`;
+- `HHSearchVacancy` и `HHVacancyDetails` объединяются в единый объект;
+- реализован диагностический endpoint `POST /vacancies/normalize`;
+- нормализация является stateless-слоем Worker и не выполняет сетевые запросы;
+- проверяется согласованность `source`, `external_id`, `title` и `company`;
+- URL, title, company, description и подробные поля берутся из полной карточки;
+- location и `search_is_remote` сохраняют данные поисковой выдачи;
+- snippets сохраняются отдельно и не добавляются в description;
+- skills нормализуются и дедуплицируются без учета регистра;
+- `collected_at` приводится к UTC;
+- валидные конфликтующие объекты возвращают HTTP 409;
+- выполнена приемка на целевом Windows 11 Worker.
+
+Ограничения:
+
+- нет сохранения результата в Orchestrator;
+- нет AI-анализа;
+- нет P1/P2/P3/ALT;
+- нет автоматического n8n workflow.
+
+---
+
+# Phase 5.4. Deterministic vacancy deduplication
+
+Статус: завершен.
+
+## Результат
+
+- реализована точная batch-дедупликация на Worker;
+- identity key: `source + external_id`;
+- поддержаны `HHSearchVacancy` и `NormalizedVacancy`;
+- добавлены диагностические endpoints:
+  - `POST /vacancies/deduplicate/search`;
+  - `POST /vacancies/deduplicate/normalized`;
+- порядок первого появления сохраняется;
+- входные объекты не мутируются;
+- разные поддомены HH считаются одной вакансией при совпадении `source` и `external_id`;
+- search batch объединяет salary, remote flag и snippets;
+- normalized batch объединяет skills без учета регистра, выбирает минимальный `collected_at`, объединяет `search_is_remote` через OR;
+- обязательные конфликты возвращают HTTP 409;
+- результат содержит input/unique/duplicate counts, duplicate keys и optional conflicts;
+- выполнена приемка на целевом Windows 11 Worker.
+
+Ограничения:
+
+- дедупликация работает только внутри одного batch;
+- нет fuzzy matching;
+- нет Levenshtein, embeddings и cross-source deduplication;
+- разные `external_id` автоматически не объединяются;
+- Worker не хранит постоянную историю batch.
+
+---
+
+# Phase 5.5. Vacancy processing history
+
+Статус: завершен.
+
+## Результат
+
+- в Orchestrator добавлена append-only таблица `vacancy_processing_events`;
+- события связаны с `Vacancy` через FK `ON DELETE CASCADE`;
+- события группируются через caller-provided `run_id`;
+- поддержаны `stage` и `status`;
+- AI-события могут хранить `provider`, `model`, `prompt_version`;
+- failed-события требуют безопасный `error_code`;
+- metadata являются JSON object и ограничены 16 KiB UTF-8;
+- реализованы endpoints:
+  - `POST /vacancies/{vacancy_id}/processing-events`;
+  - `GET /vacancies/{vacancy_id}/processing-events`;
+  - `GET /processing-events/{event_id}`;
+  - `GET /processing-runs/{run_id}/events`;
+- list endpoints поддерживают фильтры и пагинацию;
+- повторный идентичный POST создает новую запись;
+- existing Vacancy и VacancyAnalysis endpoints не сломаны;
+- выполнена приемка на целевом Ubuntu homeserver.
+
+Ограничения:
+
+- нет таблицы `processing_runs`;
+- нет bulk create;
+- события не создаются автоматически из Worker, n8n или существующих endpoints;
+- полный AI-результат не хранится в event metadata.
+
+## Phase 5.5.1. Vacancy discovery counters
+
+Статус: завершен.
+
+## Результат
+
+- в `Vacancy` добавлены `first_seen_at`, `last_seen_at`, `seen_count`;
+- `VacancyCreate` принимает необязательный `seen_at`;
+- клиент не может напрямую управлять `first_seen_at`, `last_seen_at`, `seen_count`;
+- первый `POST /vacancies` выставляет `seen_count = 1`;
+- повторный upsert сохраняет id, увеличивает `seen_count` и обновляет `last_seen_at`;
+- `last_seen_at` не уменьшается при старом `seen_at`;
+- `seen_at` должен быть timezone-aware и приводится к UTC;
+- существующие строки `Vacancy` backfill-мигрированы из `created_at` и `updated_at`;
+- добавлен CHECK `seen_count >= 1`;
+- добавлены индексы `first_seen_at` и `last_seen_at`;
+- `POST /vacancies` не создает processing event автоматически;
+- выполнена приемка на целевом Ubuntu homeserver.
+
+Discovery counters показывают агрегированное состояние вакансии.
+Processing history показывает подробную последовательность этапов.
+Эти механизмы не заменяют друг друга.
+
+---
+
 ## Оставшиеся части Phase 5
 
 Phase 5 не считается полностью завершенной.
@@ -525,7 +639,7 @@ Phase 5 не считается полностью завершенной.
 - пагинация;
 - batch processing;
 - автоматическое получение полных карточек после отбора;
-- запись данных в orchestrator;
+- автоматическая передача Worker → Orchestrator;
 - n8n HH collector workflow.
 
 Следующий этап по текущему roadmap всё ещё находится внутри Phase 5:

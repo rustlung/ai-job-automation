@@ -69,10 +69,15 @@ docker compose exec api alembic current
 
 ``` bash
 cd ~/services/ai-job-automation
-git pull
+git pull --ff-only
 git sparse-checkout set orchestrator
 cd orchestrator
-docker compose up -d --build
+cp data/app.db "data/app.db.backup-before-orchestrator-migrations-$(date +%Y%m%d-%H%M%S)"
+docker compose build
+docker compose run --rm api alembic heads
+docker compose run --rm api alembic upgrade head
+docker compose run --rm api alembic current
+docker compose up -d
 ```
 
 После обновления повторить проверки:
@@ -80,8 +85,44 @@ docker compose up -d --build
 ``` bash
 docker compose ps
 curl http://localhost:8000/health
-docker compose exec api alembic current
+docker compose run --rm api alembic current
 ```
+
+Текущий Alembic head после реализации processing history и vacancy seen fields:
+
+``` text
+20260801_0002
+```
+
+Перед миграциями SQLite обязателен timestamped backup `orchestrator/data/app.db`.
+Особенно это важно для миграций processing history и vacancy seen fields.
+
+Проверить создание processing event:
+
+``` bash
+curl -s -X POST "http://localhost:8000/vacancies/${VACANCY_ID}/processing-events" \
+  -H "Content-Type: application/json" \
+  -d '{"run_id":"manual-check","stage":"discovered","status":"started","metadata":{"source":"manual"}}'
+```
+
+Проверить повторный `POST /vacancies` с `seen_at`:
+
+``` bash
+curl -s -X POST "http://localhost:8000/vacancies" \
+  -H "Content-Type: application/json" \
+  -d '{"source":"hh","external_id":"999999991","url":"https://hh.ru/vacancy/999999991","title":"Тестовая вакансия","company":"Test Company","location":"Самара","salary_text":null,"description":"Техническая тестовая запись","published_at":null,"seen_at":"2026-08-01T12:00:00+04:00"}'
+```
+
+Повторный вызов с тем же `source` и `external_id` должен вернуть тот же `id`,
+`created=false`, увеличить `seen_count` и не уменьшать `last_seen_at`.
+
+Homeserver использует локальную timezone `Europe/Samara` для удобства
+системных логов. API-даты и значения, которыми управляет приложение, хранятся
+и передаются преимущественно в UTC.
+
+Orchestrator application logging пока не настроен централизованно аналогично
+Worker; не считать INFO application events обязательным критерием deployment
+проверки Orchestrator.
 
 ## Worker
 
@@ -153,7 +194,7 @@ curl http://<worker-local-ip>:8001/health
 
 ``` powershell
 cd ~/services/ai-job-automation
-git pull
+git pull --ff-only
 git sparse-checkout set worker
 cd worker
 docker compose up -d --build
@@ -337,6 +378,41 @@ hh_vacancy_details_completed
 ```
 
 В логах не должны появляться полный HTML, полный description, cookies, XSRF token или содержимое `.env`.
+
+### Vacancy Normalization And Deduplication Verification
+
+Проверить диагностические endpoints Worker после деплоя:
+
+``` powershell
+Invoke-RestMethod http://localhost:8001/health
+docker compose logs --tail=100 api
+```
+
+Endpoints:
+
+``` text
+POST /vacancies/normalize
+POST /vacancies/deduplicate/search
+POST /vacancies/deduplicate/normalized
+```
+
+Эти endpoints используются для проверки normalization и exact batch
+deduplication. Они не выполняют сетевые запросы к HH, не обращаются к
+Orchestrator, не используют AI и не сохраняют данные в БД.
+
+В логах Worker должны быть видны application events normalization и
+deduplication, например:
+
+``` text
+vacancy_normalization_started
+vacancy_normalization_succeeded
+vacancy_deduplication_started
+vacancy_duplicate_detected
+vacancy_deduplication_succeeded
+```
+
+Не фиксировать в документации реальные IP-адреса, cookies, resume id,
+локальные `.env`, XSRF token или чувствительные query parameters.
 
 ## n8n Workflow Configuration
 

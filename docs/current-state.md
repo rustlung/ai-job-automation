@@ -1,6 +1,6 @@
 # Current State
 
-2026-07-31
+2026-08-01
 
 Работает:
 ✅ Ubuntu server
@@ -51,6 +51,23 @@
 ✅ HH publication date extraction
 ✅ Worker application logs in Docker
 ✅ HH real-network verification on target Worker
+✅ Vacancy normalization layer
+✅ POST /vacancies/normalize
+✅ Exact search vacancy batch deduplication
+✅ Exact normalized vacancy batch deduplication
+✅ POST /vacancies/deduplicate/search
+✅ POST /vacancies/deduplicate/normalized
+✅ Worker deduplication application logs
+✅ Append-only vacancy processing history
+✅ Vacancy processing event API
+✅ Processing history filtering and pagination
+✅ Vacancy first_seen_at
+✅ Vacancy last_seen_at
+✅ Vacancy seen_count
+✅ seen_at support in POST /vacancies
+✅ Existing Vacancy migration/backfill
+✅ Target Worker acceptance
+✅ Target homeserver acceptance
 
 Phase 1 — Orchestrator foundation завершена.
 Phase 2.1 — Worker API foundation завершена.
@@ -58,6 +75,10 @@ Phase 3 — Local LLM integration завершена.
 Phase 4 — First workflow slice завершена.
 Phase 5.1 — HH search page parser завершена и принята.
 Phase 5.2 — HH full vacancy parser завершена и принята.
+Phase 5.3 — Vacancy normalization завершена и принята.
+Phase 5.4 — Deterministic vacancy deduplication завершена и принята.
+Phase 5.5 — Vacancy processing history завершена и принята.
+Phase 5.5.1 — Vacancy discovery counters завершена и принята.
 
 Создан и развернут на homeserver базовый backend оркестрационного слоя на FastAPI.
 Работает endpoint `GET /health`.
@@ -100,6 +121,23 @@ HH HTML parsing является рабочей частью Worker API.
 Worker application logging настроен централизованно через `LOG_LEVEL=INFO`.
 Application events уровня INFO выводятся в stdout контейнера и видны через `docker compose logs`; полный HTML и полный description не логируются.
 
+Worker реализует детерминированный stateless-слой нормализации вакансий.
+`POST /vacancies/normalize` объединяет `HHSearchVacancy` и `HHVacancyDetails` в `NormalizedVacancy`, проверяет согласованность `source`, `external_id`, `title` и `company`, сохраняет snippets отдельно от `description`, нормализует skills и приводит `collected_at` к UTC.
+При конфликте валидных объектов API возвращает HTTP 409.
+
+Worker реализует точную batch-дедупликацию без обращения к БД.
+`POST /vacancies/deduplicate/search` и `POST /vacancies/deduplicate/normalized` используют identity key `source + external_id`, сохраняют порядок первого появления, объединяют безопасные optional-поля и возвращают HTTP 409 при обязательных конфликтах.
+Дедупликация работает только внутри переданного batch и не хранит состояние между вызовами.
+
+Orchestrator хранит постоянную историю обработки вакансий в append-only таблице `vacancy_processing_events`.
+События создаются только явными API-вызовами, связываются через `run_id`, имеют `stage`, `status`, безопасный `error_code`, небольшие `metadata` и AI-поля `provider`, `model`, `prompt_version` только для AI-этапов.
+List endpoints поддерживают фильтры и пагинацию.
+
+Orchestrator хранит discovery-состояние вакансии в полях `first_seen_at`, `last_seen_at` и `seen_count`.
+`POST /vacancies` принимает необязательный `seen_at`, приводит его к UTC, при первом сохранении выставляет `seen_count = 1`, при повторном upsert увеличивает `seen_count` и не уменьшает `last_seen_at` при старом `seen_at`.
+Существующие строки `Vacancy` были backfill-мигрированы из `created_at` и `updated_at`.
+`POST /vacancies` не создает processing event автоматически.
+
 Следующий этап определяется по `docs/project-roadmap-v1.1.md`.
 
 Не реализовано:
@@ -118,4 +156,12 @@ Application events уровня INFO выводятся в stdout контейн
 ⬜ Telegram workflow
 ⬜ полноценный ежедневный pipeline
 ⬜ итоговый P1/P2/P3 анализ
+⬜ автоматическое присвоение P1/P2/P3/ALT
+⬜ автоматическая передача Worker → Orchestrator
+⬜ автоматическая запись processing events из Worker или n8n
+⬜ ProxyAPI fallback
+⬜ cross-source deduplication
+⬜ fuzzy matching и объединение разных external_id
+⬜ история версий description
+⬜ закрытие и архивирование вакансий
 ⬜ автоматическая отправка откликов

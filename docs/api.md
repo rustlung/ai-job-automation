@@ -141,10 +141,87 @@ Response:
 -   browser automation, авторизация HH, cookies, proxy и CAPTCHA handling не
     используются.
 
+### Vacancy normalization
+
+``` text
+POST /vacancies/normalize
+```
+
+Назначение: диагностический endpoint для объединения `HHSearchVacancy` и
+`HHVacancyDetails` в `NormalizedVacancy`.
+
+Нормализация:
+
+-   не выполняет сетевые запросы;
+-   не обращается к Orchestrator;
+-   не использует AI;
+-   не сохраняет данные;
+-   проверяет согласованность `source`, `external_id`, `title` и `company`;
+-   приводит `collected_at` к UTC.
+
+HTTP 409 возвращается для конфликтующих валидных объектов.
+
+### Vacancy batch deduplication
+
+``` text
+POST /vacancies/deduplicate/search
+POST /vacancies/deduplicate/normalized
+```
+
+Назначение: диагностические endpoints для точной дедупликации внутри одного
+batch по identity key `source + external_id`.
+
+Результат содержит:
+
+-   input_count;
+-   unique_count;
+-   duplicate_count;
+-   vacancies;
+-   duplicate_keys;
+-   optional_conflicts.
+
+Дедупликация не хранит состояние между вызовами, не обращается к БД и не
+выполняет fuzzy matching.
+
 ## Orchestrator API
 
 Orchestrator API работает на homeserver и отвечает за хранение состояния и
 данных.
 
-Подробные persistence endpoints будут расширяться по мере развития
-collector pipeline.
+### Vacancy upsert
+
+``` text
+POST /vacancies
+```
+
+Назначение: идемпотентное сохранение вакансии по `source + external_id`.
+
+`VacancyCreate` принимает необязательный `seen_at`. Клиент не может управлять
+напрямую `first_seen_at`, `last_seen_at` и `seen_count`.
+
+Поведение:
+
+-   первый POST создает запись, `created=true`, `seen_count=1`;
+-   повторный POST возвращает тот же `id`, `created=false`, увеличивает
+    `seen_count`;
+-   `last_seen_at` не уменьшается при старом `seen_at`;
+-   `POST /vacancies` не создает processing event автоматически.
+
+`VacancyRead` возвращает `first_seen_at`, `last_seen_at` и `seen_count`.
+
+### Vacancy processing events
+
+``` text
+POST /vacancies/{vacancy_id}/processing-events
+GET /vacancies/{vacancy_id}/processing-events
+GET /processing-events/{event_id}
+GET /processing-runs/{run_id}/events
+```
+
+Назначение: append-only история обработки вакансии.
+
+List endpoints поддерживают `limit`, `offset`, `stage`, `status`; история
+конкретной вакансии дополнительно поддерживает `run_id`.
+
+Processing events создаются только явными API-вызовами.
+Полные HTML, description и AI responses не должны помещаться в metadata.

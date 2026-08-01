@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-08-01
+
+### Added
+
+- `NormalizedVacancy` contract;
+- vacancy normalization service and endpoint;
+- deterministic search vacancy batch deduplication;
+- deterministic normalized vacancy batch deduplication;
+- deduplication diagnostics and conflict reporting;
+- append-only vacancy processing history;
+- vacancy processing event API;
+- processing event filters and pagination;
+- `first_seen_at`;
+- `last_seen_at`;
+- `seen_count`;
+- `seen_at` input for vacancy upsert.
+
+### Changed
+
+- Vacancy upsert now increments discovery count on every successful `POST /vacancies`;
+- `last_seen_at` never moves backwards when an older `seen_at` arrives;
+- existing `Vacancy` rows are backfilled during migration;
+- Worker can merge repeated search cards before full processing;
+- Orchestrator now stores persistent processing history.
+
+### Verified
+
+- Worker normalization acceptance;
+- Worker deduplication acceptance;
+- homeserver processing history migration and API;
+- homeserver discovery counters;
+- repeated `POST /vacancies` behavior;
+- UTC timestamp behavior;
+- HTTP 409 conflict paths;
+- HTTP 422 validation paths.
+
 ## 2026-07-31
 
 ### Added

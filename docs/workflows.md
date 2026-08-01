@@ -75,31 +75,46 @@ workflows/n8n/vacancy-first-slice.json
 
 Статус: planned, not yet implemented.
 
-Этот workflow пока не подключен в n8n. Он описывает направление развития
-после проверки HH parser endpoints на Worker.
+Этот workflow пока не собран в n8n. Он описывает направление развития после
+проверки HH parser, normalization, batch deduplication, processing history и
+discovery counters.
 
 Планируемый поток:
 
 ``` text
 Schedule / Manual Trigger
-→ Build HH search URLs
+→ build HH search profiles
 → Worker /hh/search-preview
-→ Local preliminary analysis
-→ Worker /hh/vacancy-details for selected vacancies
-→ Orchestrator vacancy upsert
-→ Detailed analysis
-→ Orchestrator analysis upsert
+→ exact search deduplication
+→ local preliminary analysis
+→ Worker /hh/vacancy-details
+→ normalization
+→ normalized deduplication
+→ Orchestrator POST /vacancies with seen_at
+→ explicit processing events
+→ detailed analysis
+→ VacancyAnalysis persistence
+→ notification
 ```
 
 Планируемая роль двухступенчатой обработки:
 
 -   `POST /hh/search-preview` получает одну страницу поисковой выдачи HH и
     возвращает краткие карточки;
+-   `POST /vacancies/deduplicate/search` убирает точные дубли search cards
+    внутри batch;
 -   локальная LLM выполняет дешевый предварительный отсев;
 -   `POST /hh/vacancy-details` вызывается только для перспективных
     вакансий;
+-   `POST /vacancies/normalize` объединяет краткую и полную карточку в
+    `NormalizedVacancy`;
+-   `POST /vacancies/deduplicate/normalized` убирает точные дубли
+    нормализованных вакансий внутри batch;
 -   полное description используется для подробного анализа;
--   orchestrator сохраняет выбранные вакансии и результаты анализа.
+-   orchestrator сохраняет выбранные вакансии через `POST /vacancies` с
+    `seen_at`;
+-   этапы обработки фиксируются явными calls в processing event API;
+-   полный AI-результат сохраняется в `VacancyAnalysis`.
 
 Ограничения текущего состояния:
 
@@ -109,5 +124,8 @@ Schedule / Manual Trigger
 -   нет batch processing;
 -   нет автоматического предварительного AI-фильтра;
 -   нет автоматической загрузки полных карточек;
+-   Worker пока не вызывает Orchestrator автоматически;
+-   n8n и Worker пока не пишут processing events автоматически;
 -   нет production P1/P2/P3 scoring;
+-   нет ProxyAPI fallback;
 -   нет автоматической отправки откликов.
