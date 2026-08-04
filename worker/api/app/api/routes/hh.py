@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 
 from app.clients.hh import (
     HHConnectionError,
@@ -21,7 +21,13 @@ from app.schemas.hh import (
     HHVacancyDetails,
     HHVacancyDetailsRequest,
 )
+from app.schemas.hh_auth import HHAuthHealthResponse, HHAuthHealthStatus, HHAuthenticatedSearchPreviewRequest, HHAuthenticatedSearchPreviewResult
 from app.schemas.hh_collection import HHSearchCollectionRequest, HHSearchCollectionResult
+from app.services.hh_auth_state import HHAuthStateInvalidError, HHAuthStateMissingError, HHAuthStateStore
+from app.services.hh_authenticated_search import (
+    HHAuthenticatedSearchPreviewService,
+    map_authenticated_search_error_to_status,
+)
 from app.services.hh_search_collection import (
     HHSearchCollectionIdentityConflictError,
     HHSearchCollectionService,
@@ -39,6 +45,10 @@ def get_hh_search_service() -> HHSearchService:
 
 def get_hh_search_collection_service() -> HHSearchCollectionService:
     return HHSearchCollectionService.from_settings(get_settings())
+
+
+def get_hh_authenticated_search_preview_service() -> HHAuthenticatedSearchPreviewService:
+    return HHAuthenticatedSearchPreviewService.from_settings(get_settings())
 
 
 def get_hh_vacancy_service() -> HHVacancyService:
@@ -73,6 +83,33 @@ async def collect_hh_search(request: HHSearchCollectionRequest) -> HHSearchColle
         raise HTTPException(status_code=422, detail=f"Unknown HH search profile: {exc.profile_id}") from exc
     except HHSearchCollectionIdentityConflictError as exc:
         raise HTTPException(status_code=409, detail="HH search collection identity conflict") from exc
+
+
+@router.post("/hh/authenticated-search-preview", response_model=HHAuthenticatedSearchPreviewResult)
+async def preview_authenticated_hh_search(
+    request: HHAuthenticatedSearchPreviewRequest,
+) -> HHAuthenticatedSearchPreviewResult:
+    service = get_hh_authenticated_search_preview_service()
+    try:
+        return await service.preview(request.profile_id, request.page)
+    except Exception as exc:
+        status_code = map_authenticated_search_error_to_status(exc)
+        error_code = getattr(exc, "error_code", "hh_authenticated_search_failed")
+        raise HTTPException(status_code=status_code, detail={"error_code": error_code}) from exc
+
+
+@router.get("/health/hh-auth", response_model=HHAuthHealthResponse)
+def hh_auth_health(response: Response) -> HHAuthHealthResponse:
+    store = HHAuthStateStore(get_settings().hh_auth_storage_state_path)
+    try:
+        store.validate_available()
+    except HHAuthStateMissingError as exc:
+        response.status_code = 503
+        return HHAuthHealthResponse(status=HHAuthHealthStatus.MISSING, storage_state_available=False)
+    except HHAuthStateInvalidError as exc:
+        response.status_code = 502
+        return HHAuthHealthResponse(status=HHAuthHealthStatus.INVALID, storage_state_available=True)
+    return HHAuthHealthResponse(status=HHAuthHealthStatus.CONFIGURED, storage_state_available=True)
 
 
 @router.post("/hh/vacancy-details", response_model=HHVacancyDetails)

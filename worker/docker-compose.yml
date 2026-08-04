@@ -8,5 +8,7 @@ services:
     env_file:
       - path: ./api/.env
         required: false
+    volumes:
+      - ./secrets:/run/secrets/hh:ro
     ports:
       - "8001:8000"

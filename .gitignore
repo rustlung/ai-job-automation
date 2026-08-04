@@ -11,6 +11,8 @@ venv/
 .env
 .env.*
 !.env.example
+worker/secrets/
+**/hh-storage-state.json
 
 # IDE
 .idea/

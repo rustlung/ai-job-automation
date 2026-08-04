@@ -21,6 +21,12 @@ class Settings:
         self.hh_ai_resume_search_url = getenv("HH_AI_RESUME_SEARCH_URL", "")
         self.hh_python_resume_search_url = getenv("HH_PYTHON_RESUME_SEARCH_URL", "")
         self.hh_collection_max_raw_vacancies = int(getenv("HH_COLLECTION_MAX_RAW_VACANCIES", "2000"))
+        self.hh_auth_storage_state_path = getenv(
+            "HH_AUTH_STORAGE_STATE_PATH",
+            "/run/secrets/hh/hh-storage-state.json",
+        )
+        self.hh_auth_browser_timeout_seconds = float(getenv("HH_AUTH_BROWSER_TIMEOUT_SECONDS", "30"))
+        self.hh_auth_page_load_timeout_seconds = float(getenv("HH_AUTH_PAGE_LOAD_TIMEOUT_SECONDS", "45"))
 
 
 @lru_cache
