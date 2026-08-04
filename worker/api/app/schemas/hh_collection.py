@@ -10,10 +10,16 @@ PROFILE_ID_MAX_LENGTH = 64
 PROFILE_NAME_MAX_LENGTH = 128
 ERROR_CODE_MAX_LENGTH = 64
 SAFE_MESSAGE_MAX_LENGTH = 255
+QUERY_VARIANT_ID_MAX_LENGTH = 64
+STOP_REASON_MAX_LENGTH = 64
 
 ProfileIdString = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=PROFILE_ID_MAX_LENGTH),
+]
+QueryVariantIdString = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=QUERY_VARIANT_ID_MAX_LENGTH),
 ]
 
 
@@ -40,6 +46,24 @@ class HHSearchProfileStatus(str, Enum):
     FAILED = "failed"
 
 
+class HHSearchStopReason(str, Enum):
+    MAX_PAGES_REACHED = "max_pages_reached"
+    EMPTY_PAGE = "empty_page"
+    REPEATED_PAGE_IDENTITY_SET = "repeated_page_identity_set"
+    PAGE_ERROR = "page_error"
+    COLLECTION_LIMIT_REACHED = "collection_limit_reached"
+
+
+class SearchQueryVariant(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: QueryVariantIdString
+    query: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
+    max_pages: int | None = Field(default=None, ge=1, le=20)
+    order: int = Field(ge=0)
+    enabled: bool = True
+
+
 class SearchProfile(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -50,6 +74,7 @@ class SearchProfile(BaseModel):
     enabled: bool = True
     base_url: str | None = Field(default=None, repr=False)
     query: str | None = None
+    query_variants: list[SearchQueryVariant] = Field(default_factory=list)
     max_pages: int = Field(ge=1, le=20)
     items_on_page: int = Field(ge=1, le=100)
     remote_only: bool = True
@@ -68,6 +93,7 @@ class HHSearchCollectionError(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     profile_id: ProfileIdString | None = None
+    query_variant_id: QueryVariantIdString | None = None
     page: int | None = Field(default=None, ge=0)
     error_code: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=ERROR_CODE_MAX_LENGTH)]
     message: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=SAFE_MESSAGE_MAX_LENGTH)]
@@ -78,11 +104,28 @@ class HHSearchPageResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     profile_id: ProfileIdString
+    query_variant_id: QueryVariantIdString | None = None
     page: int = Field(ge=0)
     status: HHSearchProfileStatus
     raw_vacancy_count: int = Field(ge=0)
     error_code: str | None = None
     http_status: int | None = Field(default=None, ge=100, le=599)
+    stop_reason: HHSearchStopReason | None = None
+
+
+class HHSearchQueryVariantResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    profile_id: ProfileIdString
+    query_variant_id: QueryVariantIdString
+    status: HHSearchProfileStatus
+    pages_requested: int = Field(ge=0)
+    pages_succeeded: int = Field(ge=0)
+    pages_failed: int = Field(ge=0)
+    raw_vacancy_count: int = Field(ge=0)
+    unique_identity_count: int = Field(ge=0)
+    stop_reason: HHSearchStopReason | None = None
+    errors: list[HHSearchCollectionError] = Field(default_factory=list)
 
 
 class HHSearchProfileResult(BaseModel):
@@ -96,10 +139,15 @@ class HHSearchProfileResult(BaseModel):
     pages_requested: int = Field(ge=0)
     pages_succeeded: int = Field(ge=0)
     pages_failed: int = Field(ge=0)
+    query_variant_count: int = Field(default=0, ge=0)
+    processed_query_variant_count: int = Field(default=0, ge=0)
+    failed_query_variant_count: int = Field(default=0, ge=0)
+    skipped_query_variant_count: int = Field(default=0, ge=0)
     raw_vacancy_count: int = Field(ge=0)
     unique_vacancy_count: int = Field(ge=0)
     duplicate_count: int = Field(ge=0)
     skip_reason: str | None = None
+    variant_results: list[HHSearchQueryVariantResult] = Field(default_factory=list)
     errors: list[HHSearchCollectionError] = Field(default_factory=list)
 
 
@@ -107,8 +155,10 @@ class HHSearchVacancyProvenance(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     profile_ids: list[ProfileIdString]
+    query_variant_ids: list[QueryVariantIdString] = Field(default_factory=list)
     tracks: list[SearchProfileTrack]
     first_profile_id: ProfileIdString
+    first_query_variant_id: QueryVariantIdString | None = None
     occurrence_count: int = Field(ge=1)
 
 

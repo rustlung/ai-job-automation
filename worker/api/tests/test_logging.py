@@ -43,6 +43,22 @@ def test_configure_application_logging_adds_single_stdout_handler(capsys) -> Non
         root_logger.setLevel(original_level)
 
 
+def test_configure_application_logging_keeps_httpx_and_httpcore_at_warning_or_higher() -> None:
+    httpx_logger = logging.getLogger("httpx")
+    httpcore_logger = logging.getLogger("httpcore")
+    original_httpx_level = httpx_logger.level
+    original_httpcore_level = httpcore_logger.level
+
+    try:
+        configure_application_logging("INFO")
+
+        assert httpx_logger.getEffectiveLevel() >= logging.WARNING
+        assert httpcore_logger.getEffectiveLevel() >= logging.WARNING
+    finally:
+        httpx_logger.setLevel(original_httpx_level)
+        httpcore_logger.setLevel(original_httpcore_level)
+
+
 def test_application_loggers_keep_propagation_without_own_handlers() -> None:
     logger = logging.getLogger("app.services.hh_vacancy")
 

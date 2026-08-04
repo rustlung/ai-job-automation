@@ -48,8 +48,10 @@ def make_result(status: HHSearchCollectionStatus = HHSearchCollectionStatus.SUCC
         requirement_snippet="Python",
         provenance=HHSearchVacancyProvenance(
             profile_ids=["python_expanded_search"],
+            query_variant_ids=["python_backend"],
             tracks=[SearchProfileTrack.MAIN],
             first_profile_id="python_expanded_search",
+            first_query_variant_id="python_backend",
             occurrence_count=1,
         ),
     )
@@ -103,6 +105,8 @@ def test_collect_search_success_returns_new_contract(client: TestClient, monkeyp
     assert body["vacancies"][0]["responsibility_snippet"] == "Разработка API"
     assert body["vacancies"][0]["requirement_snippet"] == "Python"
     assert body["vacancies"][0]["provenance"]["profile_ids"] == ["python_expanded_search"]
+    assert body["vacancies"][0]["provenance"]["query_variant_ids"] == ["python_backend"]
+    assert "url" not in body["profile_results"][0]
     assert service.requests[0].profile_ids == ["python_expanded_search"]
 
 

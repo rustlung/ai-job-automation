@@ -8,6 +8,8 @@ DEFAULT_LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s %(message)s"
 def configure_application_logging(log_level: str) -> None:
     root_logger = logging.getLogger()
     root_logger.setLevel(_resolve_log_level(log_level))
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
 
     application_handlers = [
         handler

@@ -30,8 +30,9 @@ def test_registry_defines_expected_profiles_without_secrets_in_response(monkeypa
     assert profiles[0].enabled is True
     assert profiles[1].enabled is False
     assert profiles[-1].track.value == "alternative"
-    assert "support" not in (profiles[-1].query or "").casefold()
-    assert "call center" not in (profiles[-1].query or "").casefold()
+    alt_queries = " ".join(variant.query for variant in profiles[-1].query_variants).casefold()
+    assert "support" not in alt_queries
+    assert "call center" not in alt_queries
 
 
 def test_resume_search_url_preserves_resume_params_and_replaces_collection_params(
@@ -51,19 +52,78 @@ def test_resume_search_url_preserves_resume_params_and_replaces_collection_param
     assert query["items_on_page"] == ["100"]
     assert query["page"] == ["0"]
     assert query["experience"] == ["noExperience", "between1And3"]
-    assert query["schedule"] == ["remote"]
+    assert query["work_format"] == ["REMOTE"]
+
+
+def test_resume_search_url_preserves_functional_hh_params(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(
+        "HH_AI_RESUME_SEARCH_URL",
+        "https://hh.ru/search/vacancy?resume=placeholder-resume-id&ored_clusters=true"
+        "&work_format=ON_SITE&search_period=3&search_session_id=placeholder-session",
+    )
+    registry = HHSearchProfileRegistry(Settings())
+    profile = registry.get_profiles(["ai_resume_recommendations"])[0]
+
+    url = registry.build_search_url(profile, page=1)
+    query = parse_qs(urlsplit(url).query)
+
+    assert query["resume"] == ["placeholder-resume-id"]
+    assert query["ored_clusters"] == ["true"]
+    assert query["search_period"] == ["3"]
+    assert query["search_session_id"] == ["placeholder-session"]
+    assert query["work_format"] == ["REMOTE"]
+    assert query["page"] == ["1"]
 
 
 def test_expanded_search_url_encodes_query_and_remote(monkeypatch: pytest.MonkeyPatch) -> None:
     registry = make_registry(monkeypatch)
     profile = registry.get_profiles(["python_expanded_search"])[0]
 
-    url = registry.build_search_url(profile, page=1)
+    variant = profile.query_variants[0]
+    url = registry.build_search_url(profile, page=1, query_variant=variant)
     query = parse_qs(urlsplit(url).query)
 
-    assert query["text"] == ["Python backend FastAPI API интеграции"]
+    assert variant.id == "python_backend"
+    assert query["text"] == ["Python backend"]
     assert query["page"] == ["1"]
-    assert query["schedule"] == ["remote"]
+    assert query["work_format"] == ["REMOTE"]
+
+
+def test_expanded_profiles_use_compact_query_variants(monkeypatch: pytest.MonkeyPatch) -> None:
+    registry = make_registry(monkeypatch)
+    ai_profile = registry.get_profiles(["ai_expanded_search"])[0]
+    python_profile = registry.get_profiles(["python_expanded_search"])[0]
+    alt_profile = registry.get_profiles(["alt_opportunities"])[0]
+
+    assert [(variant.id, variant.query, variant.max_pages) for variant in ai_profile.query_variants] == [
+        ("ai_automation", "AI automation", 1),
+        ("ai_integration", "AI integration", 1),
+        ("llm_engineer", "LLM инженер", 1),
+        ("n8n", "n8n", 1),
+    ]
+    assert [(variant.id, variant.query, variant.max_pages) for variant in python_profile.query_variants] == [
+        ("python_backend", "Python backend", 1),
+        ("fastapi", "FastAPI", 1),
+    ]
+    assert [(variant.id, variant.query, variant.max_pages) for variant in alt_profile.query_variants] == [
+        ("qa", "тестировщик QA", 1),
+        ("data_analyst", "аналитик данных", 1),
+        ("system_analyst", "системный аналитик", 1),
+        ("business_analyst", "бизнес-аналитик IT", 1),
+        ("ai_trainer", "AI тренер", 1),
+    ]
+
+
+def test_safe_url_for_log_removes_query_values(monkeypatch: pytest.MonkeyPatch) -> None:
+    registry = make_registry(monkeypatch)
+
+    safe_url = registry.safe_url_for_log(
+        "https://samara.hh.ru/search/vacancy?resume=fake-resume-id&search_session_id=fake-search-session-id"
+    )
+
+    assert safe_url == "https://samara.hh.ru/search/vacancy"
+    assert "fake-resume-id" not in safe_url
+    assert "fake-search-session-id" not in safe_url
 
 
 @pytest.mark.parametrize(

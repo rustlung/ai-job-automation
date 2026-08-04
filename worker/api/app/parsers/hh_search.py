@@ -78,7 +78,7 @@ class HHSearchParser:
                 logger.warning("hh_search_card_skipped card_index=%s reason=validation_error", index)
                 continue
 
-            logger.info(
+            logger.debug(
                 "hh_search_card_parsed card_index=%s external_id=%s salary_found=%s is_remote=%s",
                 index,
                 vacancy.external_id,

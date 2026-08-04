@@ -1,16 +1,17 @@
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from app.core.config import Settings
-from app.schemas.hh_collection import SearchProfile, SearchProfileSourceType, SearchProfileTrack
+from app.schemas.hh_collection import SearchProfile, SearchProfileSourceType, SearchProfileTrack, SearchQueryVariant
 
 HH_SEARCH_PATH = "/search/vacancy"
-HH_REMOTE_SCHEDULE_VALUE = "remote"
+HH_REMOTE_WORK_FORMAT_VALUE = "REMOTE"
 HH_SEARCH_PARAMS_REPLACED_BY_COLLECTOR = {
     "enable_snippets",
     "items_on_page",
     "page",
     "experience",
     "schedule",
+    "work_format",
 }
 
 
@@ -43,7 +44,7 @@ class HHSearchProfileRegistry:
                 source_type=SearchProfileSourceType.RESUME_RECOMMENDATIONS,
                 enabled=bool(self.settings.hh_ai_resume_search_url),
                 base_url=self.settings.hh_ai_resume_search_url or None,
-                max_pages=2,
+                max_pages=3,
                 items_on_page=100,
                 remote_only=True,
                 experience=["noExperience", "between1And3"],
@@ -56,7 +57,7 @@ class HHSearchProfileRegistry:
                 source_type=SearchProfileSourceType.RESUME_RECOMMENDATIONS,
                 enabled=bool(self.settings.hh_python_resume_search_url),
                 base_url=self.settings.hh_python_resume_search_url or None,
-                max_pages=2,
+                max_pages=3,
                 items_on_page=100,
                 remote_only=True,
                 experience=["noExperience", "between1And3"],
@@ -68,8 +69,13 @@ class HHSearchProfileRegistry:
                 track=SearchProfileTrack.MAIN,
                 source_type=SearchProfileSourceType.EXPANDED_SEARCH,
                 base_url=self._public_search_url(),
-                query="AI automation AI integration LLM n8n автоматизация",
-                max_pages=2,
+                query_variants=[
+                    SearchQueryVariant(id="ai_automation", query="AI automation", max_pages=1, order=10),
+                    SearchQueryVariant(id="ai_integration", query="AI integration", max_pages=1, order=20),
+                    SearchQueryVariant(id="llm_engineer", query="LLM инженер", max_pages=1, order=30),
+                    SearchQueryVariant(id="n8n", query="n8n", max_pages=1, order=40),
+                ],
+                max_pages=1,
                 items_on_page=100,
                 remote_only=True,
                 experience=["noExperience", "between1And3"],
@@ -81,8 +87,11 @@ class HHSearchProfileRegistry:
                 track=SearchProfileTrack.MAIN,
                 source_type=SearchProfileSourceType.EXPANDED_SEARCH,
                 base_url=self._public_search_url(),
-                query="Python backend FastAPI API интеграции",
-                max_pages=2,
+                query_variants=[
+                    SearchQueryVariant(id="python_backend", query="Python backend", max_pages=1, order=10),
+                    SearchQueryVariant(id="fastapi", query="FastAPI", max_pages=1, order=20),
+                ],
+                max_pages=1,
                 items_on_page=100,
                 remote_only=True,
                 experience=["noExperience", "between1And3"],
@@ -94,7 +103,13 @@ class HHSearchProfileRegistry:
                 track=SearchProfileTrack.ALTERNATIVE,
                 source_type=SearchProfileSourceType.EXPANDED_SEARCH,
                 base_url=self._public_search_url(),
-                query="QA тестировщик data analyst системный аналитик бизнес аналитик AI trainer AI evaluation",
+                query_variants=[
+                    SearchQueryVariant(id="qa", query="тестировщик QA", max_pages=1, order=10),
+                    SearchQueryVariant(id="data_analyst", query="аналитик данных", max_pages=1, order=20),
+                    SearchQueryVariant(id="system_analyst", query="системный аналитик", max_pages=1, order=30),
+                    SearchQueryVariant(id="business_analyst", query="бизнес-аналитик IT", max_pages=1, order=40),
+                    SearchQueryVariant(id="ai_trainer", query="AI тренер", max_pages=1, order=50),
+                ],
                 max_pages=1,
                 items_on_page=100,
                 remote_only=True,
@@ -121,17 +136,27 @@ class HHSearchProfileRegistry:
             selected.append(by_id[profile_id])
         return selected
 
-    def build_search_url(self, profile: SearchProfile, page: int, max_pages_override: int | None = None) -> str:
+    def build_search_url(
+        self,
+        profile: SearchProfile,
+        page: int,
+        query_variant: SearchQueryVariant | None = None,
+    ) -> str:
         if not profile.base_url:
             raise HHInvalidSearchProfileUrlError(profile.id)
         self._validate_base_url(profile)
 
         replaced_keys = set(HH_SEARCH_PARAMS_REPLACED_BY_COLLECTOR)
-        if profile.query:
+        query = query_variant.query if query_variant is not None else profile.query
+        if query:
             replaced_keys.add("text")
-        params = [(key, value) for key, value in parse_qsl(urlsplit(profile.base_url).query, keep_blank_values=True) if key not in replaced_keys]
-        if profile.query:
-            params.append(("text", profile.query))
+        params = [
+            (key, value)
+            for key, value in parse_qsl(urlsplit(profile.base_url).query, keep_blank_values=True)
+            if key not in replaced_keys
+        ]
+        if query:
+            params.append(("text", query))
         params.extend(
             [
                 ("enable_snippets", "true"),
@@ -142,19 +167,35 @@ class HHSearchProfileRegistry:
         for experience in profile.experience:
             params.append(("experience", experience))
         if profile.remote_only:
-            params.append(("schedule", HH_REMOTE_SCHEDULE_VALUE))
+            params.append(("work_format", HH_REMOTE_WORK_FORMAT_VALUE))
 
         parts = urlsplit(profile.base_url)
         return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(params), ""))
 
-    def max_pages_for(self, profile: SearchProfile, max_pages_override: int | None) -> int:
-        if max_pages_override is None:
-            return profile.max_pages
-        return min(profile.max_pages, max_pages_override)
+    def max_pages_for(
+        self,
+        profile: SearchProfile,
+        max_pages_override: int | None,
+        query_variant: SearchQueryVariant | None = None,
+    ) -> int:
+        limits = [profile.max_pages]
+        if query_variant is not None and query_variant.max_pages is not None:
+            limits.append(query_variant.max_pages)
+        if max_pages_override is not None:
+            limits.append(max_pages_override)
+        return max(min(limits), 1)
 
     def safe_url_parts(self, url: str) -> tuple[str, str]:
         parts = urlsplit(url)
         return parts.hostname or "", parts.path
+
+    def safe_url_for_log(self, url: str) -> str:
+        parts = urlsplit(url)
+        return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+
+    @staticmethod
+    def enabled_query_variants(profile: SearchProfile) -> list[SearchQueryVariant]:
+        return sorted((variant for variant in profile.query_variants if variant.enabled), key=lambda variant: variant.order)
 
     def _public_search_url(self) -> str:
         return f"{self.settings.hh_base_url.rstrip('/')}{HH_SEARCH_PATH}"

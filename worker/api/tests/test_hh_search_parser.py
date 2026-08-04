@@ -20,6 +20,27 @@ def test_parser_extracts_valid_cards_and_skips_broken_card(caplog) -> None:
     assert "hh_search_card_skipped" in caplog.text
 
 
+def test_parser_successful_card_log_is_debug(caplog) -> None:
+    html = """
+    <div class="vacancy-info--test">
+      <a data-qa="serp-item__title" href="/vacancy/123">Python разработчик</a>
+      <a data-qa="vacancy-serp__vacancy-employer">Тензор</a>
+    </div>
+    """
+
+    with caplog.at_level("INFO", logger="app.parsers.hh_search"):
+        HHSearchParser().parse(html)
+
+    assert "hh_search_parse_completed" in caplog.text
+    assert "hh_search_card_parsed" not in caplog.text
+
+    caplog.clear()
+    with caplog.at_level("DEBUG", logger="app.parsers.hh_search"):
+        HHSearchParser().parse(html)
+
+    assert "hh_search_card_parsed" in caplog.text
+
+
 def test_parser_does_not_duplicate_cards_from_nested_containers() -> None:
     vacancies = HHSearchParser().parse(load_fixture())
     external_ids = [vacancy.external_id for vacancy in vacancies]
