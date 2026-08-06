@@ -96,22 +96,64 @@ def test_expanded_profiles_use_compact_query_variants(monkeypatch: pytest.Monkey
     alt_profile = registry.get_profiles(["alt_opportunities"])[0]
 
     assert [(variant.id, variant.query, variant.max_pages) for variant in ai_profile.query_variants] == [
-        ("ai_automation", "AI automation", 1),
-        ("ai_integration", "AI integration", 1),
-        ("llm_engineer", "LLM инженер", 1),
-        ("n8n", "n8n", 1),
+        ("ai_automation", "AI automation", 5),
+        ("ai_integration", "AI integration", 5),
+        ("llm_engineer", "LLM инженер", 5),
+        ("n8n", "n8n", 5),
     ]
     assert [(variant.id, variant.query, variant.max_pages) for variant in python_profile.query_variants] == [
-        ("python_backend", "Python backend", 1),
-        ("fastapi", "FastAPI", 1),
+        ("python_backend", "Python backend", 5),
+        ("fastapi", "FastAPI", 5),
     ]
     assert [(variant.id, variant.query, variant.max_pages) for variant in alt_profile.query_variants] == [
-        ("qa", "тестировщик QA", 1),
-        ("data_analyst", "аналитик данных", 1),
-        ("system_analyst", "системный аналитик", 1),
-        ("business_analyst", "бизнес-аналитик IT", 1),
-        ("ai_trainer", "AI тренер", 1),
+        ("qa", "тестировщик QA", 3),
+        ("data_analyst", "аналитик данных", 3),
+        ("system_analyst", "системный аналитик", 3),
+        ("business_analyst", "бизнес-аналитик IT", 3),
+        ("ai_trainer", "AI тренер", 3),
     ]
+
+
+@pytest.mark.parametrize(
+    ("profile_id", "expected_max_pages"),
+    [
+        ("python_expanded_search", 5),
+        ("ai_expanded_search", 5),
+        ("alt_opportunities", 3),
+    ],
+)
+def test_public_variant_config_max_pages(
+    monkeypatch: pytest.MonkeyPatch,
+    profile_id: str,
+    expected_max_pages: int,
+) -> None:
+    registry = make_registry(monkeypatch)
+    profile = registry.get_profiles([profile_id])[0]
+
+    assert profile.max_pages == expected_max_pages
+    assert {variant.max_pages for variant in profile.query_variants} == {expected_max_pages}
+
+
+@pytest.mark.parametrize(
+    ("profile_id", "override", "expected_max_pages"),
+    [
+        ("python_expanded_search", 2, 2),
+        ("python_expanded_search", 5, 5),
+        ("python_expanded_search", 10, 5),
+        ("alt_opportunities", 5, 3),
+    ],
+)
+def test_public_variant_max_pages_override_cannot_increase_config_limit(
+    monkeypatch: pytest.MonkeyPatch,
+    profile_id: str,
+    override: int,
+    expected_max_pages: int,
+) -> None:
+    registry = make_registry(monkeypatch)
+    profile = registry.get_profiles([profile_id])[0]
+    variant = profile.query_variants[0]
+
+    assert registry.max_pages_for(profile, override, variant) == expected_max_pages
 
 
 def test_safe_url_for_log_removes_query_values(monkeypatch: pytest.MonkeyPatch) -> None:
