@@ -49,6 +49,21 @@ def test_parser_does_not_duplicate_cards_from_nested_containers() -> None:
     assert len(set(external_ids)) == len(external_ids)
 
 
+def test_parser_ignores_service_map_title_without_parser_changes() -> None:
+    html = """
+    <div class="vacancy-info--test">
+      <a data-qa="serp-item__title" href="/vacancy/123">Python разработчик</a>
+      <a data-qa="vacancy-serp__vacancy-employer">Тензор</a>
+    </div>
+    <a data-qa="serp-item__title" href="/search/map">Вакансии на карте</a>
+    """
+
+    vacancies = HHSearchParser().parse(html)
+
+    assert len(vacancies) == 1
+    assert vacancies[0].external_id == "123"
+
+
 def test_parser_normalizes_absolute_url() -> None:
     first = HHSearchParser().parse(load_fixture())[0]
     second = HHSearchParser().parse(load_fixture())[1]

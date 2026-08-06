@@ -49,6 +49,11 @@ class FakeBrowserClient:
             final_path="/search/vacancy",
             html_size=len(self.html.encode("utf-8")),
             duration_ms=10,
+            initial_vacancy_count=1,
+            final_vacancy_count=1,
+            stabilization_iterations=3,
+            stabilization_duration_ms=1,
+            stabilization_status="stable",
         )
 
 

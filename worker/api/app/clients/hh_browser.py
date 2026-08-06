@@ -1,4 +1,5 @@
 import logging
+import asyncio
 import time
 from dataclasses import dataclass
 from typing import Awaitable, Callable
@@ -11,6 +12,25 @@ from playwright.async_api import async_playwright
 from app.services.hh_auth_state import HHAuthStateStore
 
 logger = logging.getLogger(__name__)
+
+VACANCY_LINK_SELECTOR = 'a[href*="/vacancy/"]'
+HH_DOM_HYDRATION_PAUSE_SECONDS = 2.5
+HH_DOM_STABILIZATION_INTERVAL_SECONDS = 0.75
+HH_DOM_STABILIZATION_TIMEOUT_SECONDS = 20.0
+HH_DOM_STABILIZATION_STABLE_CHECKS = 3
+HH_DOM_STABILIZATION_SCRIPT = """
+() => {
+    const ids = new Set();
+    for (const anchor of document.querySelectorAll('a[href*="/vacancy/"]')) {
+        const href = anchor.getAttribute("href") || "";
+        const match = href.match(/\\/vacancy\\/(\\d+)/);
+        if (match) {
+            ids.add(match[1]);
+        }
+    }
+    return ids.size;
+}
+"""
 
 
 class HHBrowserError(Exception):
@@ -37,6 +57,20 @@ class HHBrowserPage:
     final_path: str
     html_size: int
     duration_ms: int
+    initial_vacancy_count: int
+    final_vacancy_count: int
+    stabilization_iterations: int
+    stabilization_duration_ms: int
+    stabilization_status: str
+
+
+@dataclass(frozen=True)
+class HHDomStabilizationResult:
+    initial_vacancy_count: int
+    final_vacancy_count: int
+    stabilization_iterations: int
+    stabilization_duration_ms: int
+    stabilization_status: str
 
 
 class HHAuthenticatedBrowserClient:
@@ -92,6 +126,18 @@ class HHAuthenticatedBrowserClient:
                 final_path,
                 self._duration_ms(started_at),
             )
+            stabilization = await self._wait_for_vacancy_dom_stabilization(page)
+            logger.info(
+                "hh_browser_dom_stabilized profile_id=%s page=%s initial_vacancy_count=%s final_vacancy_count=%s "
+                "stabilization_iterations=%s stabilization_duration_ms=%s stabilization_status=%s",
+                profile_id,
+                page_number,
+                stabilization.initial_vacancy_count,
+                stabilization.final_vacancy_count,
+                stabilization.stabilization_iterations,
+                stabilization.stabilization_duration_ms,
+                stabilization.stabilization_status,
+            )
             html = await page.content()
         except PlaywrightTimeoutError as exc:
             logger.warning(
@@ -132,13 +178,20 @@ class HHAuthenticatedBrowserClient:
 
         html_size = len(html.encode("utf-8"))
         logger.info(
-            "hh_browser_html_collected profile_id=%s page=%s hostname=%s path=%s html_size=%s duration_ms=%s",
+            "hh_browser_html_collected profile_id=%s page=%s hostname=%s path=%s html_size=%s duration_ms=%s "
+            "initial_vacancy_count=%s final_vacancy_count=%s stabilization_iterations=%s "
+            "stabilization_duration_ms=%s stabilization_status=%s",
             profile_id,
             page_number,
             final_hostname,
             final_path,
             html_size,
             self._duration_ms(started_at),
+            stabilization.initial_vacancy_count,
+            stabilization.final_vacancy_count,
+            stabilization.stabilization_iterations,
+            stabilization.stabilization_duration_ms,
+            stabilization.stabilization_status,
         )
         return HHBrowserPage(
             html=html,
@@ -147,7 +200,68 @@ class HHAuthenticatedBrowserClient:
             final_path=final_path,
             html_size=html_size,
             duration_ms=self._duration_ms(started_at),
+            initial_vacancy_count=stabilization.initial_vacancy_count,
+            final_vacancy_count=stabilization.final_vacancy_count,
+            stabilization_iterations=stabilization.stabilization_iterations,
+            stabilization_duration_ms=stabilization.stabilization_duration_ms,
+            stabilization_status=stabilization.stabilization_status,
         )
+
+    async def _wait_for_vacancy_dom_stabilization(self, page: object) -> HHDomStabilizationResult:
+        started_at = time.perf_counter()
+        try:
+            await page.wait_for_selector(
+                VACANCY_LINK_SELECTOR,
+                timeout=self._milliseconds(min(self.page_load_timeout_seconds, HH_DOM_STABILIZATION_TIMEOUT_SECONDS)),
+            )
+        except PlaywrightTimeoutError:
+            count = await self._count_unique_vacancy_ids(page)
+            return HHDomStabilizationResult(
+                initial_vacancy_count=count,
+                final_vacancy_count=count,
+                stabilization_iterations=0,
+                stabilization_duration_ms=self._duration_ms(started_at),
+                stabilization_status="no_vacancy_links",
+            )
+
+        await asyncio.sleep(HH_DOM_HYDRATION_PAUSE_SECONDS)
+        initial_count = await self._count_unique_vacancy_ids(page)
+        last_count = initial_count
+        stable_checks = 1
+        iterations = 0
+
+        while time.perf_counter() - started_at < HH_DOM_STABILIZATION_TIMEOUT_SECONDS:
+            await asyncio.sleep(HH_DOM_STABILIZATION_INTERVAL_SECONDS)
+            iterations += 1
+            current_count = await self._count_unique_vacancy_ids(page)
+            if current_count == last_count:
+                stable_checks += 1
+            else:
+                stable_checks = 1
+                last_count = current_count
+            if stable_checks >= HH_DOM_STABILIZATION_STABLE_CHECKS:
+                return HHDomStabilizationResult(
+                    initial_vacancy_count=initial_count,
+                    final_vacancy_count=current_count,
+                    stabilization_iterations=iterations,
+                    stabilization_duration_ms=self._duration_ms(started_at),
+                    stabilization_status="stable",
+                )
+
+        return HHDomStabilizationResult(
+            initial_vacancy_count=initial_count,
+            final_vacancy_count=last_count,
+            stabilization_iterations=iterations,
+            stabilization_duration_ms=self._duration_ms(started_at),
+            stabilization_status="dom_stabilization_timeout",
+        )
+
+    @staticmethod
+    async def _count_unique_vacancy_ids(page: object) -> int:
+        count = await page.evaluate(HH_DOM_STABILIZATION_SCRIPT)
+        if isinstance(count, int):
+            return count
+        return 0
 
     @staticmethod
     def _validate_hh_url(url: str) -> None:
