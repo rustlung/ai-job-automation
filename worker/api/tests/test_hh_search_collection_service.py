@@ -151,6 +151,10 @@ def response(*vacancies: HHSearchVacancy, count: int | None = None) -> HHSearchP
     return HHSearchPreviewResponse(count=count if count is not None else len(vacancies), vacancies=list(vacancies))
 
 
+def vacancies_range(start: int, end: int) -> list[HHSearchVacancy]:
+    return [vacancy(str(index)) for index in range(start, end + 1)]
+
+
 def authenticated_page(
     profile_id: str,
     page: int,
@@ -289,6 +293,55 @@ async def test_collection_max_pages_override_is_capped_by_profile_limit() -> Non
     assert result.pages_succeeded == 2
     assert len(fake_search.urls) == 2
     assert result.unique_vacancy_count == 4
+
+
+@pytest.mark.anyio
+async def test_public_pagination_collects_second_short_page_then_empty_page() -> None:
+    profiles = [profile("python_expanded_search", max_pages=5)]
+    fake_search = FakeSearchService(
+        {
+            ("python_expanded_search", "default", 0): response(*vacancies_range(1, 20), count=20),
+            ("python_expanded_search", "default", 1): response(*vacancies_range(21, 35), count=15),
+            ("python_expanded_search", "default", 2): response(count=0),
+        }
+    )
+
+    result = await service(fake_search, profiles).collect(HHSearchCollectionRequest(max_pages_override=5))
+
+    assert result.status == "succeeded"
+    assert result.pages_requested == 3
+    assert result.pages_succeeded == 3
+    assert result.raw_vacancy_count == 35
+    assert result.unique_vacancy_count == 35
+    assert [item.page for item in result.page_results] == [0, 1, 2]
+    assert [item.raw_vacancy_count for item in result.page_results] == [20, 15, 0]
+    assert result.page_results[-1].stop_reason == "empty_page"
+    assert len(fake_search.urls) == 3
+    assert fake_search.urls[-1].endswith("page=2")
+
+
+@pytest.mark.anyio
+async def test_public_pagination_collects_three_pages_until_config_limit() -> None:
+    profiles = [profile("python_expanded_search", max_pages=3)]
+    fake_search = FakeSearchService(
+        {
+            ("python_expanded_search", "default", 0): response(*vacancies_range(1, 20), count=20),
+            ("python_expanded_search", "default", 1): response(*vacancies_range(21, 40), count=20),
+            ("python_expanded_search", "default", 2): response(*vacancies_range(41, 43), count=3),
+        }
+    )
+
+    result = await service(fake_search, profiles).collect(HHSearchCollectionRequest(max_pages_override=5))
+
+    assert result.status == "succeeded"
+    assert result.pages_requested == 3
+    assert result.pages_succeeded == 3
+    assert result.raw_vacancy_count == 43
+    assert result.unique_vacancy_count == 43
+    assert [item.page for item in result.page_results] == [0, 1, 2]
+    assert [item.raw_vacancy_count for item in result.page_results] == [20, 20, 3]
+    assert result.page_results[-1].stop_reason == "max_pages_reached"
+    assert len(fake_search.urls) == 3
 
 
 @pytest.mark.anyio

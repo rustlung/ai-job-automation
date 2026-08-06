@@ -55,6 +55,20 @@ def test_resume_search_url_preserves_resume_params_and_replaces_collection_param
     assert query["work_format"] == ["REMOTE"]
 
 
+def test_resume_profile_uses_authenticated_page_size_for_page_zero_and_one(monkeypatch: pytest.MonkeyPatch) -> None:
+    registry = make_registry(monkeypatch)
+    profile = registry.get_profiles(["ai_resume_recommendations"])[0]
+
+    page_zero_query = parse_qs(urlsplit(registry.build_search_url(profile, page=0)).query)
+    page_one_query = parse_qs(urlsplit(registry.build_search_url(profile, page=1)).query)
+
+    assert profile.items_on_page == 100
+    assert page_zero_query["items_on_page"] == ["100"]
+    assert page_zero_query["page"] == ["0"]
+    assert page_one_query["items_on_page"] == ["100"]
+    assert page_one_query["page"] == ["1"]
+
+
 def test_resume_search_url_preserves_functional_hh_params(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(
         "HH_AI_RESUME_SEARCH_URL",
@@ -86,7 +100,30 @@ def test_expanded_search_url_encodes_query_and_remote(monkeypatch: pytest.Monkey
     assert variant.id == "python_backend"
     assert query["text"] == ["Python backend"]
     assert query["page"] == ["1"]
+    assert query["items_on_page"] == ["20"]
     assert query["work_format"] == ["REMOTE"]
+
+
+def test_expanded_profile_uses_public_page_size_for_sequential_pages(monkeypatch: pytest.MonkeyPatch) -> None:
+    registry = make_registry(monkeypatch)
+    profile = registry.get_profiles(["python_expanded_search"])[0]
+    variant = profile.query_variants[0]
+
+    queries = [
+        parse_qs(urlsplit(registry.build_search_url(profile, page=page, query_variant=variant)).query)
+        for page in range(3)
+    ]
+
+    assert profile.items_on_page == 20
+    assert [query["items_on_page"] for query in queries] == [["20"], ["20"], ["20"]]
+    assert [query["page"] for query in queries] == [["0"], ["1"], ["2"]]
+    assert [query["text"] for query in queries] == [["Python backend"], ["Python backend"], ["Python backend"]]
+    assert [query["experience"] for query in queries] == [
+        ["noExperience", "between1And3"],
+        ["noExperience", "between1And3"],
+        ["noExperience", "between1And3"],
+    ]
+    assert [query["work_format"] for query in queries] == [["REMOTE"], ["REMOTE"], ["REMOTE"]]
 
 
 def test_expanded_profiles_use_compact_query_variants(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -134,6 +171,19 @@ def test_public_variant_config_max_pages(
     assert {variant.max_pages for variant in profile.query_variants} == {expected_max_pages}
 
 
+def test_public_and_resume_profiles_use_source_type_page_sizes(monkeypatch: pytest.MonkeyPatch) -> None:
+    registry = make_registry(monkeypatch)
+    ai_resume = registry.get_profiles(["ai_resume_recommendations"])[0]
+    ai_public = registry.get_profiles(["ai_expanded_search"])[0]
+    python_public = registry.get_profiles(["python_expanded_search"])[0]
+    alt_public = registry.get_profiles(["alt_opportunities"])[0]
+
+    assert ai_resume.items_on_page == 100
+    assert ai_public.items_on_page == 20
+    assert python_public.items_on_page == 20
+    assert alt_public.items_on_page == 20
+
+
 @pytest.mark.parametrize(
     ("profile_id", "override", "expected_max_pages"),
     [
@@ -154,6 +204,17 @@ def test_public_variant_max_pages_override_cannot_increase_config_limit(
     variant = profile.query_variants[0]
 
     assert registry.max_pages_for(profile, override, variant) == expected_max_pages
+
+
+def test_max_pages_override_does_not_change_items_on_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    registry = make_registry(monkeypatch)
+    profile = registry.get_profiles(["python_expanded_search"])[0]
+    variant = profile.query_variants[0]
+
+    assert registry.max_pages_for(profile, 2, variant) == 2
+    query = parse_qs(urlsplit(registry.build_search_url(profile, page=1, query_variant=variant)).query)
+
+    assert query["items_on_page"] == ["20"]
 
 
 def test_safe_url_for_log_removes_query_values(monkeypatch: pytest.MonkeyPatch) -> None:
