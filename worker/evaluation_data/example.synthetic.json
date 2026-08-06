@@ -1,0 +1,48 @@
+{
+  "items": [
+    {
+      "vacancy": {
+        "source": "hh",
+        "external_id": "900000001",
+        "url": "https://hh.ru/vacancy/900000001",
+        "title": "Python Backend Developer",
+        "company": "Synthetic Company",
+        "location": "Remote",
+        "salary_text": null,
+        "is_remote": true,
+        "responsibility_snippet": "Develop FastAPI services and integrations with internal systems.",
+        "requirement_snippet": "Python, REST API, SQL, Docker."
+      },
+      "profile_ids": ["python_expanded_search"],
+      "query_variant_ids": ["python_backend"],
+      "tracks": ["main"],
+      "occurrence_count": 1,
+      "expected": {
+        "decision": "keep_main",
+        "label": "P1"
+      }
+    },
+    {
+      "vacancy": {
+        "source": "hh",
+        "external_id": "900000002",
+        "url": "https://hh.ru/vacancy/900000002",
+        "title": "Специалист телефонной поддержки",
+        "company": "Synthetic Support",
+        "location": "Самара",
+        "salary_text": "от 45000 руб.",
+        "is_remote": false,
+        "responsibility_snippet": "Принимать входящие звонки клиентов по готовому скрипту.",
+        "requirement_snippet": "Грамотная речь, готовность работать с большим количеством звонков."
+      },
+      "profile_ids": ["alt_opportunities"],
+      "query_variant_ids": ["qa"],
+      "tracks": ["alternative"],
+      "occurrence_count": 1,
+      "expected": {
+        "decision": "reject",
+        "label": "REJECT"
+      }
+    }
+  ]
+}

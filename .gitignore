@@ -13,6 +13,8 @@ venv/
 !.env.example
 worker/secrets/
 **/hh-storage-state.json
+worker/evaluation_data/*.json
+!worker/evaluation_data/example.synthetic.json
 
 # IDE
 .idea/
