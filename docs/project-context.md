@@ -249,12 +249,43 @@ Git используется для фиксации проверенных из
 
 - Worker реализует HH parsing, normalization, exact batch deduplication и
   локальный AI как преимущественно stateless compute layer;
+- Worker реализует HH search collection profiles и routing transport по
+  `source_type`;
 - Orchestrator владеет постоянной БД, `Vacancy`, `VacancyAnalysis`,
   `VacancyProcessingEvent`, idempotent upsert, discovery counters и final
   `UNIQUE(source, external_id)`;
 - processing history находится в Orchestrator и создается только явными API
   calls;
-- automatic HH collector pipeline пока не реализован.
+- automatic HH collector pipeline с записью в Orchestrator пока не реализован.
+
+HH search collection decisions:
+
+- персональные HH-подборки требуют авторизованного browser context;
+- анонимный resume query может вернуть fallback и не должен приниматься как
+  подтвержденный результат;
+- авторизация HH выполняется только вручную через SMS в headed Chromium на
+  Windows Worker;
+- приложение не хранит логин/пароль, номер телефона и SMS-код;
+- Playwright storage state хранится вне Git, считается секретом активной
+  пользовательской сессии и монтируется в контейнер read-only;
+- resume profiles используют Playwright/Chromium и `authenticated_browser`;
+- public expanded/ALT profiles используют `httpx`;
+- browser page size для resume profiles — 100;
+- public httpx page size — 20;
+- `request.max_pages_override` может только уменьшать configured limit;
+- `count < items_on_page` не является универсальным признаком последней
+  страницы;
+- parser не должен знать о transport;
+- deduplication identity остается `source + external_id`;
+- transport не входит в identity вакансии.
+
+Search direction decisions:
+
+- support не является целевым направлением;
+- телефонная поддержка исключена;
+- чат/email support могут рассматриваться только как крайний резерв;
+- automatic semantic filtering поддержки еще не реализован;
+- автоматические отклики не реализуются.
 
 Планируемое AI-решение проверяется отдельно:
 

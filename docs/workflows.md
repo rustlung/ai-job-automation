@@ -71,21 +71,61 @@ workflows/n8n/vacancy-first-slice.json
 
 Промежуточные версии workflow в Git не хранятся.
 
-## Планируемый HH collection flow
+## HH collection flow
 
-Статус: planned, not yet implemented.
+Статус: частично реализован на Worker, n8n workflow пока не собран.
 
-Этот workflow пока не собран в n8n. Он описывает направление развития после
-проверки HH parser, normalization, batch deduplication, processing history и
-discovery counters.
+Worker уже предоставляет общий endpoint:
+
+``` text
+POST /hh/collect-search
+```
+
+Endpoint выполняет selection заранее настроенных HH profiles, sequential page
+collection, provenance aggregation и exact deduplication внутри response.
+Он не сохраняет результат в Orchestrator и не создает processing events.
+
+Transport routing:
+
+-   `ai_resume_recommendations` и `python_resume_recommendations` используют
+    authenticated Playwright browser context, storage state, auth/resume
+    verification и DOM stabilization;
+-   `ai_expanded_search`, `python_expanded_search` и `alt_opportunities`
+    используют `httpx`;
+-   оба transport передают HTML в один `HHSearchParser`.
+
+Public profiles используют query variants. Актуальная конфигурация находится
+в `worker/api/app/services/hh_search_profiles.py`.
+
+Pagination:
+
+-   resume profiles используют `items_on_page=100`;
+-   public/httpx profiles используют `items_on_page=20`;
+-   страницы запрашиваются последовательно;
+-   `request.max_pages_override` может только уменьшать configured limit;
+-   `count < items_on_page` не используется как универсальный stop condition.
+
+Partial success:
+
+-   если часть страниц или profiles завершилась controlled failure, но есть
+    успешные страницы, collection result получает `completed_with_errors`;
+-   expected profile/page errors возвращаются внутри response;
+-   deduplication identity conflict остается HTTP 409;
+-   invalid request или unknown profile остаются HTTP 422.
+
+Ручное обновление auth state:
+
+-   выполняется через `worker/tools/hh_auth_setup.py` в GUI Windows-сессии;
+-   storage state хранится вне Git и монтируется read-only;
+-   при истечении сессии пользователь повторяет ручную авторизацию.
+
+Ниже описан будущий n8n flow поверх уже реализованного Worker collector.
 
 Планируемый поток:
 
 ``` text
 Schedule / Manual Trigger
-→ build HH search profiles
-→ Worker /hh/search-preview
-→ exact search deduplication
+→ Worker /hh/collect-search
 → local preliminary analysis
 → Worker /hh/vacancy-details
 → normalization
@@ -99,10 +139,9 @@ Schedule / Manual Trigger
 
 Планируемая роль двухступенчатой обработки:
 
--   `POST /hh/search-preview` получает одну страницу поисковой выдачи HH и
-    возвращает краткие карточки;
--   `POST /vacancies/deduplicate/search` убирает точные дубли search cards
-    внутри batch;
+-   `POST /hh/collect-search` получает batch кратких карточек из нескольких
+    profiles/pages/variants/transports, сохраняет provenance и убирает точные
+    дубли search cards внутри response;
 -   локальная LLM выполняет дешевый предварительный отсев;
 -   `POST /hh/vacancy-details` вызывается только для перспективных
     вакансий;
@@ -119,9 +158,6 @@ Schedule / Manual Trigger
 Ограничения текущего состояния:
 
 -   нет реализованного n8n HH collector workflow;
--   нет автоматического построения поисковых URL;
--   нет пагинации;
--   нет batch processing;
 -   нет автоматического предварительного AI-фильтра;
 -   нет автоматической загрузки полных карточек;
 -   Worker пока не вызывает Orchestrator автоматически;

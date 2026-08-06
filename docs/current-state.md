@@ -1,6 +1,6 @@
 # Current State
 
-2026-08-01
+2026-08-07
 
 Работает:
 ✅ Ubuntu server
@@ -68,6 +68,18 @@
 ✅ Existing Vacancy migration/backfill
 ✅ Target Worker acceptance
 ✅ Target homeserver acceptance
+✅ HH search collection profiles
+✅ POST /hh/collect-search
+✅ Authenticated HH resume search
+✅ Public HH expanded search
+✅ Mixed HH search transports
+✅ HH authenticated browser DOM stabilization
+✅ HH collection pagination
+✅ HH collection provenance aggregation
+✅ HH collection exact deduplication
+✅ Privacy-safe HH collection logs
+✅ Chromium cleanup after authenticated HH requests
+✅ Public HH page-size fix
 
 Phase 1 — Orchestrator foundation завершена.
 Phase 2.1 — Worker API foundation завершена.
@@ -79,6 +91,9 @@ Phase 5.3 — Vacancy normalization завершена и принята.
 Phase 5.4 — Deterministic vacancy deduplication завершена и принята.
 Phase 5.5 — Vacancy processing history завершена и принята.
 Phase 5.5.1 — Vacancy discovery counters завершена и принята.
+Phase 5.6 — HH search collection profiles завершена и принята на Worker.
+Phase 5.6.1 — Authenticated HH browser spike завершена и принята.
+Phase 5.6.2 — Authenticated resume profiles integrated into collector завершена и принята.
 
 Создан и развернут на homeserver базовый backend оркестрационного слоя на FastAPI.
 Работает endpoint `GET /health`.
@@ -129,6 +144,40 @@ Worker реализует точную batch-дедупликацию без о�
 `POST /vacancies/deduplicate/search` и `POST /vacancies/deduplicate/normalized` используют identity key `source + external_id`, сохраняют порядок первого появления, объединяют безопасные optional-поля и возвращают HTTP 409 при обязательных конфликтах.
 Дедупликация работает только внутри переданного batch и не хранит состояние между вызовами.
 
+Worker реализует общий HH search collector endpoint `POST /hh/collect-search`.
+Collector использует заранее настроенные профили: `ai_resume_recommendations`, `python_resume_recommendations`, `ai_expanded_search`, `python_expanded_search` и `alt_opportunities`.
+Пользователь не передает произвольные URL, query strings, cookies, storage paths или resume identifiers в API.
+
+Resume-based профили используют transport `authenticated_browser`: Playwright, Chromium, сохраненный storage state, проверку авторизации, проверку resume context, DOM stabilization и существующий `HHSearchParser`.
+Public expanded/ALT профили используют transport `httpx` и тот же `HHSearchParser`.
+Fallback resume-профилей на анонимный `httpx` отсутствует: если авторизация или resume context не подтверждены, профиль завершается controlled failure.
+
+Фактические размеры страниц различаются по transport:
+
+- authenticated browser для resume-профилей: `items_on_page=100`;
+- public `httpx` для expanded/ALT профилей: `items_on_page=20`.
+
+Пагинация collector не считает `count < items_on_page` универсальным признаком последней страницы.
+Остановка выполняется по effective `max_pages`, пустой странице, повтору identity set, controlled page error, auth verification failure или global raw vacancy limit.
+`request.max_pages_override` может только уменьшать configured limit.
+
+Подтвержденная приемка двух resume-профилей:
+
+- `raw_vacancy_count = 200`;
+- `unique_vacancy_count = 164`;
+- `duplicate_count = 36`;
+- `status = succeeded`;
+- `pages_requested = 2`;
+- `pages_succeeded = 2`;
+- `pages_failed = 0`.
+
+Подтвержденная public Python pagination после page-size fix:
+
+- `python_backend`: страницы `20 → 20 → 20 → 20 → 8`, остановка по `max_pages_reached`;
+- `fastapi`: страницы `20 → 20 → 3 → 0`, остановка по `empty_page`.
+
+Эти числа являются результатами конкретной целевой проверки, а не постоянными данными продукта.
+
 Orchestrator хранит постоянную историю обработки вакансий в append-only таблице `vacancy_processing_events`.
 События создаются только явными API-вызовами, связываются через `run_id`, имеют `stage`, `status`, безопасный `error_code`, небольшие `metadata` и AI-поля `provider`, `model`, `prompt_version` только для AI-этапов.
 List endpoints поддерживают фильтры и пагинацию.
@@ -138,12 +187,9 @@ Orchestrator хранит discovery-состояние вакансии в по�
 Существующие строки `Vacancy` были backfill-мигрированы из `created_at` и `updated_at`.
 `POST /vacancies` не создает processing event автоматически.
 
-Следующий этап определяется по `docs/project-roadmap-v1.1.md`.
+Следующий незавершенный этап по `docs/project-roadmap-v1.1.md`: preliminary AI filtering поисковых карточек и последующий collector pipeline поверх уже проверенного `POST /hh/collect-search`.
 
 Не реализовано:
-⬜ пагинация HH
-⬜ несколько поисковых профилей HH
-⬜ массовый сбор вакансий
 ⬜ предварительный AI-фильтр поисковых карточек
 ⬜ автоматическая загрузка полной страницы после фильтра
 ⬜ запись полных HH данных в orchestrator

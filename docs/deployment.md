@@ -261,6 +261,12 @@ HH_USER_AGENT=AIJobAutomation/0.1 (contact: configured-locally)
 HH_REQUEST_TIMEOUT_SECONDS=30
 HH_REQUEST_DELAY_SECONDS=1
 HH_MAX_RESPONSE_BYTES=1048576
+HH_AI_RESUME_SEARCH_URL=
+HH_PYTHON_RESUME_SEARCH_URL=
+HH_COLLECTION_MAX_RAW_VACANCIES=2000
+HH_AUTH_STORAGE_STATE_PATH=/run/secrets/hh/hh-storage-state.json
+HH_AUTH_BROWSER_TIMEOUT_SECONDS=30
+HH_AUTH_PAGE_LOAD_TIMEOUT_SECONDS=45
 OLLAMA_BASE_URL=http://host.docker.internal:11434
 OLLAMA_MODEL=qwen3:4b-instruct
 OLLAMA_REQUEST_TIMEOUT_SECONDS=120
@@ -272,7 +278,9 @@ OLLAMA_KEEP_ALIVE=5m
 После изменения `.env` контейнер нужно пересоздать.
 
 HH проверяется на Worker без VPN. С текущим VPN-маршрутом HH возвращал HTTP 451.
-Worker API не использует авторизацию HH, cookies, proxy, Playwright или Selenium.
+Public HH endpoints используют `httpx`. Authenticated resume profiles используют
+Playwright/Chromium, сохраненный storage state и read-only secrets mount.
+Selenium и proxy не используются.
 
 После изменения кода или настроек пересобрать worker:
 
@@ -311,6 +319,89 @@ curl http://<worker-local-ip>:8001/health/ollama
 
 Для `POST /local-ai/analyze` с кириллицей с homeserver использовать клиент, который явно отправляет UTF-8.
 Не фиксировать реальные IP-адреса, локальные `.env` и чувствительные данные в Git.
+
+### Docker Worker And Playwright
+
+Worker image использует Debian Bookworm base:
+
+``` text
+python:3.12-slim-bookworm
+```
+
+Bookworm зафиксирован намеренно: плавающий `python:3.12-slim` переходил на
+Debian Trixie, где используемая версия Playwright не могла корректно
+установить системные зависимости.
+
+Chromium устанавливается во время Docker build и не устанавливается при
+каждом старте контейнера:
+
+``` dockerfile
+RUN python -m playwright install --with-deps chromium
+```
+
+Browser binaries расположены в общем runtime path:
+
+``` text
+PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+```
+
+Это нужно, потому что контейнер запускается от непривилегированного runtime
+user, а `HOME` для него может быть `/nonexistent`.
+
+Storage state не копируется в image. Каталог `worker/secrets` монтируется в
+контейнер read-only:
+
+``` yaml
+volumes:
+  - ./secrets:/run/secrets/hh:ro
+```
+
+Контейнер может стартовать без storage state. В этом случае public profiles и
+обычные health endpoints остаются доступны, а authenticated resume profiles
+завершаются controlled failure.
+
+### HH Manual Auth Setup
+
+HH авторизация выполняется вручную на Windows 11 Worker в GUI-сессии.
+Приложение не хранит логин/пароль, номер телефона или SMS-код.
+
+Подготовить host venv и зависимости Worker:
+
+``` powershell
+cd ~/services/ai-job-automation/worker/api
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+Установить Chromium для host Playwright:
+
+``` powershell
+.\.venv\Scripts\python.exe -m playwright install chromium
+```
+
+Запустить ручную авторизацию из каталога `worker`:
+
+``` powershell
+cd ~/services/ai-job-automation/worker
+.\api\.venv\Scripts\python.exe .\tools\hh_auth_setup.py
+```
+
+В открывшемся headed Chromium выполнить вход по SMS. После успешного входа
+скрипт сохраняет Playwright storage state в локальный файл. Содержимое файла
+не выводить и не коммитить.
+
+После генерации state обычно достаточно перезапустить контейнер, rebuild не
+нужен, если volume уже настроен:
+
+``` powershell
+docker compose restart api
+```
+
+Проверить наличие state через API без раскрытия содержимого:
+
+``` powershell
+Invoke-RestMethod http://localhost:8001/health/hh-auth
+```
 
 ### HH Verification
 
@@ -361,6 +452,67 @@ $detailsResponse.published_at
 URL в примере нужно заменить на актуальный публичный URL вакансии HH.
 Не использовать resume id, cookies, персональные query parameters, токены или локальные секреты.
 
+Проверить authenticated preview для разрешенного resume profile:
+
+``` powershell
+$authBody = @{
+  profile_id = "ai_resume_recommendations"
+  page = 0
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+  -Uri http://localhost:8001/hh/authenticated-search-preview `
+  -Method Post `
+  -ContentType "application/json; charset=utf-8" `
+  -Body $authBody
+```
+
+Проверить общий HH collector для public Python profiles:
+
+``` powershell
+$body = @{
+  profile_ids = @("python_expanded_search")
+  max_pages_override = 5
+} | ConvertTo-Json -Depth 5
+
+$publicTest = Invoke-RestMethod `
+  -Uri "http://localhost:8001/hh/collect-search" `
+  -Method Post `
+  -ContentType "application/json; charset=utf-8" `
+  -Body $body
+
+$publicTest.page_results |
+  Select-Object profile_id,query_variant_id,page,transport,raw_vacancy_count,status,stop_reason |
+  Format-Table -AutoSize
+```
+
+Для public/httpx profiles ожидается `items_on_page=20` и последовательная
+пагинация `page=0`, `page=1`, `page=2` без пропуска позиций 21+.
+
+Проверить общий HH collector для resume profiles:
+
+``` powershell
+$body = @{
+  profile_ids = @("ai_resume_recommendations", "python_resume_recommendations")
+  max_pages_override = 1
+} | ConvertTo-Json -Depth 5
+
+$resumeTest = Invoke-RestMethod `
+  -Uri "http://localhost:8001/hh/collect-search" `
+  -Method Post `
+  -ContentType "application/json; charset=utf-8" `
+  -Body $body
+
+$resumeTest.page_results |
+  Select-Object profile_id,query_variant_id,page,transport,raw_vacancy_count,authenticated,resume_context_confirmed,stabilization_status |
+  Format-Table -AutoSize
+```
+
+Для resume profiles ожидается transport `authenticated_browser`,
+подтвержденные `authenticated` и `resume_context_confirmed`, а также DOM
+stabilization diagnostics. Resume profiles не должны fallback-иться на
+anonymous `httpx`.
+
 Проверить application logs:
 
 ``` powershell
@@ -377,7 +529,21 @@ hh_vacancy_parse_succeeded
 hh_vacancy_details_completed
 ```
 
-В логах не должны появляться полный HTML, полный description, cookies, XSRF token или содержимое `.env`.
+Для HH collection также ожидаются безопасные события вида:
+
+``` text
+hh_collection_started
+hh_query_variant_started
+hh_page_fetch_started
+hh_page_collected
+hh_browser_dom_stabilized
+hh_collection_completed
+```
+
+В логах не должны появляться полный HTML, полный description, полный URL с
+query string, query text, resume identifiers, session query identifiers,
+cookies, XSRF token, storage state contents, телефон, SMS-код или содержимое
+`.env`.
 
 ### Vacancy Normalization And Deduplication Verification
 

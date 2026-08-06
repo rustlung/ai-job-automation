@@ -629,6 +629,114 @@ Processing history показывает подробную последоват�
 
 ---
 
+## Phase 5.6. HH search collection profiles
+
+Статус: завершен.
+
+## Результат
+
+- реализован общий Worker endpoint `POST /hh/collect-search`;
+- collector использует заранее настроенные профили:
+  - `ai_resume_recommendations`;
+  - `python_resume_recommendations`;
+  - `ai_expanded_search`;
+  - `python_expanded_search`;
+  - `alt_opportunities`;
+- пользователь не передает arbitrary URL, query strings, cookies, storage paths
+  или resume identifiers в API;
+- resume search URLs хранятся только в локальных environment variables
+  `HH_AI_RESUME_SEARCH_URL` и `HH_PYTHON_RESUME_SEARCH_URL`;
+- результаты разных страниц, profiles, query variants, tracks и transports
+  объединяются в общий batch;
+- сохраняется provenance: `profile_ids`, `query_variant_ids`, `tracks`,
+  `first_profile_id`, `first_query_variant_id`, `occurrence_count`;
+- exact deduplication использует identity `source + external_id`;
+- expected profile/page errors возвращаются в collection result без падения
+  всего batch, если есть успешные страницы.
+
+## Phase 5.6.1. Authenticated HH browser spike
+
+Статус: завершен.
+
+## Результат
+
+- добавлен диагностический endpoint `POST /hh/authenticated-search-preview`;
+- добавлен `GET /health/hh-auth`;
+- реализована ручная авторизация HH через `worker/tools/hh_auth_setup.py`;
+- Playwright storage state хранится локально вне Git;
+- storage state монтируется в контейнер read-only;
+- Docker Worker использует Debian Bookworm base image
+  `python:3.12-slim-bookworm`;
+- Chromium устанавливается во время Docker build;
+- используется `PLAYWRIGHT_BROWSERS_PATH=/ms-playwright`;
+- authenticated preview принимает только разрешенные resume profile ids и page;
+- arbitrary URL, cookies, storage path и resume id в API не принимаются.
+
+## Phase 5.6.2. Authenticated resume profiles in collector
+
+Статус: завершен.
+
+## Результат
+
+- resume-based profiles используют transport `authenticated_browser`;
+- public expanded/ALT profiles используют transport `httpx`;
+- resume profiles не имеют fallback на анонимный `httpx`;
+- перед использованием результата проверяется авторизация и resume context;
+- browser client выполняет DOM stabilization перед передачей HTML в
+  `HHSearchParser`;
+- collector возвращает safe diagnostics в `page_results`: transport,
+  hostname/path, auth flags, stabilization metrics, counts, durations и error
+  codes;
+- query text, resume identifiers, session query identifiers, cookies, storage
+  state, phone/SMS, HTML, vacancy ids и title/company/snippets не логируются;
+- page 0 и page 1 для AI/Python resume profiles на целевом Worker подтверждали
+  по 100 parsed vacancies.
+
+## Corrective fixes Phase 5.6
+
+Статус: завершены.
+
+## Результат
+
+- настроено privacy-safe application logging для HH collection;
+- public profiles переведены на query variants;
+- исправлена resume pagination после DOM hydration;
+- исправлена преждевременная выборка HTML через `page.content()`;
+- увеличены configured page limits public variants:
+  - AI expanded variants — до 5 страниц;
+  - Python expanded variants — до 5 страниц;
+  - ALT variants — до 3 страниц;
+- для public/httpx profiles установлен фактический page size `items_on_page=20`;
+- для authenticated browser resume profiles сохранен `items_on_page=100`;
+- `request.max_pages_override` может только уменьшать configured limit;
+- `count < items_on_page` не используется как универсальный stop condition.
+
+## Ограничения Phase 5.6
+
+- storage state обновляется вручную;
+- сессия HH может истечь;
+- resume profiles требуют Playwright;
+- public profiles используют `httpx`;
+- запросы выполняются последовательно;
+- Playwright медленнее `httpx`;
+- profile/query configuration является первой рабочей версией;
+- batch пока существует только в API response;
+- run_id не сохраняется;
+- история collection runs отсутствует;
+- нет preliminary AI filtering;
+- нет загрузки полных карточек внутри collector;
+- нет normalization полного batch;
+- нет persistence в Orchestrator;
+- нет processing events для реального collection run;
+- нет n8n HH collector workflow;
+- нет расписания;
+- нет уведомлений;
+- нет автоматической классификации P1/P2/P3/ALT;
+- нет автоматической фильтрации телефонной поддержки;
+- нет автоматических откликов.
+
+---
+
 ## Оставшиеся части Phase 5
 
 Phase 5 не считается полностью завершенной.
@@ -636,14 +744,13 @@ Phase 5 не считается полностью завершенной.
 Остаются:
 
 - предварительный AI-фильтр поисковых карточек;
-- пагинация;
-- batch processing;
 - автоматическое получение полных карточек после отбора;
 - автоматическая передача Worker → Orchestrator;
 - n8n HH collector workflow.
 
 Следующий этап по текущему roadmap всё ещё находится внутри Phase 5:
-реализация collector pipeline поверх уже проверенных HH parser endpoints.
+preliminary AI filtering поисковых карточек и последующий collector pipeline
+поверх уже проверенного `POST /hh/collect-search`.
 
 ---
 

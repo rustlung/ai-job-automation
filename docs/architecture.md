@@ -471,10 +471,15 @@ POST /hh/vacancy-details
 → HHVacancyDetails
 ```
 
-На текущем этапе Worker умеет получать одну страницу поисковой выдачи HH
-и одну полную страницу вакансии HH. Запросы выполняются через HTTP-клиент
-на `httpx`, без Playwright, Selenium, авторизации HH, cookies, proxy или
-обхода антибот-защиты.
+Worker умеет получать одну страницу поисковой выдачи HH через диагностический
+`POST /hh/search-preview`, одну полную страницу вакансии HH через
+`POST /hh/vacancy-details`, а также выполнять batch collection поисковой
+выдачи через `POST /hh/collect-search`.
+
+Для public search и full vacancy endpoints используется HTTP-клиент на
+`httpx`. Для персональных resume-based подборок в общем collector используется
+авторизованный Playwright browser context. Selenium, proxy и обход
+антибот-защиты не используются.
 
 Разделение ответственности:
 
@@ -485,6 +490,10 @@ POST /hh/vacancy-details
 -   API route принимает запрос, вызывает service и преобразует ошибки;
 -   parser не выполняет AI-анализ и не сохраняет данные;
 -   service не содержит parsing logic.
+-   browser client отвечает за авторизацию, navigation и DOM stabilization;
+-   collector оркестрирует profiles, query variants, pages и transport routing;
+-   deduplication не зависит от transport;
+-   Orchestrator из Worker collector пока не вызывается.
 
 Контракт краткой карточки `HHSearchVacancy`:
 
@@ -587,40 +596,194 @@ n8n / collector
 → orchestrator persistence
 ```
 
-На текущем этапе этот production flow ещё не реализован: нет пагинации,
-batch processing, автоматической загрузки полных карточек после фильтра,
-записи полных HH данных в orchestrator и n8n HH collector workflow.
+На текущем этапе реализован search collection batch кратких карточек.
+Автоматическая загрузка полных карточек после предварительного фильтра,
+запись полных HH данных в orchestrator и n8n HH collector workflow ещё не
+реализованы.
 
-## 10.3. Планируемые поисковые профили HH
+## 10.3. HH search collection profiles
 
-Поисковые профили являются архитектурным направлением и ещё не реализованы.
+Статус: implemented для Worker search collection.
 
-Планируются отдельные профили:
+Общий endpoint:
 
--   удалённые вакансии без ограничения конкретным городом;
--   вакансии Самары, где допускаются удалёнка, гибрид и офис;
--   отдельные запросы по опыту `нет опыта` и `1–3 года`.
+``` text
+POST /hh/collect-search
+```
 
-Для Самары релокация не рассматривается. Офисные и гибридные вакансии вне
-Самары не подходят.
+Collector использует заранее настроенные профили:
 
-Предполагаемые направления запросов:
+-   `ai_resume_recommendations`;
+-   `python_resume_recommendations`;
+-   `ai_expanded_search`;
+-   `python_expanded_search`;
+-   `alt_opportunities`.
 
--   Python Backend;
--   FastAPI;
--   Python Developer;
--   AI Automation;
--   AI Integration;
--   LLM;
--   AI Engineer;
--   n8n;
--   системный анализ;
--   бизнес-анализ в IT;
--   интеграции и автоматизация.
+Пользователь не передает произвольные URL, query strings, cookies, storage
+paths или resume identifiers в API. Реальные resume search URLs находятся
+только в локальных environment variables:
 
-Окончательный набор запросов ещё не зафиксирован как реализованный.
+``` text
+HH_AI_RESUME_SEARCH_URL
+HH_PYTHON_RESUME_SEARCH_URL
+```
 
-## 10.4. Worker application logging
+Эти значения не находятся в Git и не выводятся в API response или логи.
+
+Текущая схема transport routing:
+
+``` text
+Search profiles
+        |
+        +--> resume_recommendations
+        |        |
+        |        v
+        |   authenticated Playwright
+        |        |
+        |        v
+        |   auth + resume verification
+        |        |
+        |        v
+        |   DOM stabilization
+        |
+        +--> expanded_search / alt
+                 |
+                 v
+              httpx
+
+Both transports
+        |
+        v
+HHSearchParser
+        |
+        v
+provenance aggregation
+        |
+        v
+VacancyDeduplicationService
+        |
+        v
+HHSearchCollectionResult
+```
+
+Resume-based profiles:
+
+-   используют Playwright, Chromium, сохраненный storage state,
+    авторизованный browser context, проверку авторизации и проверку resume
+    context;
+-   используют `items_on_page=100`;
+-   не имеют fallback на анонимный `httpx`.
+
+Public expanded/ALT profiles:
+
+-   используют существующий `httpx` HH client;
+-   используют обычный HTML search response;
+-   используют `items_on_page=20`.
+
+`HHSearchParser` не знает о transport. Он получает HTML и извлекает краткие
+карточки по стабильным `data-qa` и защищенным fallback-правилам. Transport не
+входит в vacancy identity.
+
+Public profiles используют query variants. Актуальная конфигурация вариантов
+зафиксирована в `worker/api/app/services/hh_search_profiles.py`; документация
+описывает логические группы, потому что конкретные query texts могут
+корректироваться по статистике.
+
+Логические группы:
+
+-   `ai_expanded_search` — компактные варианты AI-поиска;
+-   `python_expanded_search` — `python_backend` и `fastapi`;
+-   `alt_opportunities` — QA, data analyst, system analyst, business analyst,
+    AI trainer/evaluation.
+
+Телефонная поддержка не является целевым направлением и исключена. Чат/email
+support может рассматриваться только как крайний резерв; semantic filtering
+поддержки ещё не реализован.
+
+Configured page limits:
+
+-   AI expanded variants — до 5 страниц;
+-   Python expanded variants — до 5 страниц;
+-   ALT variants — до 3 страниц.
+
+`request.max_pages_override` может только уменьшать configured limit.
+Effective max pages вычисляется как минимум из profile/variant config и
+request override. Реальные лимиты могут корректироваться после накопления
+статистики.
+
+Условия остановки pagination:
+
+-   достигнут effective max pages;
+-   пустая страница;
+-   повтор identity set предыдущей страницы;
+-   controlled page error;
+-   auth verification failure;
+-   global raw vacancy limit.
+
+`count < items_on_page` не используется как универсальный признак последней
+страницы.
+
+## 10.4. Ручная HH-авторизация
+
+HH использует вход по номеру телефона и SMS-коду. Приложение не хранит
+логин/пароль, номер телефона и SMS-код.
+
+Вход выполняется вручную в headed Chromium непосредственно в Windows-сессии
+Worker через скрипт:
+
+``` text
+worker/tools/hh_auth_setup.py
+```
+
+После входа Playwright сохраняет storage state. Storage state хранится
+локально вне Git, считается секретом активной пользовательской сессии и
+монтируется в контейнер read-only. API не обновляет storage state. При
+истечении сессии пользователь повторно запускает ручную авторизацию.
+
+## 10.5. Playwright runtime и DOM stabilization
+
+Worker Docker image для Playwright зафиксирован на Debian Bookworm:
+
+``` text
+python:3.12-slim-bookworm
+```
+
+Плавающий `python:3.12-slim` приводил к Debian Trixie, где используемая
+версия Playwright не могла корректно установить системные зависимости.
+Chromium устанавливается во время Docker build, а не при каждом старте
+контейнера.
+
+Используется общий runtime path:
+
+``` text
+PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+```
+
+Это важно, потому что runtime user непривилегированный и имеет
+`HOME=/nonexistent`. Browser binaries доступны runtime user, storage state не
+копируется в image, а secrets mount подключается read-only.
+
+Подтвержденная проблема DOM: сразу после navigation DOM мог содержать только
+около 20 карточек, хотя окончательно загруженный browser DOM содержал до 100.
+Parser искусственного лимита 20 не имел и корректно находил реальные карточки
+в полном DOM; служебный заголовок "Вакансии на карте" не принимался за
+вакансию.
+
+Решение:
+
+-   browser client не вызывает `page.content()` сразу после navigation;
+-   ожидает появления vacancy links;
+-   ждёт hydration;
+-   считает уникальные vacancy IDs в DOM;
+-   ждёт стабилизации количества с bounded timeout;
+-   не требует строго 100 карточек;
+-   после стабилизации передает HTML существующему `HHSearchParser`;
+-   после запроса закрывает page, context, browser и Playwright runtime.
+
+На целевой проверке resume-профили возвращали по 100 вакансий на page 0 и
+page 1 для AI и Python resume profiles.
+
+## 10.6. Worker application logging
 
 Application logging Worker настроен централизованно.
 
@@ -652,17 +815,29 @@ Application logging Worker настроен централизованно.
 
 Безопасные поля для логирования:
 
--   sanitized URL;
--   external_id;
+-   sanitized URL или hostname/path без query string;
+-   profile_id;
+-   query_variant_id;
+-   transport;
+-   page;
 -   final domain;
 -   status code;
 -   response size;
 -   duration;
+-   counts;
+-   error codes;
+-   auth/resume verification booleans;
+-   DOM stabilization metrics;
 -   description length;
 -   skills count;
 -   признаки наличия optional fields.
 
-## 10.5. Риски HTML HH
+Не логируются resume identifiers, session query identifiers, query text,
+cookies, storage state, phone, SMS, vacancy IDs, title/company/snippets и HTML.
+Успешный лог каждой отдельной search-card находится на DEBUG. Parser summary
+остаётся на INFO.
+
+## 10.7. Риски HTML HH
 
 HH может изменить:
 
@@ -676,7 +851,7 @@ HH может изменить:
 Parser защищён автоматическими тестами и контролируемыми ошибками, но
 требует наблюдения после изменений HTML HH.
 
-## 10.6. Normalization
+## 10.8. Normalization
 
 Статус: implemented.
 
@@ -731,7 +906,7 @@ POST /vacancies/normalize
 Нормализация не выполняет сетевые запросы, не обращается к Orchestrator, не
 использует AI и не сохраняет данные.
 
-## 10.7. Deduplication
+## 10.9. Deduplication
 
 Статус: implemented для точной batch-дедупликации на Worker.
 
@@ -765,6 +940,17 @@ Search batch объединяет salary, remote flag и snippets. Normalized ba
 дополнительно проверяет description после безопасной whitespace-нормализации,
 объединяет skills без учета регистра, выбирает минимальный collected_at и
 объединяет search_is_remote через OR.
+
+В `POST /hh/collect-search` общий batch объединяет результаты разных страниц,
+resume profiles, expanded variants, tracks и transports. Для уникальной
+вакансии сохраняется provenance:
+
+-   `profile_ids`;
+-   `query_variant_ids`;
+-   `tracks`;
+-   `first_profile_id`;
+-   `first_query_variant_id`;
+-   `occurrence_count`.
 
 Не реализовано: fuzzy matching, Levenshtein, embeddings, cross-source
 deduplication и объединение разных external_id.
@@ -1037,21 +1223,21 @@ Custom engine:
 -   n8n запущен;
 -   Gmail OAuth настроен;
 -   первый workflow протестирован;
--   архитектура распределенной системы определена.
+-   архитектура распределенной системы определена;
+-   Orchestrator хранит вакансии, AI-анализы, processing events и discovery
+    counters;
+-   Worker реализует HH parsing, normalization, exact batch deduplication,
+    local AI и HH search collection profiles;
+-   Phase 5.6 принята на целевом Worker.
 
 Следующие шаги:
 
-1.  Реализовать управление homeserver:
+1.  Реализовать preliminary AI filtering поисковых карточек.
 
-    -   Wake-on-LAN;
-    -   SSH shutdown.
+2.  Добавить автоматическую загрузку полных карточек после отбора.
 
-2.  Создать базовый репозиторий проекта.
+3.  Передавать выбранные вакансии из Worker/n8n в Orchestrator.
 
-3.  Реализовать первый HH collector.
+4.  Собрать n8n HH collector workflow.
 
-4.  Добавить хранение истории вакансий.
-
-5.  Добавить AI-анализ.
-
-6.  После стабилизации вынести тяжелые задачи в worker.
+5.  Добавить расписание, уведомления и production scoring.
