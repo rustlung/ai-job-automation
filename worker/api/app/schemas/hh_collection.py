@@ -46,6 +46,11 @@ class HHSearchProfileStatus(str, Enum):
     FAILED = "failed"
 
 
+class HHSearchTransport(str, Enum):
+    HTTPX = "httpx"
+    AUTHENTICATED_BROWSER = "authenticated_browser"
+
+
 class HHSearchStopReason(str, Enum):
     MAX_PAGES_REACHED = "max_pages_reached"
     EMPTY_PAGE = "empty_page"
@@ -107,10 +112,21 @@ class HHSearchPageResult(BaseModel):
     query_variant_id: QueryVariantIdString | None = None
     page: int = Field(ge=0)
     status: HHSearchProfileStatus
+    transport: HHSearchTransport
     raw_vacancy_count: int = Field(ge=0)
     error_code: str | None = None
     http_status: int | None = Field(default=None, ge=100, le=599)
     stop_reason: HHSearchStopReason | None = None
+    final_hostname: str | None = None
+    final_path: str | None = None
+    authenticated: bool | None = None
+    resume_context_confirmed: bool | None = None
+    initial_vacancy_count: int | None = Field(default=None, ge=0)
+    final_vacancy_count: int | None = Field(default=None, ge=0)
+    stabilization_iterations: int | None = Field(default=None, ge=0)
+    stabilization_duration_ms: int | None = Field(default=None, ge=0)
+    stabilization_status: str | None = None
+    duration_ms: int | None = Field(default=None, ge=0)
 
 
 class HHSearchQueryVariantResult(BaseModel):

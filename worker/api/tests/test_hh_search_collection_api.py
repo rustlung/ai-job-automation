@@ -8,8 +8,10 @@ from app.schemas.hh_collection import (
     HHSearchCollectionRequest,
     HHSearchCollectionResult,
     HHSearchCollectionStatus,
+    HHSearchPageResult,
     HHSearchProfileResult,
     HHSearchProfileStatus,
+    HHSearchTransport,
     HHSearchVacancyProvenance,
     SearchProfileSourceType,
     SearchProfileTrack,
@@ -84,7 +86,19 @@ def make_result(status: HHSearchCollectionStatus = HHSearchCollectionStatus.SUCC
                 duplicate_count=0,
             )
         ],
-        page_results=[],
+        page_results=[
+            HHSearchPageResult(
+                profile_id="python_expanded_search",
+                query_variant_id="python_backend",
+                page=0,
+                status=HHSearchProfileStatus.SUCCEEDED,
+                transport=HHSearchTransport.HTTPX,
+                raw_vacancy_count=1,
+                final_hostname="hh.ru",
+                final_path="/search/vacancy",
+                duration_ms=10,
+            )
+        ],
         errors=[],
     )
 
@@ -106,7 +120,14 @@ def test_collect_search_success_returns_new_contract(client: TestClient, monkeyp
     assert body["vacancies"][0]["requirement_snippet"] == "Python"
     assert body["vacancies"][0]["provenance"]["profile_ids"] == ["python_expanded_search"]
     assert body["vacancies"][0]["provenance"]["query_variant_ids"] == ["python_backend"]
+    assert body["page_results"][0]["transport"] == "httpx"
+    assert body["page_results"][0]["final_hostname"] == "hh.ru"
+    assert body["page_results"][0]["final_path"] == "/search/vacancy"
+    assert body["page_results"][0]["authenticated"] is None
     assert "url" not in body["profile_results"][0]
+    assert "resume=" not in str(body)
+    assert "search_session_id" not in str(body)
+    assert "cookie" not in str(body).lower()
     assert service.requests[0].profile_ids == ["python_expanded_search"]
 
 
@@ -138,5 +159,23 @@ def test_collect_search_identity_conflict_returns_409(client: TestClient, monkey
 
 def test_collect_search_rejects_arbitrary_url(client: TestClient) -> None:
     response = client.post("/hh/collect-search", json={"url": "https://hh.ru/search/vacancy?text=python"})
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"resume_id": "secret"},
+        {"cookie": "secret"},
+        {"storage_state_path": "/run/secrets/hh/hh-storage-state.json"},
+        {"query": "Python"},
+        {"query_variants": ["Python"]},
+        {"browser_args": ["--debug"]},
+        {"sms_code": "123456"},
+    ],
+)
+def test_collect_search_rejects_sensitive_or_transport_override_fields(payload: dict[str, object], client: TestClient) -> None:
+    response = client.post("/hh/collect-search", json=payload)
 
     assert response.status_code == 422

@@ -1,14 +1,18 @@
 import pytest
 
-from app.clients.hh import HHTimeoutError
+from app.clients.hh import HHHTTPError, HHTimeoutError
+from app.clients.hh_browser import HHBrowserPage
 from app.schemas.hh import HHSearchPreviewResponse, HHSearchVacancy
 from app.schemas.hh_collection import (
     HHSearchCollectionRequest,
+    HHSearchTransport,
     SearchProfile,
     SearchProfileSourceType,
     SearchProfileTrack,
     SearchQueryVariant,
 )
+from app.schemas.hh_auth import HHAuthenticatedSearchVerification
+from app.services.hh_authenticated_search import HHAuthenticatedParsedPage, HHAuthenticatedProfileNotConfirmedError
 from app.services.hh_search_collection import HHSearchCollectionService, HHSearchCollectionUnknownProfileError
 from app.services.vacancy_deduplication import VacancyDeduplicationService
 
@@ -109,6 +113,11 @@ class FakeSearchService:
         return result
 
 
+class FailingSearchService:
+    async def preview_search(self, url: str) -> HHSearchPreviewResponse:
+        raise AssertionError("httpx search service must not be called")
+
+
 class FakeSearchServiceAny:
     def __init__(self, result: HHSearchPreviewResponse) -> None:
         self.result = result
@@ -119,16 +128,79 @@ class FakeSearchServiceAny:
         return self.result
 
 
+class FakeAuthenticatedSearchService:
+    def __init__(self, responses: dict[tuple[str, int], HHAuthenticatedParsedPage | Exception]) -> None:
+        self.responses = responses
+        self.urls: list[str] = []
+
+    async def fetch_page_with_browser_slot(
+        self,
+        profile_id: str,
+        page: int,
+        url: str,
+        started_at: float | None = None,
+    ) -> HHAuthenticatedParsedPage:
+        self.urls.append(url)
+        result = self.responses[(profile_id, page)]
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+
 def response(*vacancies: HHSearchVacancy, count: int | None = None) -> HHSearchPreviewResponse:
     return HHSearchPreviewResponse(count=count if count is not None else len(vacancies), vacancies=list(vacancies))
 
 
-def service(fake_search: FakeSearchService, profiles: list[SearchProfile]) -> HHSearchCollectionService:
+def authenticated_page(
+    profile_id: str,
+    page: int,
+    *vacancies: HHSearchVacancy,
+    count: int | None = None,
+) -> HHAuthenticatedParsedPage:
+    html = "<html></html>"
+    return HHAuthenticatedParsedPage(
+        profile_id=profile_id,
+        page=page,
+        vacancies=list(vacancies),
+        browser_page=HHBrowserPage(
+            html=html,
+            final_url="https://hh.ru/search/vacancy",
+            final_hostname="hh.ru",
+            final_path="/search/vacancy",
+            html_size=len(html.encode("utf-8")),
+            duration_ms=10,
+            initial_vacancy_count=count if count is not None else len(vacancies),
+            final_vacancy_count=count if count is not None else len(vacancies),
+            stabilization_iterations=3,
+            stabilization_duration_ms=1,
+            stabilization_status="stable",
+        ),
+        verification=HHAuthenticatedSearchVerification(
+            storage_state_loaded=True,
+            login_form_detected=False,
+            authenticated_marker_detected=True,
+            resume_context_marker_detected=True,
+            parser_succeeded=True,
+            expected_profile_type="resume_recommendations",
+            vacancy_count=count if count is not None else len(vacancies),
+        ),
+        authenticated=True,
+        resume_context_confirmed=True,
+        duration_ms=10,
+    )
+
+
+def service(
+    fake_search,
+    profiles: list[SearchProfile],
+    fake_authenticated: FakeAuthenticatedSearchService | None = None,
+) -> HHSearchCollectionService:
     return HHSearchCollectionService(
         search_service=fake_search,  # type: ignore[arg-type]
         deduplication_service=VacancyDeduplicationService(),
         profile_registry=FakeRegistry(profiles),  # type: ignore[arg-type]
         max_raw_vacancies=2000,
+        authenticated_search_service=fake_authenticated,  # type: ignore[arg-type]
     )
 
 
@@ -156,6 +228,7 @@ async def test_collection_collects_pages_deduplicates_and_adds_provenance() -> N
     assert first.provenance.first_profile_id == "ai_expanded_search"
     assert first.provenance.occurrence_count == 2
     assert len(fake_search.urls) == 3
+    assert {item.transport for item in result.page_results} == {HHSearchTransport.HTTPX}
 
 
 @pytest.mark.anyio
@@ -227,27 +300,36 @@ async def test_resume_pagination_does_not_stop_when_count_is_less_than_items_on_
             source_type=SearchProfileSourceType.RESUME_RECOMMENDATIONS,
         )
     ]
-    fake_search = FakeSearchService(
+    fake_search = FailingSearchService()
+    fake_authenticated = FakeAuthenticatedSearchService(
         {
-            ("ai_resume_recommendations", "resume_recommendations", 0): response(
+            ("ai_resume_recommendations", 0): authenticated_page(
+                "ai_resume_recommendations",
+                0,
                 *(vacancy(str(index)) for index in range(1, 21)),
                 count=20,
             ),
-            ("ai_resume_recommendations", "resume_recommendations", 1): response(
+            ("ai_resume_recommendations", 1): authenticated_page(
+                "ai_resume_recommendations",
+                1,
                 *(vacancy(str(index)) for index in range(21, 41)),
                 count=20,
             ),
-            ("ai_resume_recommendations", "resume_recommendations", 2): response(count=0),
+            ("ai_resume_recommendations", 2): authenticated_page("ai_resume_recommendations", 2, count=0),
         }
     )
 
-    result = await service(fake_search, profiles).collect(HHSearchCollectionRequest())
+    result = await service(fake_search, profiles, fake_authenticated).collect(HHSearchCollectionRequest())
 
     assert result.status == "succeeded"
     assert result.pages_requested == 3
     assert result.pages_succeeded == 3
     assert result.raw_vacancy_count == 40
     assert result.page_results[-1].stop_reason == "empty_page"
+    assert {item.transport for item in result.page_results} == {HHSearchTransport.AUTHENTICATED_BROWSER}
+    assert all(item.authenticated is True for item in result.page_results)
+    assert all(item.resume_context_confirmed is True for item in result.page_results)
+    assert len(fake_authenticated.urls) == 3
 
 
 @pytest.mark.anyio
@@ -319,6 +401,181 @@ async def test_skipped_resume_profile_does_not_make_successful_collection_partia
     assert result.status == "succeeded"
     assert result.skipped_profile_count == 1
     assert result.unique_vacancy_count == 1
+
+
+@pytest.mark.anyio
+async def test_resume_profiles_use_authenticated_transport_and_public_profiles_use_httpx() -> None:
+    profiles = [
+        profile(
+            "ai_resume_recommendations",
+            source_type=SearchProfileSourceType.RESUME_RECOMMENDATIONS,
+            max_pages=1,
+        ),
+        profile("python_expanded_search", order=20, max_pages=1),
+    ]
+    fake_search = FakeSearchService(
+        {
+            ("python_expanded_search", "default", 0): response(vacancy("2"), count=1),
+        }
+    )
+    fake_authenticated = FakeAuthenticatedSearchService(
+        {
+            ("ai_resume_recommendations", 0): authenticated_page(
+                "ai_resume_recommendations",
+                0,
+                vacancy("1"),
+                count=100,
+            )
+        }
+    )
+
+    result = await service(fake_search, profiles, fake_authenticated).collect(HHSearchCollectionRequest())
+
+    assert result.status == "succeeded"
+    assert [(item.profile_id, item.transport.value) for item in result.page_results] == [
+        ("ai_resume_recommendations", "authenticated_browser"),
+        ("python_expanded_search", "httpx"),
+    ]
+    assert fake_search.urls == ["https://hh.ru/search/vacancy?profile=python_expanded_search&variant=default&page=0"]
+    assert len(fake_authenticated.urls) == 1
+    assert result.page_results[0].initial_vacancy_count == 100
+    assert result.page_results[0].stabilization_status == "stable"
+    assert result.page_results[1].authenticated is None
+
+
+@pytest.mark.anyio
+async def test_resume_auth_failure_does_not_fallback_to_httpx_and_public_profile_continues() -> None:
+    profiles = [
+        profile(
+            "ai_resume_recommendations",
+            source_type=SearchProfileSourceType.RESUME_RECOMMENDATIONS,
+            max_pages=1,
+        ),
+        profile("python_expanded_search", order=20, max_pages=1),
+    ]
+    fake_search = FakeSearchService(
+        {
+            ("python_expanded_search", "default", 0): response(vacancy("2"), count=1),
+        }
+    )
+    fake_authenticated = FakeAuthenticatedSearchService(
+        {
+            ("ai_resume_recommendations", 0): HHAuthenticatedProfileNotConfirmedError(
+                "HH authenticated profile was not confirmed"
+            ),
+        }
+    )
+
+    result = await service(fake_search, profiles, fake_authenticated).collect(HHSearchCollectionRequest())
+
+    assert result.status == "completed_with_errors"
+    assert result.failed_profile_count == 1
+    assert result.unique_vacancy_count == 1
+    assert result.errors[0].error_code == "hh_authenticated_profile_not_confirmed"
+    assert result.page_results[0].transport == HHSearchTransport.AUTHENTICATED_BROWSER
+    assert result.page_results[0].status == "failed"
+    assert fake_search.urls == ["https://hh.ru/search/vacancy?profile=python_expanded_search&variant=default&page=0"]
+
+
+@pytest.mark.anyio
+async def test_only_resume_auth_failure_returns_failed_collection_result() -> None:
+    profiles = [
+        profile(
+            "ai_resume_recommendations",
+            source_type=SearchProfileSourceType.RESUME_RECOMMENDATIONS,
+            max_pages=1,
+        )
+    ]
+    fake_authenticated = FakeAuthenticatedSearchService(
+        {
+            ("ai_resume_recommendations", 0): HHAuthenticatedProfileNotConfirmedError(
+                "HH authenticated profile was not confirmed"
+            ),
+        }
+    )
+
+    result = await service(FailingSearchService(), profiles, fake_authenticated).collect(
+        HHSearchCollectionRequest(profile_ids=["ai_resume_recommendations"])
+    )
+
+    assert result.status == "failed"
+    assert result.pages_failed == 1
+    assert result.errors[0].error_code == "hh_authenticated_profile_not_confirmed"
+
+
+@pytest.mark.anyio
+async def test_mixed_transport_deduplicates_and_preserves_provenance() -> None:
+    profiles = [
+        profile(
+            "ai_resume_recommendations",
+            source_type=SearchProfileSourceType.RESUME_RECOMMENDATIONS,
+            max_pages=1,
+        ),
+        profile("python_expanded_search", order=20, max_pages=1),
+        profile("alt_opportunities", order=30, max_pages=1),
+    ]
+    profiles[-1].track = SearchProfileTrack.ALTERNATIVE
+    fake_search = FakeSearchService(
+        {
+            ("python_expanded_search", "default", 0): response(vacancy("1"), vacancy("2"), count=2),
+            ("alt_opportunities", "default", 0): response(vacancy("2"), vacancy("3"), count=2),
+        }
+    )
+    fake_authenticated = FakeAuthenticatedSearchService(
+        {
+            ("ai_resume_recommendations", 0): authenticated_page(
+                "ai_resume_recommendations",
+                0,
+                vacancy("1"),
+                count=100,
+            )
+        }
+    )
+
+    result = await service(fake_search, profiles, fake_authenticated).collect(HHSearchCollectionRequest())
+
+    assert result.status == "succeeded"
+    assert result.raw_vacancy_count == 5
+    assert result.unique_vacancy_count == 3
+    assert result.duplicate_count == 2
+    assert result.vacancies[0].external_id == "1"
+    assert result.vacancies[0].provenance.profile_ids == ["ai_resume_recommendations", "python_expanded_search"]
+    assert result.vacancies[1].provenance.profile_ids == ["python_expanded_search", "alt_opportunities"]
+    assert result.vacancies[1].provenance.tracks == [SearchProfileTrack.MAIN, SearchProfileTrack.ALTERNATIVE]
+
+
+@pytest.mark.anyio
+async def test_public_profile_451_and_resume_success_produces_completed_with_errors() -> None:
+    profiles = [
+        profile(
+            "ai_resume_recommendations",
+            source_type=SearchProfileSourceType.RESUME_RECOMMENDATIONS,
+            max_pages=1,
+        ),
+        profile("python_expanded_search", order=20, max_pages=1),
+    ]
+    fake_search = FakeSearchService(
+        {
+            ("python_expanded_search", "default", 0): HHHTTPError("unavailable for legal reasons", status_code=451),
+        }
+    )
+    fake_authenticated = FakeAuthenticatedSearchService(
+        {
+            ("ai_resume_recommendations", 0): authenticated_page(
+                "ai_resume_recommendations",
+                0,
+                vacancy("1"),
+                count=100,
+            )
+        }
+    )
+
+    result = await service(fake_search, profiles, fake_authenticated).collect(HHSearchCollectionRequest())
+
+    assert result.status == "completed_with_errors"
+    assert result.unique_vacancy_count == 1
+    assert result.errors[0].error_code == "hh_http_error"
+    assert result.errors[0].http_status == 451
 
 
 @pytest.mark.anyio

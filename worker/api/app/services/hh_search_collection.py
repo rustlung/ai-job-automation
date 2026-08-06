@@ -1,6 +1,8 @@
 import logging
 import time
+from dataclasses import dataclass
 
+from app.clients.hh_browser import HHBrowserInvalidUrlError, HHBrowserNavigationError, HHBrowserTimeoutError
 from app.clients.hh import (
     HHConnectionError,
     HHHTTPError,
@@ -21,10 +23,18 @@ from app.schemas.hh_collection import (
     HHSearchProfileStatus,
     HHSearchQueryVariantResult,
     HHSearchStopReason,
+    HHSearchTransport,
     HHSearchVacancyProvenance,
     SearchProfile,
     SearchProfileSourceType,
     SearchQueryVariant,
+)
+from app.services.hh_auth_state import HHAuthStateInvalidError, HHAuthStateMissingError
+from app.services.hh_authenticated_search import (
+    HHAuthenticatedProfileNotConfirmedError,
+    HHAuthenticatedSearchParserError,
+    HHAuthenticatedSearchPreviewService,
+    HHBrowserBusyError,
 )
 from app.services.hh_search import HHSearchService
 from app.services.hh_search_profiles import (
@@ -39,6 +49,22 @@ logger = logging.getLogger(__name__)
 
 RESUME_QUERY_VARIANT_ID = "resume_recommendations"
 DEFAULT_QUERY_VARIANT_ID = "default"
+
+
+@dataclass(frozen=True)
+class HHCollectedPage:
+    transport: HHSearchTransport
+    response: HHSearchPreviewResponse
+    duration_ms: int
+    final_hostname: str | None = None
+    final_path: str | None = None
+    authenticated: bool | None = None
+    resume_context_confirmed: bool | None = None
+    initial_vacancy_count: int | None = None
+    final_vacancy_count: int | None = None
+    stabilization_iterations: int | None = None
+    stabilization_duration_ms: int | None = None
+    stabilization_status: str | None = None
 
 
 class HHSearchCollectionErrorBase(Exception):
@@ -62,11 +88,13 @@ class HHSearchCollectionService:
         deduplication_service: VacancyDeduplicationService,
         profile_registry: HHSearchProfileRegistry,
         max_raw_vacancies: int,
+        authenticated_search_service: HHAuthenticatedSearchPreviewService | None = None,
     ) -> None:
         self.search_service = search_service
         self.deduplication_service = deduplication_service
         self.profile_registry = profile_registry
         self.max_raw_vacancies = max_raw_vacancies
+        self.authenticated_search_service = authenticated_search_service
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "HHSearchCollectionService":
@@ -75,6 +103,7 @@ class HHSearchCollectionService:
             deduplication_service=VacancyDeduplicationService(),
             profile_registry=HHSearchProfileRegistry(settings),
             max_raw_vacancies=settings.hh_collection_max_raw_vacancies,
+            authenticated_search_service=HHAuthenticatedSearchPreviewService.from_settings(settings),
         )
 
     async def collect(self, request: HHSearchCollectionRequest) -> HHSearchCollectionResult:
@@ -270,6 +299,7 @@ class HHSearchCollectionService:
         started_at = time.perf_counter()
         variant_id = self._variant_id(profile, variant)
         max_pages = self.profile_registry.max_pages_for(profile, max_pages_override, variant)
+        transport = self._transport_for_profile(profile)
         variant_errors: list[HHSearchCollectionError] = []
         variant_identities: set[VacancyIdentity] = set()
         previous_page_identities: set[VacancyIdentity] | None = None
@@ -280,11 +310,14 @@ class HHSearchCollectionService:
         stop_reason: HHSearchStopReason | None = None
 
         logger.info(
-            "hh_query_variant_started run_id=%s profile_id=%s query_variant_id=%s track=%s max_pages=%s",
+            "hh_query_variant_started run_id=%s profile_id=%s query_variant_id=%s track=%s source_type=%s "
+            "transport=%s max_pages=%s",
             run_id,
             profile.id,
             variant_id,
             profile.track.value,
+            profile.source_type.value,
+            transport.value,
             max_pages,
         )
 
@@ -305,36 +338,77 @@ class HHSearchCollectionService:
                 stop_reason = HHSearchStopReason.PAGE_ERROR
                 pages_requested += 1
                 pages_failed += 1
-                self._append_page_result(page_results, profile.id, variant_id, page, HHSearchProfileStatus.FAILED, 0, error, stop_reason)
+                self._append_page_result(
+                    page_results,
+                    profile.id,
+                    variant_id,
+                    page,
+                    HHSearchProfileStatus.FAILED,
+                    transport,
+                    0,
+                    error,
+                    stop_reason,
+                )
                 break
 
             pages_requested += 1
             logger.info(
-                "hh_page_fetch_started run_id=%s profile_id=%s query_variant_id=%s track=%s page=%s hostname=%s path=%s",
+                "hh_page_fetch_started run_id=%s profile_id=%s query_variant_id=%s track=%s source_type=%s "
+                "transport=%s page=%s hostname=%s path=%s",
                 run_id,
                 profile.id,
                 variant_id,
                 profile.track.value,
+                profile.source_type.value,
+                transport.value,
                 page,
                 hostname,
                 path,
             )
             try:
-                response = await self.search_service.preview_search(url)
-            except (HHTimeoutError, HHConnectionError, HHHTTPError, HHUnexpectedContentError, HHResponseTooLargeError) as exc:
+                collected_page = await self._fetch_page(profile, variant_id, page, url, transport)
+                response = collected_page.response
+            except (
+                HHTimeoutError,
+                HHConnectionError,
+                HHHTTPError,
+                HHUnexpectedContentError,
+                HHResponseTooLargeError,
+                HHAuthStateMissingError,
+                HHAuthStateInvalidError,
+                HHAuthenticatedProfileNotConfirmedError,
+                HHAuthenticatedSearchParserError,
+                HHBrowserBusyError,
+                HHBrowserTimeoutError,
+                HHBrowserNavigationError,
+                HHBrowserInvalidUrlError,
+            ) as exc:
                 pages_failed += 1
-                error = self._page_error(profile.id, variant_id, page, exc)
+                error = self._page_error(profile.id, variant_id, page, exc, transport)
                 errors.append(error)
                 profile_errors.append(error)
                 variant_errors.append(error)
                 stop_reason = HHSearchStopReason.PAGE_ERROR
-                self._append_page_result(page_results, profile.id, variant_id, page, HHSearchProfileStatus.FAILED, 0, error, stop_reason)
+                self._append_page_result(
+                    page_results,
+                    profile.id,
+                    variant_id,
+                    page,
+                    HHSearchProfileStatus.FAILED,
+                    transport,
+                    0,
+                    error,
+                    stop_reason,
+                )
                 logger.warning(
-                    "hh_page_failed run_id=%s profile_id=%s query_variant_id=%s track=%s page=%s error_code=%s http_status=%s",
+                    "hh_page_failed run_id=%s profile_id=%s query_variant_id=%s track=%s source_type=%s transport=%s "
+                    "page=%s error_code=%s http_status=%s",
                     run_id,
                     profile.id,
                     variant_id,
                     profile.track.value,
+                    profile.source_type.value,
+                    transport.value,
                     page,
                     error.error_code,
                     error.http_status,
@@ -345,14 +419,27 @@ class HHSearchCollectionService:
             if page_identity_set and page_identity_set == previous_page_identities:
                 pages_succeeded += 1
                 stop_reason = HHSearchStopReason.REPEATED_PAGE_IDENTITY_SET
-                self._append_page_result(page_results, profile.id, variant_id, page, HHSearchProfileStatus.SUCCEEDED, 0, stop_reason=stop_reason)
+                self._append_page_result(
+                    page_results,
+                    profile.id,
+                    variant_id,
+                    page,
+                    HHSearchProfileStatus.SUCCEEDED,
+                    transport,
+                    0,
+                    stop_reason=stop_reason,
+                    collected_page=collected_page,
+                )
                 logger.info(
-                    "hh_page_collected run_id=%s profile_id=%s query_variant_id=%s track=%s page=%s raw_vacancy_count=0 "
+                    "hh_page_collected run_id=%s profile_id=%s query_variant_id=%s track=%s source_type=%s "
+                    "transport=%s page=%s raw_vacancy_count=0 "
                     "stop_reason=%s",
                     run_id,
                     profile.id,
                     variant_id,
                     profile.track.value,
+                    profile.source_type.value,
+                    transport.value,
                     page,
                     stop_reason.value,
                 )
@@ -384,18 +471,24 @@ class HHSearchCollectionService:
                 variant_id,
                 page,
                 HHSearchProfileStatus.SUCCEEDED,
+                transport,
                 len(vacancies),
                 stop_reason=stop_reason if stop_reason in {HHSearchStopReason.EMPTY_PAGE, HHSearchStopReason.COLLECTION_LIMIT_REACHED, HHSearchStopReason.MAX_PAGES_REACHED} else None,
+                collected_page=collected_page,
             )
             logger.info(
-                "hh_page_collected run_id=%s profile_id=%s query_variant_id=%s track=%s page=%s raw_vacancy_count=%s "
-                "stop_reason=%s",
+                "hh_page_collected run_id=%s profile_id=%s query_variant_id=%s track=%s source_type=%s transport=%s "
+                "page=%s raw_vacancy_count=%s authenticated=%s resume_context_confirmed=%s stop_reason=%s",
                 run_id,
                 profile.id,
                 variant_id,
                 profile.track.value,
+                profile.source_type.value,
+                transport.value,
                 page,
                 len(vacancies),
+                collected_page.authenticated,
+                collected_page.resume_context_confirmed,
                 stop_reason.value if stop_reason else "",
             )
             if stop_reason is not None:
@@ -403,12 +496,15 @@ class HHSearchCollectionService:
 
         status = self._variant_status(pages_succeeded, pages_failed)
         logger.info(
-            "hh_query_variant_completed run_id=%s profile_id=%s query_variant_id=%s track=%s status=%s "
+            "hh_query_variant_completed run_id=%s profile_id=%s query_variant_id=%s track=%s source_type=%s "
+            "transport=%s status=%s "
             "stop_reason=%s raw_vacancy_count=%s pages_succeeded=%s pages_failed=%s duration_ms=%s",
             run_id,
             profile.id,
             variant_id,
             profile.track.value,
+            profile.source_type.value,
+            transport.value,
             status.value,
             stop_reason.value if stop_reason else "",
             raw_count,
@@ -438,6 +534,53 @@ class HHSearchCollectionService:
         if profile.query:
             return [SearchQueryVariant(id=DEFAULT_QUERY_VARIANT_ID, query=profile.query, order=0)]
         return []
+
+    async def _fetch_page(
+        self,
+        profile: SearchProfile,
+        variant_id: str,
+        page: int,
+        url: str,
+        transport: HHSearchTransport,
+    ) -> HHCollectedPage:
+        started_at = time.perf_counter()
+        if transport == HHSearchTransport.HTTPX:
+            response = await self.search_service.preview_search(url)
+            hostname, path = self.profile_registry.safe_url_parts(url)
+            return HHCollectedPage(
+                transport=transport,
+                response=response,
+                duration_ms=self._duration_ms(started_at),
+                final_hostname=hostname,
+                final_path=path,
+            )
+
+        if self.authenticated_search_service is None:
+            raise HHAuthenticatedSearchParserError("HH authenticated search service is not configured")
+
+        authenticated_page = await self.authenticated_search_service.fetch_page_with_browser_slot(
+            profile.id,
+            page,
+            url,
+            started_at=started_at,
+        )
+        return HHCollectedPage(
+            transport=transport,
+            response=HHSearchPreviewResponse(
+                count=len(authenticated_page.vacancies),
+                vacancies=authenticated_page.vacancies,
+            ),
+            duration_ms=authenticated_page.duration_ms,
+            final_hostname=authenticated_page.browser_page.final_hostname,
+            final_path=authenticated_page.browser_page.final_path,
+            authenticated=authenticated_page.authenticated,
+            resume_context_confirmed=authenticated_page.resume_context_confirmed,
+            initial_vacancy_count=authenticated_page.browser_page.initial_vacancy_count,
+            final_vacancy_count=authenticated_page.browser_page.final_vacancy_count,
+            stabilization_iterations=authenticated_page.browser_page.stabilization_iterations,
+            stabilization_duration_ms=authenticated_page.browser_page.stabilization_duration_ms,
+            stabilization_status=authenticated_page.browser_page.stabilization_status,
+        )
 
     def _apply_raw_limit(self, response: HHSearchPreviewResponse, current_raw_count: int) -> list[HHSearchVacancy]:
         remaining = max(self.max_raw_vacancies - current_raw_count, 0)
@@ -549,9 +692,11 @@ class HHSearchCollectionService:
         query_variant_id: str,
         page: int,
         status: HHSearchProfileStatus,
+        transport: HHSearchTransport,
         raw_vacancy_count: int,
         error: HHSearchCollectionError | None = None,
         stop_reason: HHSearchStopReason | None = None,
+        collected_page: HHCollectedPage | None = None,
     ) -> None:
         page_results.append(
             HHSearchPageResult(
@@ -559,10 +704,21 @@ class HHSearchCollectionService:
                 query_variant_id=query_variant_id,
                 page=page,
                 status=status,
+                transport=transport,
                 raw_vacancy_count=raw_vacancy_count,
                 error_code=error.error_code if error else None,
                 http_status=error.http_status if error else None,
                 stop_reason=stop_reason,
+                final_hostname=collected_page.final_hostname if collected_page else None,
+                final_path=collected_page.final_path if collected_page else None,
+                authenticated=collected_page.authenticated if collected_page else None,
+                resume_context_confirmed=collected_page.resume_context_confirmed if collected_page else None,
+                initial_vacancy_count=collected_page.initial_vacancy_count if collected_page else None,
+                final_vacancy_count=collected_page.final_vacancy_count if collected_page else None,
+                stabilization_iterations=collected_page.stabilization_iterations if collected_page else None,
+                stabilization_duration_ms=collected_page.stabilization_duration_ms if collected_page else None,
+                stabilization_status=collected_page.stabilization_status if collected_page else None,
+                duration_ms=collected_page.duration_ms if collected_page else None,
             )
         )
 
@@ -587,7 +743,13 @@ class HHSearchCollectionService:
         variant_errors.append(error)
 
     @staticmethod
-    def _page_error(profile_id: str, query_variant_id: str, page: int, exc: Exception) -> HHSearchCollectionError:
+    def _page_error(
+        profile_id: str,
+        query_variant_id: str,
+        page: int,
+        exc: Exception,
+        transport: HHSearchTransport,
+    ) -> HHSearchCollectionError:
         if isinstance(exc, HHTimeoutError):
             return HHSearchCollectionError(
                 profile_id=profile_id,
@@ -621,6 +783,26 @@ class HHSearchCollectionService:
                 error_code="hh_response_too_large",
                 message="HH response is too large",
             )
+        if isinstance(
+            exc,
+            (
+                HHAuthStateMissingError,
+                HHAuthStateInvalidError,
+                HHAuthenticatedProfileNotConfirmedError,
+                HHAuthenticatedSearchParserError,
+                HHBrowserBusyError,
+                HHBrowserTimeoutError,
+                HHBrowserNavigationError,
+                HHBrowserInvalidUrlError,
+            ),
+        ):
+            return HHSearchCollectionError(
+                profile_id=profile_id,
+                query_variant_id=query_variant_id,
+                page=page,
+                error_code=getattr(exc, "error_code", "hh_authenticated_browser_error"),
+                message=f"HH {transport.value} page failed",
+            )
         return HHSearchCollectionError(
             profile_id=profile_id,
             query_variant_id=query_variant_id,
@@ -628,6 +810,14 @@ class HHSearchCollectionService:
             error_code="hh_unexpected_content",
             message="HH returned unexpected content",
         )
+
+    @staticmethod
+    def _transport_for_profile(profile: SearchProfile) -> HHSearchTransport:
+        if profile.source_type == SearchProfileSourceType.RESUME_RECOMMENDATIONS:
+            return HHSearchTransport.AUTHENTICATED_BROWSER
+        if profile.source_type == SearchProfileSourceType.EXPANDED_SEARCH:
+            return HHSearchTransport.HTTPX
+        raise ValueError("Unknown HH search profile source type")
 
     @staticmethod
     def _error(
