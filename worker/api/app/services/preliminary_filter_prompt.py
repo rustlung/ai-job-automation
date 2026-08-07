@@ -4,12 +4,10 @@ from typing import Any
 from app.schemas.hh_collection import HHSearchCollectedVacancy
 from app.schemas.preliminary_filter import (
     PreliminaryDecision,
-    PreliminaryReasonCode,
     PreliminaryRecommendedTrack,
-    PreliminaryRiskCode,
 )
 
-PRELIMINARY_VACANCY_FILTER_PROMPT_VERSION = "v2"
+PRELIMINARY_VACANCY_FILTER_PROMPT_VERSION = "v3"
 
 PRELIMINARY_VACANCY_FILTER_RESPONSE_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -19,32 +17,20 @@ PRELIMINARY_VACANCY_FILTER_RESPONSE_SCHEMA: dict[str, Any] = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "external_id": {"type": "string", "minLength": 1},
+                    "item_id": {"type": "integer", "minimum": 1},
                     "decision": {"type": "string", "enum": [item.value for item in PreliminaryDecision]},
                     "recommended_track": {
                         "type": "string",
                         "enum": [item.value for item in PreliminaryRecommendedTrack],
                     },
                     "score": {"type": "integer", "minimum": 0, "maximum": 100},
-                    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-                    "reason_codes": {
-                        "type": "array",
-                        "items": {"type": "string", "enum": [item.value for item in PreliminaryReasonCode]},
-                    },
-                    "risk_codes": {
-                        "type": "array",
-                        "items": {"type": "string", "enum": [item.value for item in PreliminaryRiskCode]},
-                    },
                     "short_reason": {"type": "string", "minLength": 1, "maxLength": 300},
                 },
                 "required": [
-                    "external_id",
+                    "item_id",
                     "decision",
                     "recommended_track",
                     "score",
-                    "confidence",
-                    "reason_codes",
-                    "risk_codes",
                     "short_reason",
                 ],
                 "additionalProperties": False,
@@ -58,78 +44,43 @@ PRELIMINARY_VACANCY_FILTER_RESPONSE_SCHEMA: dict[str, Any] = {
 SYSTEM_PROMPT = """
 Ты выполняешь предварительный local AI filter вакансий по кратким карточкам HH.
 
-Цель: высокий recall. Каждую вакансию независимо проверяй на совпадение хотя бы с ОДНИМ
-разрешённым направлением. Не начинай с вопроса "это AI engineering?" и не оценивай Python,
-QA, integration или product роли относительно pure AI engineering. Если данных недостаточно
-или есть сомнение, выбирай uncertain, а не reject. Не назначай P1/P2/P3: это preliminary
-relevance score, а не финальный рейтинг. Не домысливай факты, которых нет во входных данных.
-Верни строго JSON по schema, один результат для каждого external_id.
+Верни строго JSON по schema. Для связи используй только item_id из входа.
+Не возвращай external_id, url, profile_ids, query_variant_ids, confidence, reason_codes или risk_codes.
 
-MAIN TRACK состоит из нескольких равноправных направлений. Вакансия НЕ обязана одновременно
-относиться и к AI, и к Python.
+Цель: высокий recall и простая предварительная маршрутизация, не финальная оценка.
+Если сомневаешься, выбирай uncertain, а не reject. Не назначай P1/P2/P3.
 
-A. AI / Automation: AI Product Builder, AI Automation Engineer, AI Integration Engineer,
-applied AI Engineer, LLM integrations, AI agents, prompt engineering, AI workflows, n8n,
-Dify, Flowise, internal AI tools, AI-powered business automation, AI MVP, orchestration,
-evals, RAG/integrations при разумном уровне.
+MAIN:
+A. AI: AI automation, AI integration, LLM, AI agents, prompt engineering,
+n8n/Dify/Flowise, AI workflows, internal AI tools, applied AI product/integration work.
+B. Python: Python backend, FastAPI, API, integrations, PostgreSQL/SQL, Docker,
+bots, parsers, Python automation, technical process automation, internal services.
+Вакансия не обязана содержать одновременно AI и Python.
 
-B. Python / Backend: Python Developer, Python Backend, FastAPI, REST API, backend services,
-integrations, SQL/PostgreSQL, Docker, Telegram bots, internal services, parsers, data processing.
+ALT: QA, API/backend testing, integration testing, data analysis, system/business
+analysis in IT, AI trainer/evaluator, technical implementation roles, technical
+support only when engineering-heavy.
 
-C. Python / Technical Automation: automation scripts, process automation, Python automation,
-integrations, scraping/parsing, internal tooling, technical process automation, API automation.
+UNCERTAIN: snippets недостаточны или роль неоднозначна.
 
-D. Technical Product / Integration: technical AI product roles, AI project/product roles
-с технической составляющей, implementation/integration roles, MVP creation, systems/integration
-roles с Python/API/AI/automation context.
+REJECT только для очевидного mismatch: telephone/call-center support, sales,
+accounting, courier/operator, ordinary nontechnical work, teaching programming
+to children, student-work writing, other clearly unrelated roles.
 
-ALT TRACK является реальным допустимым track, а не почти-reject: Manual QA, QA Engineer,
-backend/API testing, integration testing, data analyst, junior data engineer, system analyst,
-business analyst в IT, product analyst, AI trainer, AI evaluator, LLM response evaluator,
-product linguist для AI/chatbots, technical implementation specialist, technical support
-с инженерной составляющей. При явном совпадении с ALT выбирай decision=keep_alt, а не reject
-только из-за отсутствия AI/Python developer/software engineer.
+Важно: 1-3 года опыта, commercial experience и Middle не являются automatic reject.
+location city alone is not negative. is_remote=True is sufficient positive remote signal.
+Office mismatch только если snippets явно требуют office/hybrid outside Samara.
 
-География: vacancy.location — это поле HH, а не доказательство обязательного офиса. Search profiles
-уже ориентированы на удалённые вакансии, поэтому для search-card preliminary filter считай географию
-подходящей по умолчанию. is_remote=True полностью удовлетворяет remote requirement, даже если
-location=Москва, Балашиха или Санкт-Петербург. is_remote=False само по себе не является причиной
-reject/uncertain. risk_code=office_outside_samara ставь только если snippets прямо говорят:
-"только офис", "работа только из офиса", "обязательное посещение офиса" или обязательный гибрид,
-и этот офис явно не в Самаре. Не делай inference из одного location.
-
-Experience: не reject только из-за "1-3 года", "от 1 года", "2 года", "коммерческий опыт",
-middle или middle+. Это risk, но релевантная вакансия должна оставаться keep_main или uncertain.
-Reject по seniority допустим только при явном strong mismatch: Senior, Lead, Head, Tech Lead,
-руководитель крупной команды, высокая архитектурная ответственность, явно 5+ лет и senior duties.
-
-Support: forced reject только для call-центра, входящих/исходящих телефонных звонков, телефонной
-клиентской поддержки, оператора call-центра, cold sales. Technical Support может быть keep_alt
-или uncertain, если есть Linux, SQL, API, HTTP, Docker, logs, integrations, scripting,
-troubleshooting, hosting/infrastructure, B2B technical product.
-
-Product/Project/Coordinator: не reject автоматически. AI project manager/coordinator с Claude,
-Cursor, AI Coding, AI implementation, automation, integrations, MVP или system analysis — минимум
-uncertain, keep_main возможен при технических задачах. Generic non-technical PM может быть reject.
-
-Score должен отражать степень релевантности, а не бинарный verdict:
-85-100 очень сильное main совпадение; 70-84 хорошее main совпадение с рисками; 55-69 main/alt
-candidate, нужен full description; 40-54 uncertain; 20-39 слабый кандидат; 0-19 очевидно
-нерелевантная вакансия. AI automation+n8n, Python automation+SQL, QA/API/SQL не должны получать
-score 0-10 только из-за отсутствия pure AI engineering.
-
-Reject только для очевидно нерелевантных ролей: телефонная поддержка/call-центр, холодные продажи,
-бухгалтерия, документооборот без IT, нетехнический оператор, преподавание детям, студенческие
-работы, курьер, релокация, обязательный офис вне Самары, явно нерелевантный стек.
-
-short_reason пиши на русском, без markdown, до 300 символов. Не цитируй snippets целиком.
+score: 85-100 strong main, 70-84 good main, 55-69 main/alt candidate,
+40-54 uncertain, 20-39 weak, 0-19 obvious reject.
+short_reason пиши на русском, без markdown, до 300 символов.
 """.strip()
 
 
 def build_preliminary_filter_messages(items: list[HHSearchCollectedVacancy]) -> list[dict[str, str]]:
     payload = {
         "prompt_version": PRELIMINARY_VACANCY_FILTER_PROMPT_VERSION,
-        "items": [_vacancy_payload(item) for item in items],
+        "items": [_vacancy_payload(index, item) for index, item in enumerate(items, start=1)],
     }
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -137,20 +88,15 @@ def build_preliminary_filter_messages(items: list[HHSearchCollectedVacancy]) -> 
     ]
 
 
-def _vacancy_payload(item: HHSearchCollectedVacancy) -> dict[str, object]:
+def _vacancy_payload(item_id: int, item: HHSearchCollectedVacancy) -> dict[str, object]:
     return {
-        "external_id": item.external_id,
+        "item_id": item_id,
         "title": item.title,
-        "company": item.company,
         "location": item.location,
         "salary_text": item.salary_text,
         "is_remote": item.is_remote,
         "responsibility_snippet": _truncate(item.responsibility_snippet),
         "requirement_snippet": _truncate(item.requirement_snippet),
-        "profile_ids": item.provenance.profile_ids,
-        "query_variant_ids": item.provenance.query_variant_ids,
-        "tracks": [track.value for track in item.provenance.tracks],
-        "occurrence_count": item.provenance.occurrence_count,
     }
 
 

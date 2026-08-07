@@ -32,26 +32,54 @@ def test_prompt_contains_ids_without_urls_or_secret_fields() -> None:
     combined = str(messages)
 
     assert payload["prompt_version"] == PRELIMINARY_VACANCY_FILTER_PROMPT_VERSION
-    assert payload["items"][0]["external_id"] == "123"
+    assert payload["items"][0]["item_id"] == 1
+    assert "external_id" not in payload["items"][0]
+    assert "company" not in payload["items"][0]
+    assert "profile_ids" not in payload["items"][0]
+    assert "query_variant_ids" not in payload["items"][0]
     assert "https://hh.ru/vacancy/123" not in combined
+    assert "123" not in messages[1]["content"]
     assert "cookie" not in combined.lower()
     assert "storage_state" not in combined
     assert "search_session" not in combined
     assert "resume=" not in combined
 
 
-def test_prompt_v2_describes_independent_main_alt_and_location_rules() -> None:
+def test_prompt_v3_is_compact_and_uses_item_id_contract() -> None:
     messages = build_preliminary_filter_messages([])
     system_prompt = messages[0]["content"]
 
-    assert PRELIMINARY_VACANCY_FILTER_PROMPT_VERSION == "v2"
-    assert "хотя бы с ОДНИМ" in system_prompt
-    assert "Вакансия НЕ обязана одновременно" in system_prompt
-    assert "Python / Backend" in system_prompt
-    assert "ALT TRACK является реальным допустимым track" in system_prompt
-    assert "location=Москва" in system_prompt
-    assert "Не делай inference из одного location" in system_prompt
-    assert "AI automation+n8n" in system_prompt
+    assert PRELIMINARY_VACANCY_FILTER_PROMPT_VERSION == "v3"
+    assert "используй только item_id" in system_prompt
+    assert "Не возвращай external_id" in system_prompt
+    assert "Вакансия не обязана содержать одновременно AI и Python" in system_prompt
+    assert "location city alone is not negative" in system_prompt
+    assert "teaching programming" in system_prompt
+
+
+def test_prompt_assigns_sequential_local_item_ids() -> None:
+    first = HHSearchCollectedVacancy(
+        external_id="900000001",
+        url="https://hh.ru/vacancy/900000001",
+        title="Python Backend Developer",
+        company="First",
+        is_remote=True,
+        provenance=HHSearchVacancyProvenance(
+            profile_ids=["python_expanded_search"],
+            query_variant_ids=["python_backend"],
+            tracks=[SearchProfileTrack.MAIN],
+            first_profile_id="python_expanded_search",
+            first_query_variant_id="python_backend",
+            occurrence_count=1,
+        ),
+    )
+    second = first.model_copy(update={"external_id": "900000002", "url": "https://hh.ru/vacancy/900000002"})
+
+    payload = json.loads(build_preliminary_filter_messages([first, second])[1]["content"])
+
+    assert [item["item_id"] for item in payload["items"]] == [1, 2]
+    assert "900000001" not in str(payload)
+    assert "900000002" not in str(payload)
 
 
 def test_response_schema_requires_items() -> None:

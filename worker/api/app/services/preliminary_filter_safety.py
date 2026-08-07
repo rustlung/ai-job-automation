@@ -20,6 +20,11 @@ FORCED_REJECT_PATTERNS = (
     ("бухгалтер", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
     ("курьер", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
     ("преподаватель дет", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
+    ("преподаватель программирования для детей", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
+    ("педагог по программированию", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
+    ("учитель программирования для детей", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
+    ("детская онлайн-школа", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
+    ("детской онлайн-школ", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
     ("студенческих работ", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
     ("автор работ", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
 )

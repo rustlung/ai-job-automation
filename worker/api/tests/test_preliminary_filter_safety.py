@@ -47,7 +47,7 @@ def assessment(
         risk_codes=risks or [],
         short_reason="Тестовая оценка.",
         model="qwen3:4b-instruct",
-        prompt_version="v2",
+        prompt_version="v3",
     )
 
 
@@ -59,6 +59,9 @@ def assessment(
         "Менеджер по холодным продажам",
         "Бухгалтер",
         "Преподаватель детских курсов",
+        "Преподаватель программирования для детей",
+        "Педагог по программированию",
+        "Учитель программирования для детей",
         "Автор студенческих работ",
     ],
 )
@@ -67,6 +70,21 @@ def test_obvious_irrelevant_roles_are_forced_reject(title: str) -> None:
 
     assert changed is True
     assert result.decision == PreliminaryDecision.REJECT
+
+
+def test_childrens_online_school_programming_teacher_is_forced_reject() -> None:
+    result, changed = apply_preliminary_safety_overrides(
+        vacancy(
+            "Педагог по программированию в онлайн-школу",
+            "Проводить занятия по программированию для детей",
+            "Опыт работы с детьми",
+        ),
+        assessment(PreliminaryDecision.KEEP_MAIN),
+    )
+
+    assert changed is True
+    assert result.decision == PreliminaryDecision.REJECT
+    assert result.recommended_track == PreliminaryRecommendedTrack.NONE
 
 
 def test_chat_support_without_technical_markers_does_not_become_keep_main() -> None:

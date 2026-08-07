@@ -17,9 +17,7 @@ from app.schemas.preliminary_filter import (
     PreliminaryFilterError,
     PreliminaryFilterStats,
     PreliminaryFilterStatus,
-    PreliminaryReasonCode,
     PreliminaryRecommendedTrack,
-    PreliminaryRiskCode,
     PreliminaryVacancyAssessment,
 )
 from app.services.hh_search_collection import HHSearchCollectionService
@@ -53,20 +51,11 @@ class PreliminaryFilterResponseValidationError(OllamaResponseError):
 class _ModelAssessmentItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    external_id: str = Field(min_length=1, max_length=64)
+    item_id: int = Field(ge=1)
     decision: PreliminaryDecision
     recommended_track: PreliminaryRecommendedTrack
     score: int = Field(ge=0, le=100)
-    confidence: float = Field(ge=0, le=1)
-    reason_codes: list[PreliminaryReasonCode] = Field(default_factory=list)
-    risk_codes: list[PreliminaryRiskCode] = Field(default_factory=list)
     short_reason: str = Field(min_length=1, max_length=300)
-
-
-class _ModelBatchResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    items: list[_ModelAssessmentItem]
 
 
 class _BatchValidationDiagnostics(BaseModel):
@@ -239,17 +228,17 @@ class PreliminaryVacancyFilterService:
         )
         diagnostics = _BatchValidationDiagnostics(expected_item_count=len(batch))
         raw_items = self._extract_model_items(raw_result, diagnostics)
-        batch_by_id = {item.external_id: item for item in batch}
-        seen: set[str] = set()
+        batch_by_item_id = {item_id: vacancy for item_id, vacancy in enumerate(batch, start=1)}
+        seen: set[int] = set()
         errors: list[PreliminaryFilterError] = []
-        result_by_id: dict[str, PreliminaryVacancyAssessment] = {}
+        result_by_item_id: dict[int, PreliminaryVacancyAssessment] = {}
 
         for raw_item in raw_items:
             model_item, item_errors = self._parse_model_item(batch_index, raw_item, diagnostics)
             errors.extend(item_errors)
             if model_item is None:
                 continue
-            if model_item.external_id not in batch_by_id:
+            if model_item.item_id not in batch_by_item_id:
                 diagnostics.extra_item_count += 1
                 errors.append(
                     PreliminaryFilterError(
@@ -260,7 +249,7 @@ class PreliminaryVacancyFilterService:
                     )
                 )
                 continue
-            if model_item.external_id in seen:
+            if model_item.item_id in seen:
                 diagnostics.duplicate_item_count += 1
                 errors.append(
                     PreliminaryFilterError(
@@ -271,16 +260,17 @@ class PreliminaryVacancyFilterService:
                     )
                 )
                 continue
-            seen.add(model_item.external_id)
-            result_by_id[model_item.external_id] = PreliminaryVacancyAssessment(
-                source=batch_by_id[model_item.external_id].source,
-                external_id=model_item.external_id,
+            seen.add(model_item.item_id)
+            vacancy = batch_by_item_id[model_item.item_id]
+            result_by_item_id[model_item.item_id] = PreliminaryVacancyAssessment(
+                source=vacancy.source,
+                external_id=vacancy.external_id,
                 decision=model_item.decision,
                 recommended_track=model_item.recommended_track,
                 score=model_item.score,
-                confidence=model_item.confidence,
-                reason_codes=model_item.reason_codes,
-                risk_codes=model_item.risk_codes,
+                confidence=0.0,
+                reason_codes=[],
+                risk_codes=[],
                 short_reason=model_item.short_reason,
                 model=self.ollama_client.model,
                 prompt_version=self.prompt_version,
@@ -289,8 +279,8 @@ class PreliminaryVacancyFilterService:
         wrapped: list[PreliminaryFilteredVacancy] = []
         fallback_count = 0
         override_count = 0
-        for vacancy in batch:
-            assessment = result_by_id.get(vacancy.external_id)
+        for item_id, vacancy in batch_by_item_id.items():
+            assessment = result_by_item_id.get(item_id)
             if assessment is None:
                 diagnostics.missing_item_count += 1
                 fallback_count += 1
@@ -369,16 +359,14 @@ class PreliminaryVacancyFilterService:
             ]
 
         sanitized_item = dict(raw_item)
-        code_errors = self._sanitize_code_lists(batch_index, sanitized_item, diagnostics)
         try:
-            return _ModelAssessmentItem.model_validate(sanitized_item), code_errors
+            return _ModelAssessmentItem.model_validate(sanitized_item), []
         except ValidationError as exc:
             error_type, field_name, enum_category = self._classify_validation_error(exc)
             diagnostics.validation_error_type = error_type
             diagnostics.invalid_field_name = field_name
             diagnostics.invalid_enum_value_category = enum_category
             return None, [
-                *code_errors,
                 PreliminaryFilterError(
                     batch_index=batch_index,
                     error_code="invalid_model_item",
@@ -392,58 +380,6 @@ class PreliminaryVacancyFilterService:
                 ),
             ]
 
-    def _sanitize_code_lists(
-        self,
-        batch_index: int,
-        raw_item: dict[str, Any],
-        diagnostics: _BatchValidationDiagnostics,
-    ) -> list[PreliminaryFilterError]:
-        errors: list[PreliminaryFilterError] = []
-        reason_count = self._filter_unknown_codes(raw_item, "reason_codes", {item.value for item in PreliminaryReasonCode})
-        risk_count = self._filter_unknown_codes(raw_item, "risk_codes", {item.value for item in PreliminaryRiskCode})
-
-        if reason_count:
-            diagnostics.unknown_reason_code_count += reason_count
-            errors.append(
-                PreliminaryFilterError(
-                    batch_index=batch_index,
-                    error_code="unknown_reason_code",
-                    message="Local AI returned unknown reason codes; unknown values were ignored",
-                    **self._diagnostic_error_fields(
-                        diagnostics,
-                        validation_error_type="enum",
-                        invalid_field_name="reason_codes",
-                        invalid_enum_value_category="reason_code",
-                    ),
-                )
-            )
-        if risk_count:
-            diagnostics.unknown_risk_code_count += risk_count
-            errors.append(
-                PreliminaryFilterError(
-                    batch_index=batch_index,
-                    error_code="unknown_risk_code",
-                    message="Local AI returned unknown risk codes; unknown values were ignored",
-                    **self._diagnostic_error_fields(
-                        diagnostics,
-                        validation_error_type="enum",
-                        invalid_field_name="risk_codes",
-                        invalid_enum_value_category="risk_code",
-                    ),
-                )
-            )
-        return errors
-
-    @staticmethod
-    def _filter_unknown_codes(raw_item: dict[str, Any], field_name: str, allowed_values: set[str]) -> int:
-        value = raw_item.get(field_name)
-        if not isinstance(value, list):
-            return 0
-        filtered = [item for item in value if isinstance(item, str) and item in allowed_values]
-        unknown_count = len(value) - len(filtered)
-        raw_item[field_name] = filtered
-        return unknown_count
-
     @staticmethod
     def _classify_validation_error(exc: ValidationError) -> tuple[str, str | None, str | None]:
         first_error = exc.errors()[0] if exc.errors() else {}
@@ -455,10 +391,6 @@ class PreliminaryVacancyFilterService:
                 enum_category = "decision"
             elif field_name == "recommended_track":
                 enum_category = "recommended_track"
-            elif field_name == "reason_codes":
-                enum_category = "reason_code"
-            elif field_name == "risk_codes":
-                enum_category = "risk_code"
         return error_type, field_name, enum_category
 
     @staticmethod
