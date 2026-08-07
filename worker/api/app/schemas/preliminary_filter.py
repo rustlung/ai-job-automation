@@ -83,6 +83,17 @@ class PreliminaryFilterError(BaseModel):
     message: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
     batch_index: int | None = Field(default=None, ge=0)
     external_id: str | None = Field(default=None, min_length=1, max_length=64)
+    json_parse_status: str | None = Field(default=None, min_length=1, max_length=32)
+    expected_item_count: int | None = Field(default=None, ge=0)
+    returned_item_count: int | None = Field(default=None, ge=0)
+    validation_error_type: str | None = Field(default=None, min_length=1, max_length=64)
+    invalid_field_name: str | None = Field(default=None, min_length=1, max_length=64)
+    invalid_enum_value_category: str | None = Field(default=None, min_length=1, max_length=64)
+    unknown_reason_code_count: int | None = Field(default=None, ge=0)
+    unknown_risk_code_count: int | None = Field(default=None, ge=0)
+    missing_item_count: int | None = Field(default=None, ge=0)
+    extra_item_count: int | None = Field(default=None, ge=0)
+    duplicate_item_count: int | None = Field(default=None, ge=0)
 
 
 class PreliminaryVacancyAssessment(BaseModel):

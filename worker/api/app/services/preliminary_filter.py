@@ -1,5 +1,6 @@
 import logging
 import time
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -43,6 +44,12 @@ class PreliminaryFilterInputTooLargeError(Exception):
     pass
 
 
+class PreliminaryFilterResponseValidationError(OllamaResponseError):
+    def __init__(self, message: str, diagnostics: "_BatchValidationDiagnostics") -> None:
+        super().__init__(message)
+        self.diagnostics = diagnostics
+
+
 class _ModelAssessmentItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -60,6 +67,20 @@ class _ModelBatchResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[_ModelAssessmentItem]
+
+
+class _BatchValidationDiagnostics(BaseModel):
+    json_parse_status: str = "ok"
+    expected_item_count: int
+    returned_item_count: int = 0
+    validation_error_type: str | None = None
+    invalid_field_name: str | None = None
+    invalid_enum_value_category: str | None = None
+    unknown_reason_code_count: int = 0
+    unknown_risk_code_count: int = 0
+    missing_item_count: int = 0
+    extra_item_count: int = 0
+    duplicate_item_count: int = 0
 
 
 class PreliminaryVacancyFilterService:
@@ -124,11 +145,13 @@ class PreliminaryVacancyFilterService:
             except OllamaError as exc:
                 failed_batch_count += 1
                 error_code = self._error_code(exc)
+                diagnostics = self._diagnostics_from_exception(exc, len(batch))
                 errors.append(
                     PreliminaryFilterError(
                         batch_index=batch_index,
                         error_code=error_code,
                         message="Local AI batch failed; uncertain fallback was applied",
+                        **self._diagnostic_error_fields(diagnostics),
                     )
                 )
                 batch_items = [
@@ -140,12 +163,26 @@ class PreliminaryVacancyFilterService:
                 batch_override_count = 0
                 logger.warning(
                     "preliminary_filter_batch_failed batch_index=%s batch_size=%s model=%s prompt_version=%s "
-                    "error_code=%s",
+                    "error_code=%s json_parse_status=%s expected_item_count=%s returned_item_count=%s "
+                    "validation_error_type=%s invalid_field_name=%s invalid_enum_value_category=%s "
+                    "unknown_reason_code_count=%s unknown_risk_code_count=%s missing_item_count=%s "
+                    "extra_item_count=%s duplicate_item_count=%s",
                     batch_index,
                     len(batch),
                     self.ollama_client.model,
                     self.prompt_version,
                     error_code,
+                    diagnostics.json_parse_status,
+                    diagnostics.expected_item_count,
+                    diagnostics.returned_item_count,
+                    diagnostics.validation_error_type,
+                    diagnostics.invalid_field_name,
+                    diagnostics.invalid_enum_value_category,
+                    diagnostics.unknown_reason_code_count,
+                    diagnostics.unknown_risk_code_count,
+                    diagnostics.missing_item_count,
+                    diagnostics.extra_item_count,
+                    diagnostics.duplicate_item_count,
                 )
 
             items.extend(batch_items)
@@ -200,34 +237,37 @@ class PreliminaryVacancyFilterService:
             messages=build_preliminary_filter_messages(batch),
             response_format=PRELIMINARY_VACANCY_FILTER_RESPONSE_SCHEMA,
         )
-        try:
-            parsed = _ModelBatchResponse.model_validate(raw_result)
-        except ValidationError as exc:
-            raise OllamaResponseError("Preliminary filter response does not match schema") from exc
-
+        diagnostics = _BatchValidationDiagnostics(expected_item_count=len(batch))
+        raw_items = self._extract_model_items(raw_result, diagnostics)
         batch_by_id = {item.external_id: item for item in batch}
         seen: set[str] = set()
         errors: list[PreliminaryFilterError] = []
         result_by_id: dict[str, PreliminaryVacancyAssessment] = {}
 
-        for model_item in parsed.items:
+        for raw_item in raw_items:
+            model_item, item_errors = self._parse_model_item(batch_index, raw_item, diagnostics)
+            errors.extend(item_errors)
+            if model_item is None:
+                continue
             if model_item.external_id not in batch_by_id:
+                diagnostics.extra_item_count += 1
                 errors.append(
                     PreliminaryFilterError(
                         batch_index=batch_index,
-                        external_id=model_item.external_id,
                         error_code="unexpected_model_item",
                         message="Local AI returned an item outside the requested batch",
+                        **self._diagnostic_error_fields(diagnostics, validation_error_type="extra_item"),
                     )
                 )
                 continue
             if model_item.external_id in seen:
+                diagnostics.duplicate_item_count += 1
                 errors.append(
                     PreliminaryFilterError(
                         batch_index=batch_index,
-                        external_id=model_item.external_id,
                         error_code="duplicate_model_item",
                         message="Local AI returned a duplicate item",
+                        **self._diagnostic_error_fields(diagnostics, validation_error_type="duplicate_item"),
                     )
                 )
                 continue
@@ -252,13 +292,14 @@ class PreliminaryVacancyFilterService:
         for vacancy in batch:
             assessment = result_by_id.get(vacancy.external_id)
             if assessment is None:
+                diagnostics.missing_item_count += 1
                 fallback_count += 1
                 errors.append(
                     PreliminaryFilterError(
                         batch_index=batch_index,
-                        external_id=vacancy.external_id,
                         error_code="missing_model_item",
                         message="Local AI did not return an item for the vacancy",
+                        **self._diagnostic_error_fields(diagnostics, validation_error_type="missing_item"),
                     )
                 )
                 assessment = self._fallback_assessment(vacancy, "missing_model_item")
@@ -270,11 +311,191 @@ class PreliminaryVacancyFilterService:
 
         if fallback_count:
             logger.warning(
-                "preliminary_filter_fallback_applied batch_index=%s fallback_count=%s",
+                "preliminary_filter_fallback_applied batch_index=%s fallback_count=%s "
+                "json_parse_status=%s expected_item_count=%s returned_item_count=%s "
+                "validation_error_type=%s invalid_field_name=%s invalid_enum_value_category=%s "
+                "unknown_reason_code_count=%s unknown_risk_code_count=%s missing_item_count=%s "
+                "extra_item_count=%s duplicate_item_count=%s",
                 batch_index,
                 fallback_count,
+                diagnostics.json_parse_status,
+                diagnostics.expected_item_count,
+                diagnostics.returned_item_count,
+                diagnostics.validation_error_type,
+                diagnostics.invalid_field_name,
+                diagnostics.invalid_enum_value_category,
+                diagnostics.unknown_reason_code_count,
+                diagnostics.unknown_risk_code_count,
+                diagnostics.missing_item_count,
+                diagnostics.extra_item_count,
+                diagnostics.duplicate_item_count,
             )
         return wrapped, errors, fallback_count, override_count
+
+    def _extract_model_items(
+        self,
+        raw_result: dict[str, Any],
+        diagnostics: _BatchValidationDiagnostics,
+    ) -> list[Any]:
+        if not isinstance(raw_result, dict):
+            diagnostics.validation_error_type = "wrapper_type"
+            raise PreliminaryFilterResponseValidationError("Preliminary filter response wrapper is not an object", diagnostics)
+        raw_items = raw_result.get("items")
+        if not isinstance(raw_items, list):
+            diagnostics.validation_error_type = "items_type"
+            diagnostics.invalid_field_name = "items"
+            raise PreliminaryFilterResponseValidationError(
+                "Preliminary filter response items are missing or invalid",
+                diagnostics,
+            )
+        diagnostics.returned_item_count = len(raw_items)
+        return raw_items
+
+    def _parse_model_item(
+        self,
+        batch_index: int,
+        raw_item: Any,
+        diagnostics: _BatchValidationDiagnostics,
+    ) -> tuple[_ModelAssessmentItem | None, list[PreliminaryFilterError]]:
+        if not isinstance(raw_item, dict):
+            diagnostics.validation_error_type = "item_type"
+            return None, [
+                PreliminaryFilterError(
+                    batch_index=batch_index,
+                    error_code="malformed_model_item",
+                    message="Local AI returned a malformed item",
+                    **self._diagnostic_error_fields(diagnostics, validation_error_type="item_type"),
+                )
+            ]
+
+        sanitized_item = dict(raw_item)
+        code_errors = self._sanitize_code_lists(batch_index, sanitized_item, diagnostics)
+        try:
+            return _ModelAssessmentItem.model_validate(sanitized_item), code_errors
+        except ValidationError as exc:
+            error_type, field_name, enum_category = self._classify_validation_error(exc)
+            diagnostics.validation_error_type = error_type
+            diagnostics.invalid_field_name = field_name
+            diagnostics.invalid_enum_value_category = enum_category
+            return None, [
+                *code_errors,
+                PreliminaryFilterError(
+                    batch_index=batch_index,
+                    error_code="invalid_model_item",
+                    message="Local AI returned an invalid item; uncertain fallback will be applied if it belongs to the batch",
+                    **self._diagnostic_error_fields(
+                        diagnostics,
+                        validation_error_type=error_type,
+                        invalid_field_name=field_name,
+                        invalid_enum_value_category=enum_category,
+                    ),
+                ),
+            ]
+
+    def _sanitize_code_lists(
+        self,
+        batch_index: int,
+        raw_item: dict[str, Any],
+        diagnostics: _BatchValidationDiagnostics,
+    ) -> list[PreliminaryFilterError]:
+        errors: list[PreliminaryFilterError] = []
+        reason_count = self._filter_unknown_codes(raw_item, "reason_codes", {item.value for item in PreliminaryReasonCode})
+        risk_count = self._filter_unknown_codes(raw_item, "risk_codes", {item.value for item in PreliminaryRiskCode})
+
+        if reason_count:
+            diagnostics.unknown_reason_code_count += reason_count
+            errors.append(
+                PreliminaryFilterError(
+                    batch_index=batch_index,
+                    error_code="unknown_reason_code",
+                    message="Local AI returned unknown reason codes; unknown values were ignored",
+                    **self._diagnostic_error_fields(
+                        diagnostics,
+                        validation_error_type="enum",
+                        invalid_field_name="reason_codes",
+                        invalid_enum_value_category="reason_code",
+                    ),
+                )
+            )
+        if risk_count:
+            diagnostics.unknown_risk_code_count += risk_count
+            errors.append(
+                PreliminaryFilterError(
+                    batch_index=batch_index,
+                    error_code="unknown_risk_code",
+                    message="Local AI returned unknown risk codes; unknown values were ignored",
+                    **self._diagnostic_error_fields(
+                        diagnostics,
+                        validation_error_type="enum",
+                        invalid_field_name="risk_codes",
+                        invalid_enum_value_category="risk_code",
+                    ),
+                )
+            )
+        return errors
+
+    @staticmethod
+    def _filter_unknown_codes(raw_item: dict[str, Any], field_name: str, allowed_values: set[str]) -> int:
+        value = raw_item.get(field_name)
+        if not isinstance(value, list):
+            return 0
+        filtered = [item for item in value if isinstance(item, str) and item in allowed_values]
+        unknown_count = len(value) - len(filtered)
+        raw_item[field_name] = filtered
+        return unknown_count
+
+    @staticmethod
+    def _classify_validation_error(exc: ValidationError) -> tuple[str, str | None, str | None]:
+        first_error = exc.errors()[0] if exc.errors() else {}
+        field_name = str(first_error.get("loc", ["unknown"])[0])
+        error_type = str(first_error.get("type", "validation_error"))
+        enum_category = None
+        if error_type == "enum":
+            if field_name == "decision":
+                enum_category = "decision"
+            elif field_name == "recommended_track":
+                enum_category = "recommended_track"
+            elif field_name == "reason_codes":
+                enum_category = "reason_code"
+            elif field_name == "risk_codes":
+                enum_category = "risk_code"
+        return error_type, field_name, enum_category
+
+    @staticmethod
+    def _diagnostic_error_fields(
+        diagnostics: _BatchValidationDiagnostics,
+        *,
+        validation_error_type: str | None = None,
+        invalid_field_name: str | None = None,
+        invalid_enum_value_category: str | None = None,
+    ) -> dict[str, object]:
+        return {
+            "json_parse_status": diagnostics.json_parse_status,
+            "expected_item_count": diagnostics.expected_item_count,
+            "returned_item_count": diagnostics.returned_item_count,
+            "validation_error_type": validation_error_type or diagnostics.validation_error_type,
+            "invalid_field_name": invalid_field_name or diagnostics.invalid_field_name,
+            "invalid_enum_value_category": invalid_enum_value_category or diagnostics.invalid_enum_value_category,
+            "unknown_reason_code_count": diagnostics.unknown_reason_code_count,
+            "unknown_risk_code_count": diagnostics.unknown_risk_code_count,
+            "missing_item_count": diagnostics.missing_item_count,
+            "extra_item_count": diagnostics.extra_item_count,
+            "duplicate_item_count": diagnostics.duplicate_item_count,
+        }
+
+    @staticmethod
+    def _diagnostics_from_exception(exc: Exception, expected_item_count: int) -> _BatchValidationDiagnostics:
+        if isinstance(exc, PreliminaryFilterResponseValidationError):
+            return exc.diagnostics
+
+        diagnostics = _BatchValidationDiagnostics(expected_item_count=expected_item_count)
+        diagnostics.validation_error_type = "batch_error"
+        if exc.__class__.__name__ == "OllamaResponseError":
+            diagnostics.validation_error_type = "invalid_response"
+            if "JSON" in str(exc):
+                diagnostics.json_parse_status = "failed"
+                diagnostics.validation_error_type = "malformed_json"
+        return diagnostics
 
     def _fallback_assessment(self, vacancy: HHSearchCollectedVacancy, error_code: str) -> PreliminaryVacancyAssessment:
         return PreliminaryVacancyAssessment(

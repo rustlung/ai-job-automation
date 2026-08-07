@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 
 from app.clients.ollama import OllamaConnectionError, OllamaResponseError, OllamaTimeoutError
@@ -143,16 +145,136 @@ async def test_extra_and_duplicate_model_items_are_reported() -> None:
 
 
 @pytest.mark.anyio
-async def test_unknown_code_makes_batch_invalid_and_fallback() -> None:
+async def test_unknown_reason_code_is_ignored_without_batch_fallback() -> None:
     bad_item = model_item("1")
     bad_item["reason_codes"] = ["made_up"]
-    client = FakeOllamaClient([{"items": [bad_item]}])
+    client = FakeOllamaClient([{"items": [bad_item, model_item("2")]}])
+
+    result = await service(client).filter_vacancies([vacancy("1"), vacancy("2")])
+
+    assert result.status == "completed_with_errors"
+    assert result.fallback_count == 0
+    assert result.failed_batch_count == 0
+    assert result.processed_count == 2
+    assert result.errors[0].error_code == "unknown_reason_code"
+    assert result.errors[0].unknown_reason_code_count == 1
+
+
+@pytest.mark.anyio
+async def test_unknown_risk_code_is_ignored_without_batch_fallback() -> None:
+    bad_item = model_item("1")
+    bad_item["risk_codes"] = ["made_up_risk"]
+    client = FakeOllamaClient([{"items": [bad_item, model_item("2")]}])
+
+    result = await service(client).filter_vacancies([vacancy("1"), vacancy("2")])
+
+    assert result.status == "completed_with_errors"
+    assert result.fallback_count == 0
+    assert result.failed_batch_count == 0
+    assert result.processed_count == 2
+    assert result.errors[0].error_code == "unknown_risk_code"
+    assert result.errors[0].unknown_risk_code_count == 1
+
+
+@pytest.mark.anyio
+async def test_invalid_track_only_falls_back_affected_item() -> None:
+    bad_item = model_item("1")
+    bad_item["recommended_track"] = "made_up_track"
+    client = FakeOllamaClient([{"items": [bad_item, model_item("2")]}])
+
+    result = await service(client).filter_vacancies([vacancy("1"), vacancy("2")])
+
+    assert result.status == "completed_with_errors"
+    assert result.fallback_count == 1
+    assert result.failed_batch_count == 0
+    assert result.keep_main_count == 1
+    assert result.errors[0].error_code == "invalid_model_item"
+    assert result.errors[0].invalid_field_name == "recommended_track"
+    assert result.errors[0].invalid_enum_value_category == "recommended_track"
+
+
+@pytest.mark.anyio
+async def test_malformed_item_among_valid_items_does_not_drop_valid_items() -> None:
+    malformed_item = model_item("1")
+    malformed_item.pop("score")
+    client = FakeOllamaClient([{"items": [malformed_item, model_item("2")]}])
+
+    result = await service(client).filter_vacancies([vacancy("1"), vacancy("2")])
+
+    assert result.status == "completed_with_errors"
+    assert result.fallback_count == 1
+    assert result.failed_batch_count == 0
+    assert result.keep_main_count == 1
+    assert {item.vacancy.external_id for item in result.items} == {"1", "2"}
+    assert any(error.error_code == "invalid_model_item" for error in result.errors)
+
+
+@pytest.mark.anyio
+async def test_whole_malformed_json_uses_batch_fallback_with_diagnostics() -> None:
+    client = FakeOllamaClient([OllamaResponseError("Ollama returned invalid JSON content")])
+
+    result = await service(client).filter_vacancies([vacancy("1"), vacancy("2")])
+
+    assert result.status == "completed_with_errors"
+    assert result.fallback_count == 2
+    assert result.failed_batch_count == 1
+    assert result.errors[0].json_parse_status == "failed"
+    assert result.errors[0].expected_item_count == 2
+    assert result.errors[0].validation_error_type == "malformed_json"
+
+
+@pytest.mark.anyio
+async def test_whole_incompatible_wrapper_uses_batch_fallback_with_diagnostics() -> None:
+    client = FakeOllamaClient([{"vacancies": [model_item("1")]}])
 
     result = await service(client).filter_vacancies([vacancy("1")])
 
     assert result.status == "completed_with_errors"
     assert result.fallback_count == 1
     assert result.failed_batch_count == 1
+    assert result.errors[0].json_parse_status == "ok"
+    assert result.errors[0].validation_error_type == "items_type"
+    assert result.errors[0].invalid_field_name == "items"
+
+
+@pytest.mark.anyio
+async def test_missing_duplicate_and_extra_item_diagnostics() -> None:
+    client = FakeOllamaClient([{"items": [model_item("1"), model_item("1"), model_item("999")]}])
+
+    result = await service(client).filter_vacancies([vacancy("1"), vacancy("2")])
+
+    assert result.status == "completed_with_errors"
+    assert result.fallback_count == 1
+    assert result.failed_batch_count == 0
+    assert {error.error_code for error in result.errors} == {
+        "duplicate_model_item",
+        "unexpected_model_item",
+        "missing_model_item",
+    }
+    assert any(error.duplicate_item_count == 1 for error in result.errors)
+    assert any(error.extra_item_count == 1 for error in result.errors)
+    assert any(error.missing_item_count == 1 for error in result.errors)
+
+
+@pytest.mark.anyio
+async def test_validation_logs_do_not_expose_sensitive_text(caplog: pytest.LogCaptureFixture) -> None:
+    bad_item = model_item("1")
+    bad_item["recommended_track"] = "made_up_track"
+    item = vacancy("1", title="Secret Vacancy Title")
+    item.company = "Secret Company"
+    item.responsibility_snippet = "Secret responsibility snippet"
+    client = FakeOllamaClient([{"items": [bad_item]}])
+
+    with caplog.at_level(logging.WARNING, logger="app.services.preliminary_filter"):
+        await service(client).filter_vacancies([item])
+
+    log_text = caplog.text
+    assert "Secret Vacancy Title" not in log_text
+    assert "Secret Company" not in log_text
+    assert "Secret responsibility snippet" not in log_text
+    assert "https://hh.ru/vacancy/1" not in log_text
+    assert "made_up_track" not in log_text
+    assert "invalid_field_name" in log_text
 
 
 @pytest.mark.anyio
