@@ -40,5 +40,19 @@ def test_prompt_contains_ids_without_urls_or_secret_fields() -> None:
     assert "resume=" not in combined
 
 
+def test_prompt_v2_describes_independent_main_alt_and_location_rules() -> None:
+    messages = build_preliminary_filter_messages([])
+    system_prompt = messages[0]["content"]
+
+    assert PRELIMINARY_VACANCY_FILTER_PROMPT_VERSION == "v2"
+    assert "хотя бы с ОДНИМ" in system_prompt
+    assert "Вакансия НЕ обязана одновременно" in system_prompt
+    assert "Python / Backend" in system_prompt
+    assert "ALT TRACK является реальным допустимым track" in system_prompt
+    assert "location=Москва" in system_prompt
+    assert "Не делай inference из одного location" in system_prompt
+    assert "AI automation+n8n" in system_prompt
+
+
 def test_response_schema_requires_items() -> None:
     assert PRELIMINARY_VACANCY_FILTER_RESPONSE_SCHEMA["required"] == ["items"]

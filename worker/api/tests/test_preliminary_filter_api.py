@@ -89,7 +89,7 @@ def filtered_item(item: HHSearchCollectedVacancy | None = None) -> PreliminaryFi
             risk_codes=[],
             short_reason="Релевантная Python backend карточка.",
             model="qwen3:4b-instruct",
-            prompt_version="v1",
+            prompt_version="v2",
         ),
     )
 
@@ -107,7 +107,7 @@ def filter_result() -> PreliminaryFilterBatchResult:
         fallback_count=0,
         failed_batch_count=0,
         model="qwen3:4b-instruct",
-        prompt_version="v1",
+        prompt_version="v2",
         duration_ms=10,
         items=[item],
         errors=[],
@@ -169,7 +169,7 @@ def integrated_result() -> HHCollectAndPreliminaryFilterResult:
             fallback_count=0,
             failed_batch_count=0,
             model="qwen3:4b-instruct",
-            prompt_version="v1",
+            prompt_version="v2",
             duration_ms=10,
         ),
         items=[filtered_item()],

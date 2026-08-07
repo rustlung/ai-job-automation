@@ -73,7 +73,14 @@ async def test_filter_single_batch_success_sorts_and_counts() -> None:
         ]
     )
 
-    result = await service(client).filter_vacancies([vacancy("1"), vacancy("2"), vacancy("3"), vacancy("4")])
+    result = await service(client).filter_vacancies(
+        [
+            vacancy("1"),
+            vacancy("2"),
+            vacancy("3"),
+            vacancy("4", "Оператор call-центра"),
+        ]
+    )
 
     assert result.status == "succeeded"
     assert [item.vacancy.external_id for item in result.items] == ["2", "3", "1", "4"]
@@ -146,6 +153,66 @@ async def test_unknown_code_makes_batch_invalid_and_fallback() -> None:
     assert result.status == "completed_with_errors"
     assert result.fallback_count == 1
     assert result.failed_batch_count == 1
+
+
+@pytest.mark.anyio
+async def test_obvious_ai_automation_reject_with_tiny_score_is_rescued() -> None:
+    client = FakeOllamaClient(
+        [
+            {
+                "items": [
+                    model_item("1", "reject", 1, 0.8),
+                ]
+            }
+        ]
+    )
+
+    result = await service(client).filter_vacancies(
+        [vacancy("1", "AI Automation Engineer")],
+    )
+
+    item = result.items[0].assessment
+    assert item.decision == "keep_main"
+    assert item.recommended_track == "ai"
+    assert item.score > 10
+
+
+@pytest.mark.anyio
+async def test_obvious_python_backend_reject_with_tiny_score_is_rescued() -> None:
+    client = FakeOllamaClient(
+        [
+            {
+                "items": [
+                    model_item("1", "reject", 1, 0.8),
+                ]
+            }
+        ]
+    )
+
+    result = await service(client).filter_vacancies(
+        [vacancy("1", "Python Backend Developer")],
+    )
+
+    item = result.items[0].assessment
+    assert item.decision == "keep_main"
+    assert item.recommended_track == "python"
+    assert item.score > 10
+
+
+@pytest.mark.anyio
+async def test_obvious_alt_qa_keep_alt_with_tiny_score_gets_floor() -> None:
+    low_score_item = model_item("1", "keep_alt", 1, 0.8)
+    low_score_item["recommended_track"] = "alt_qa"
+    low_score_item["reason_codes"] = ["qa_relevant"]
+    client = FakeOllamaClient([{"items": [low_score_item]}])
+
+    result = await service(client).filter_vacancies(
+        [vacancy("1", "Junior QA Engineer")],
+    )
+
+    item = result.items[0].assessment
+    assert item.decision == "keep_alt"
+    assert item.score > 10
 
 
 @pytest.mark.anyio
