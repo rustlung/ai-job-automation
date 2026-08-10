@@ -21,6 +21,7 @@ from app.schemas.preliminary_filter import (
     PreliminaryRecommendedTrack,
     PreliminaryVacancyAssessment,
 )
+from app.schemas.vacancy_enrichment import HHCollectFilterAndEnrichResult, VacancyEnrichmentStats, VacancyEnrichmentStatus
 
 
 class FakePreliminaryFilterService:
@@ -39,6 +40,16 @@ class FakeCollectAndFilterService:
         self.requests = []
 
     async def collect_and_filter(self, request):
+        self.requests.append(request)
+        return self.result
+
+
+class FakeCollectFilterAndEnrichService:
+    def __init__(self, result: HHCollectFilterAndEnrichResult) -> None:
+        self.result = result
+        self.requests = []
+
+    async def collect_filter_and_enrich(self, request):
         self.requests.append(request)
         return self.result
 
@@ -205,5 +216,90 @@ def test_collect_and_preliminary_filter_endpoint_success(client: TestClient, mon
 )
 def test_collect_and_preliminary_filter_rejects_unsafe_fields(payload: dict[str, object], client: TestClient) -> None:
     response = client.post("/hh/collect-and-preliminary-filter", json=payload)
+
+    assert response.status_code == 422
+
+
+def enrichment_result() -> HHCollectFilterAndEnrichResult:
+    return HHCollectFilterAndEnrichResult(
+        status=VacancyEnrichmentStatus.SUCCEEDED,
+        collection_stats=HHCollectionStats(
+            status=HHSearchCollectionStatus.SUCCEEDED,
+            requested_profile_count=1,
+            pages_requested=1,
+            pages_succeeded=1,
+            pages_failed=0,
+            raw_vacancy_count=1,
+            unique_vacancy_count=1,
+            duplicate_count=0,
+        ),
+        filter_stats=PreliminaryFilterStats(
+            status=PreliminaryFilterStatus.SUCCEEDED,
+            input_count=1,
+            processed_count=1,
+            keep_main_count=1,
+            keep_alt_count=0,
+            uncertain_count=0,
+            reject_count=0,
+            fallback_count=0,
+            failed_batch_count=0,
+            model="qwen3:4b-instruct",
+            prompt_version="v4",
+            duration_ms=10,
+        ),
+        enrichment_stats=VacancyEnrichmentStats(
+            status=VacancyEnrichmentStatus.SUCCEEDED,
+            input_count=1,
+            enrich_candidate_count=1,
+            enriched_count=0,
+            failed_fetch_count=0,
+            failed_normalization_count=0,
+            semantic_fallback_count=0,
+            p1_count=0,
+            p2_count=0,
+            p3_count=0,
+            alt_count=0,
+            duration_ms=1,
+        ),
+        items=[],
+        duration_ms=20,
+    )
+
+
+def test_collect_filter_and_enrich_endpoint_success(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    service = FakeCollectFilterAndEnrichService(enrichment_result())
+    monkeypatch.setattr(filter_routes, "get_hh_collect_filter_and_enrich_service", lambda: service)
+
+    response = client.post(
+        "/hh/collect-filter-and-enrich",
+        json={
+            "profile_ids": ["python_expanded_search"],
+            "max_pages_override": 1,
+            "max_filter_items_override": 10,
+            "max_enrich_items_override": 5,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "succeeded"
+    assert body["enrichment_stats"]["enrich_candidate_count"] == 1
+    assert service.requests[0].max_enrich_items_override == 5
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"url": "https://hh.ru/search/vacancy"},
+        {"query": "Python"},
+        {"cookie": "secret"},
+        {"storage_state_path": "/tmp/state.json"},
+        {"prompt": "override"},
+        {"model": "cloud"},
+        {"api_key": "secret"},
+    ],
+)
+def test_collect_filter_and_enrich_rejects_unsafe_fields(payload: dict[str, object], client: TestClient) -> None:
+    response = client.post("/hh/collect-filter-and-enrich", json=payload)
 
     assert response.status_code == 422

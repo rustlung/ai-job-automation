@@ -15,6 +15,8 @@ class Settings:
         self.ollama_keep_alive = getenv("OLLAMA_KEEP_ALIVE", "5m")
         self.preliminary_filter_max_items = int(getenv("PRELIMINARY_FILTER_MAX_ITEMS", "100"))
         self.preliminary_filter_batch_size = int(getenv("PRELIMINARY_FILTER_BATCH_SIZE", "10"))
+        self.full_enrichment_max_items = int(getenv("FULL_ENRICHMENT_MAX_ITEMS", "30"))
+        self.full_analysis_batch_size = int(getenv("FULL_ANALYSIS_BATCH_SIZE", "1"))
         self.hh_base_url = getenv("HH_BASE_URL", "https://hh.ru")
         self.hh_user_agent = getenv("HH_USER_AGENT", "AIJobAutomation/0.1 (contact: configured-locally)")
         self.hh_request_timeout_seconds = float(getenv("HH_REQUEST_TIMEOUT_SECONDS", "30"))
