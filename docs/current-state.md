@@ -1,6 +1,6 @@
 # Current State
 
-2026-08-07
+2026-08-10
 
 Работает:
 ✅ Ubuntu server
@@ -80,6 +80,13 @@
 ✅ Privacy-safe HH collection logs
 ✅ Chromium cleanup after authenticated HH requests
 ✅ Public HH page-size fix
+✅ Preliminary local AI vacancy filter
+✅ POST /vacancies/preliminary-filter
+✅ POST /hh/collect-and-preliminary-filter
+✅ Compact structured output with local item_id
+✅ Deterministic preliminary filter guardrails
+✅ Fail-open uncertain fallback
+✅ Phase 5.7 target Worker acceptance
 
 Phase 1 — Orchestrator foundation завершена.
 Phase 2.1 — Worker API foundation завершена.
@@ -94,6 +101,7 @@ Phase 5.5.1 — Vacancy discovery counters завершена и принята.
 Phase 5.6 — HH search collection profiles завершена и принята на Worker.
 Phase 5.6.1 — Authenticated HH browser spike завершена и принята.
 Phase 5.6.2 — Authenticated resume profiles integrated into collector завершена и принята.
+Phase 5.7 — Preliminary local AI vacancy filter завершена и принята на целевом Worker.
 
 Создан и развернут на homeserver базовый backend оркестрационного слоя на FastAPI.
 Работает endpoint `GET /health`.
@@ -178,6 +186,81 @@ Fallback resume-профилей на анонимный `httpx` отсутст�
 
 Эти числа являются результатами конкретной целевой проверки, а не постоянными данными продукта.
 
+Worker реализует preliminary local AI filtering для кратких HH search-card данных.
+
+Поток:
+
+``` text
+HH search collection
+→ deduplicated search vacancies
+→ local Ollama preliminary filter
+→ keep_main / keep_alt / uncertain / reject
+```
+
+Endpoints:
+
+- `POST /vacancies/preliminary-filter`;
+- `POST /hh/collect-and-preliminary-filter`.
+
+Preliminary filter использует локальную модель `qwen3:4b-instruct` через существующий Ollama integration.
+Текущая prompt version: `v4`.
+Главная задача фильтра — high-recall preliminary routing: важнее не потерять потенциально полезную вакансию, чем идеально отранжировать результаты.
+False positive на этом этапе допустимы; false negative считаются значительно более опасными.
+
+Фильтр работает только с краткими search-card данными: title, location, salary, remote flag, responsibility snippet и requirement snippet.
+Он не загружает полную карточку, не сохраняет вакансии, не вызывает Orchestrator, не использует cloud AI и не назначает окончательные `P1/P2/P3`.
+
+Решения preliminary filter:
+
+- `keep_main` — явный кандидат основного AI/Python/automation/integration track;
+- `keep_alt` — явный кандидат альтернативного допустимого IT-track;
+- `uncertain` — данных недостаточно или нужна проверка полной карточки;
+- `reject` — только достаточно очевидно нерелевантная вакансия.
+
+AI не является обязательным условием для всех main-вакансий.
+Python backend, FastAPI, API, integrations, SQL/PostgreSQL, Docker, bots, parsers, Python automation и internal services являются самостоятельным MAIN Python направлением.
+AI Automation, AI Integration, applied AI, LLM, AI agents, prompt engineering, n8n/Dify/Flowise, AI workflows и AI product/integration roles являются MAIN AI направлением.
+QA, API/backend testing, integration testing, data/system/business analysis, AI evaluation, technical implementation и engineering-heavy technical support могут проходить как ALT.
+
+LLM возвращает компактный structured output с локальными `item_id`.
+Реальный `external_id` не воспроизводится моделью: Python сохраняет соответствие `item_id → vacancy → external_id/provenance`.
+Это снижает нестабильность сопоставления результатов маленькой локальной модели.
+
+После LLM применяется deterministic safety layer:
+
+``` text
+LLM semantic assessment
+→ deterministic negative/positive guardrails
+→ final preliminary decision
+```
+
+Forced reject покрывает очевидно нерелевантные роли: преподавание программирования детям, телефонная поддержка/call-центр, холодные продажи, бухгалтерия, курьер, автор студенческих работ и похожие случаи.
+Positive guardrails защищают от false negative для явных Python/backend/automation, AI/LLM/automation, QA/API/testing и engineering-heavy technical support карточек.
+Forced reject имеет приоритет над positive guardrails.
+
+Если локальный AI не может корректно обработать карточку или batch, вакансия не теряется: применяется `uncertain` fallback.
+AI failure не должен приводить к `reject`.
+
+Для текущих ограниченных ресурсов допустима стабильная конфигурация `PRELIMINARY_FILTER_BATCH_SIZE=1`.
+Это не финальное архитектурное решение, но приемлемо для MVP, если полный ежедневный pipeline выполняется за приемлемое время.
+Приоритет: стабильность и recall выше скорости.
+
+Последняя целевая acceptance-проверка на 10 реальных HH-вакансиях:
+
+- `input_count = 10`;
+- `processed_count = 10`;
+- `keep_main_count = 3`;
+- `keep_alt_count = 3`;
+- `uncertain_count = 3`;
+- `reject_count = 1`;
+- `fallback_count = 0`;
+- `failed_batch_count = 0`;
+- `prompt_version = v4`.
+
+Это acceptance run, а не постоянный benchmark.
+Подтверждено, что явные Python-кандидаты больше не теряются, AI/LLM/automation кандидаты проходят дальше, QA/technical роли могут сохраняться как ALT, а очевидно нерелевантная роль преподавателя детям корректно получает `reject`.
+Отдельные false positive и ошибки `recommended_track` ещё возможны.
+
 Orchestrator хранит постоянную историю обработки вакансий в append-only таблице `vacancy_processing_events`.
 События создаются только явными API-вызовами, связываются через `run_id`, имеют `stage`, `status`, безопасный `error_code`, небольшие `metadata` и AI-поля `provider`, `model`, `prompt_version` только для AI-этапов.
 List endpoints поддерживают фильтры и пагинацию.
@@ -187,10 +270,9 @@ Orchestrator хранит discovery-состояние вакансии в по�
 Существующие строки `Vacancy` были backfill-мигрированы из `created_at` и `updated_at`.
 `POST /vacancies` не создает processing event автоматически.
 
-Следующий незавершенный этап по `docs/project-roadmap-v1.1.md`: preliminary AI filtering поисковых карточек и последующий collector pipeline поверх уже проверенного `POST /hh/collect-search`.
+Следующий незавершенный этап по `docs/project-roadmap-v1.1.md`: Phase 5.8 — full vacancy fetch, normalization, deterministic feature extraction, compact semantic assessment и scoring/routing для вакансий, прошедших preliminary filter.
 
 Не реализовано:
-⬜ предварительный AI-фильтр поисковых карточек
 ⬜ автоматическая загрузка полной страницы после фильтра
 ⬜ запись полных HH данных в orchestrator
 ⬜ n8n HH collector workflow

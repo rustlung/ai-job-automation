@@ -258,6 +258,55 @@ Git используется для фиксации проверенных из
   calls;
 - automatic HH collector pipeline с записью в Orchestrator пока не реализован.
 
+Preliminary local AI filtering decisions:
+
+- preliminary filtering оптимизирован на recall, а не на идеальное
+  ранжирование;
+- false positive на этом этапе допустимы;
+- false negative нежелательны и считаются более опасными;
+- filter работает только с краткими search-card данными и не делает
+  финальный `P1/P2/P3`;
+- локальная модель `qwen3:4b-instruct` получает компактную задачу;
+- текущая prompt version preliminary filter — `v4`;
+- LLM не должна воспроизводить business/external identifiers вакансий;
+- внутри batch используются короткие локальные `item_id`, а Python сохраняет
+  соответствие `item_id → vacancy → external_id/provenance`;
+- deterministic Python rules используются для очевидных фактов, safety rules,
+  positive guardrails и fail-open fallback;
+- AI failure не должен приводить к reject: поврежденные items и batch должны
+  уходить в `uncertain` fallback;
+- `PRELIMINARY_FILTER_BATCH_SIZE=1` допустим для MVP до оптимизации, если это
+  нужно для стабильной работы локальной модели;
+- cloud model должна быть optional и вызываться только для малого числа лучших
+  или спорных вакансий;
+- до рабочего MVP не добавлять RAG, vector DB, embeddings pipeline или сложный
+  AI stack без необходимости.
+
+Preliminary track decisions:
+
+- AI не является обязательным условием для всех main-вакансий;
+- MAIN AI и MAIN Python являются независимыми направлениями;
+- отсутствие AI не является негативным фактором для Python/backend,
+  automation, QA, analytics и других допустимых track;
+- отсутствие backend не является негативным фактором для AI automation,
+  prompt engineering и LLM workflow ролей;
+- ALT является допустимым альтернативным IT-track для QA, API/backend testing,
+  integration testing, data/system/business analysis, AI evaluation,
+  technical implementation и engineering-heavy technical support.
+
+Phase 5.8 direction:
+
+- не строить следующую фазу как `full vacancy → большой prompt → LLM решает
+  всё`;
+- использовать гибрид: full vacancy fetch, normalization, deterministic
+  feature extraction, compact semantic assessment, deterministic
+  scoring/routing;
+- Python отвечает за объективные признаки и правила;
+- LLM отвечает только за семантику, которую трудно надежно определить обычным
+  кодом;
+- цель — снизить нагрузку на локальную модель, повысить explainability и
+  сократить будущие расходы на cloud AI.
+
 HH search collection decisions:
 
 - персональные HH-подборки требуют авторизованного browser context;

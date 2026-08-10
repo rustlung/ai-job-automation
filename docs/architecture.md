@@ -596,10 +596,180 @@ n8n / collector
 → orchestrator persistence
 ```
 
-На текущем этапе реализован search collection batch кратких карточек.
+На текущем этапе реализованы search collection batch кратких карточек и
+preliminary local AI filter поверх deduplicated search vacancies.
 Автоматическая загрузка полных карточек после предварительного фильтра,
 запись полных HH данных в orchestrator и n8n HH collector workflow ещё не
 реализованы.
+
+## 10.2.1. Preliminary local AI filter
+
+Статус: implemented и принят на целевом Windows 11 Worker.
+
+Текущий поток:
+
+``` text
+HH collection
+↓
+deduplication
+↓
+Preliminary local AI filter
+↓
+LLM compact classification
+↓
+deterministic safety/positive guardrails
+↓
+keep_main / keep_alt / uncertain / reject
+```
+
+Endpoints:
+
+``` text
+POST /vacancies/preliminary-filter
+POST /hh/collect-and-preliminary-filter
+```
+
+Preliminary filter работает только с краткими search-card данными:
+
+-   title;
+-   location;
+-   salary;
+-   remote flag;
+-   responsibility snippet;
+-   requirement snippet.
+
+Он не загружает полную карточку, не сохраняет данные, не вызывает
+Orchestrator, не использует cloud AI и не назначает окончательные `P1/P2/P3`.
+
+Используется локальная модель:
+
+``` text
+qwen3:4b-instruct
+```
+
+Текущая prompt version:
+
+``` text
+v4
+```
+
+Цель модели — high-recall preliminary routing. На этом этапе false positive
+допустимы, а false negative считаются значительно более опасными.
+
+Decision taxonomy:
+
+-   `keep_main` — явный кандидат основного AI/Python/automation/integration
+    track;
+-   `keep_alt` — явный кандидат альтернативного допустимого IT-track;
+-   `uncertain` — данных недостаточно или нужна проверка полной карточки;
+-   `reject` — только достаточно очевидно нерелевантная вакансия.
+
+AI не является обязательным условием для всех main-вакансий.
+
+Независимые направления:
+
+-   MAIN AI: AI Automation, AI Integration, applied AI, LLM, AI agents,
+    prompt engineering, n8n/Dify/Flowise, AI workflows, AI product/integration
+    roles;
+-   MAIN Python: Python backend, FastAPI, API, integrations, SQL/PostgreSQL,
+    Docker, bots, parsers, Python automation, internal services;
+-   ALT: QA, API/backend testing, integration testing, data/system/business
+    analysis, AI evaluation, technical implementation, engineering-heavy
+    technical support.
+
+LLM получает компактную задачу и возвращает structured output с локальным
+`item_id`. Реальный `external_id` вакансии не воспроизводится моделью.
+Python сохраняет соответствие:
+
+``` text
+item_id
+→ исходная vacancy
+→ настоящий external_id/provenance
+```
+
+После LLM применяется deterministic Python layer:
+
+-   negative safety rules для очевидного мусора;
+-   positive guardrails для защиты от false negative;
+-   score floors для сохраненных кандидатов;
+-   `uncertain` fallback при ошибках local AI.
+
+Приоритет правил:
+
+1.  forced reject;
+2.  positive guardrail;
+3.  валидный LLM result;
+4.  uncertain fallback.
+
+Forced reject покрывает очевидно нерелевантные роли: преподавание
+программирования детям, телефонную поддержку/call-центр, холодные продажи,
+бухгалтерию, курьера, авторов студенческих работ и похожие случаи.
+Positive guardrails покрывают явные Python/backend/automation, AI/LLM,
+QA/API/testing и engineering-heavy technical support карточки.
+Positive guardrail не перекрывает очевидный forced reject.
+
+Fail-open requirement:
+
+``` text
+local AI failure
+↓
+uncertain fallback
+```
+
+AI failure не должен приводить к `reject` и не должен терять вакансию.
+
+Runtime batch size configurable. Для текущих ограниченных ресурсов допустимо
+использовать `PRELIMINARY_FILTER_BATCH_SIZE=1`, если это повышает стабильность
+`qwen3:4b-instruct`. Это не финальное performance-решение MVP; оптимизация
+batch size, модели или inference откладывается до момента, когда pipeline уже
+приносит практическую пользу.
+
+Целевая acceptance-проверка на 10 реальных HH-вакансиях подтвердила:
+
+-   `input_count = 10`;
+-   `processed_count = 10`;
+-   `keep_main_count = 3`;
+-   `keep_alt_count = 3`;
+-   `uncertain_count = 3`;
+-   `reject_count = 1`;
+-   `fallback_count = 0`;
+-   `failed_batch_count = 0`;
+-   `prompt_version = v4`.
+
+Это acceptance run, а не постоянный benchmark.
+
+## 10.2.2. Phase 5.8 direction
+
+Следующий этап не должен превращаться в архитектуру:
+
+``` text
+full vacancy
+↓
+большой prompt
+↓
+LLM решает всё
+```
+
+Планируемый гибридный поток:
+
+``` text
+kept vacancies
+↓
+full vacancy fetch
+↓
+normalization
+↓
+deterministic extraction
+↓
+compact local semantic assessment
+↓
+scoring / routing
+```
+
+Python отвечает за объективные признаки и правила. LLM отвечает только за
+семантику, которую трудно надежно определить обычным кодом. Это должно снизить
+нагрузку на `qwen3:4b-instruct`, повысить explainability и сократить будущие
+расходы на cloud AI.
 
 ## 10.3. HH search collection profiles
 
@@ -1227,17 +1397,17 @@ Custom engine:
 -   Orchestrator хранит вакансии, AI-анализы, processing events и discovery
     counters;
 -   Worker реализует HH parsing, normalization, exact batch deduplication,
-    local AI и HH search collection profiles;
--   Phase 5.6 принята на целевом Worker.
+    local AI, HH search collection profiles и preliminary local AI filter;
+-   Phase 5.7 принята на целевом Worker.
 
 Следующие шаги:
 
-1.  Реализовать preliminary AI filtering поисковых карточек.
+1.  Реализовать Phase 5.8: загрузку полных карточек для вакансий,
+    прошедших preliminary filter, normalization, deterministic feature
+    extraction, compact semantic assessment и scoring/routing.
 
-2.  Добавить автоматическую загрузку полных карточек после отбора.
+2.  Передавать выбранные вакансии из Worker/n8n в Orchestrator.
 
-3.  Передавать выбранные вакансии из Worker/n8n в Orchestrator.
+3.  Собрать n8n HH collector workflow.
 
-4.  Собрать n8n HH collector workflow.
-
-5.  Добавить расписание, уведомления и production scoring.
+4.  Добавить расписание, уведомления и production scoring.

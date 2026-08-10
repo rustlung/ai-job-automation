@@ -732,8 +732,250 @@ Processing history показывает подробную последоват�
 - нет расписания;
 - нет уведомлений;
 - нет автоматической классификации P1/P2/P3/ALT;
-- нет автоматической фильтрации телефонной поддержки;
 - нет автоматических откликов.
+
+---
+
+## Phase 5.7. Preliminary local AI vacancy filter
+
+Статус: завершен и принят на целевом Worker.
+
+## Результат
+
+- реализован preliminary local AI filter поверх кратких HH search-card данных;
+- добавлен endpoint `POST /vacancies/preliminary-filter`;
+- добавлен integrated endpoint `POST /hh/collect-and-preliminary-filter`;
+- поток работает как:
+
+``` text
+HH search collection
+↓
+deduplicated search vacancies
+↓
+local Ollama preliminary filter
+↓
+keep_main / keep_alt / uncertain / reject
+```
+
+- используется локальная модель `qwen3:4b-instruct` через существующий Ollama
+  integration;
+- текущая prompt version — `v4`;
+- задача модели — high-recall preliminary routing, а не финальное
+  ранжирование;
+- false positive на этом этапе допустимы;
+- false negative считаются значительно более опасными;
+- filter не загружает полную карточку, не сохраняет вакансии, не вызывает
+  Orchestrator, не использует cloud AI и не назначает окончательные
+  `P1/P2/P3`.
+
+## Decision taxonomy
+
+- `keep_main` — явный кандидат основного AI/Python/automation/integration
+  track;
+- `keep_alt` — явный кандидат альтернативного допустимого IT-track;
+- `uncertain` — данных недостаточно или нужна проверка полной карточки;
+- `reject` — только достаточно очевидно нерелевантная вакансия.
+
+Preliminary filter не должен пытаться идеально ранжировать вакансии.
+
+## Tracks
+
+AI не является обязательным условием для всех main-вакансий.
+
+MAIN AI:
+
+- AI Automation;
+- AI Integration;
+- applied AI;
+- LLM;
+- AI agents;
+- prompt engineering;
+- n8n/Dify/Flowise;
+- AI workflows;
+- AI product/integration roles.
+
+MAIN Python:
+
+- Python backend;
+- FastAPI;
+- API;
+- integrations;
+- SQL/PostgreSQL;
+- Docker;
+- bots;
+- parsers;
+- Python automation;
+- internal services.
+
+ALT:
+
+- QA;
+- API/backend testing;
+- integration testing;
+- data/system/business analysis;
+- AI evaluation;
+- technical implementation;
+- engineering-heavy technical support.
+
+Отсутствие AI не является негативным фактором для Python, QA, analytics и
+других допустимых track.
+
+## Structured output and item_id
+
+- LLM возвращает compact structured output;
+- real `external_id` не используется как идентификатор, который должна
+  воспроизводить LLM;
+- внутри batch используются короткие локальные `item_id`;
+- Python сохраняет соответствие `item_id → исходная vacancy → настоящий
+  external_id/provenance`.
+
+Это устранило нестабильность сопоставления результатов маленькой локальной
+модели.
+
+## Guardrails and fail-open
+
+После LLM применяется deterministic Python layer:
+
+``` text
+LLM semantic assessment
+↓
+deterministic Python guardrails
+↓
+final preliminary decision
+```
+
+Приоритет правил:
+
+1. forced reject;
+2. positive guardrail;
+3. валидный LLM result;
+4. uncertain fallback.
+
+Forced reject покрывает очевидно нерелевантные роли:
+
+- преподавание программирования детям;
+- телефонная поддержка / call-центр;
+- холодные продажи;
+- бухгалтерия;
+- курьер;
+- автор студенческих работ;
+- другие явно нерелевантные роли.
+
+Positive guardrails защищают от false negative для:
+
+- явного Python/backend/automation match;
+- явного AI/LLM/automation match;
+- явного QA/API/testing match;
+- технической поддержки с существенной инженерной составляющей.
+
+Positive guardrail не перекрывает obvious forced reject.
+
+Если локальный AI не может корректно обработать карточку, вакансия не
+теряется: используется `uncertain` fallback. AI failure не должен приводить к
+`reject`.
+
+## Target Worker acceptance
+
+Последняя реальная проверка на 10 HH-вакансиях:
+
+- `input_count = 10`;
+- `processed_count = 10`;
+- `keep_main_count = 3`;
+- `keep_alt_count = 3`;
+- `uncertain_count = 3`;
+- `reject_count = 1`;
+- `fallback_count = 0`;
+- `failed_batch_count = 0`;
+- `prompt_version = v4`.
+
+Техническая стабильность подтверждена.
+Это acceptance run, а не постоянный benchmark.
+
+Подтверждено:
+
+- явные Python-кандидаты больше не теряются;
+- AI/LLM/automation кандидаты проходят дальше;
+- QA/technical роли могут сохраняться как ALT;
+- очевидно нерелевантная роль преподавателя детям корректно получает
+  `reject`.
+
+Возможны отдельные false positive и ошибки `recommended_track`.
+
+## Batch size
+
+Runtime batch size configurable через `PRELIMINARY_FILTER_BATCH_SIZE`.
+
+В условиях текущих ограниченных ресурсов допустимо использовать
+`PRELIMINARY_FILTER_BATCH_SIZE=1`, если это необходимо для стабильной работы
+`qwen3:4b-instruct`.
+
+Это не считается архитектурным дефектом MVP и не является постоянным финальным
+решением. Приоритет: стабильность и recall выше скорости.
+
+Оптимизация batch size, более мощная локальная модель или ускорение inference
+откладываются до момента, когда весь pipeline уже будет приносить практическую
+пользу.
+
+## Ограничения Phase 5.7
+
+- анализируется только search-card;
+- snippets могут быть короткими;
+- `qwen3:4b-instruct` — небольшая локальная модель;
+- classification не является окончательной;
+- возможны false positive;
+- возможны ошибки `recommended_track`;
+- `uncertain` намеренно используется консервативно;
+- `batch_size=1` может быть медленным;
+- full vacancy description ещё не анализируется;
+- окончательный `P1/P2/P3` отсутствует;
+- persistence отсутствует;
+- Orchestrator пока не участвует в реальном HH pipeline;
+- n8n workflow ещё не собран;
+- ProxyAPI/cloud analysis не входит в текущий MVP path;
+- RAG не реализуется на данном этапе.
+
+---
+
+## Phase 5.8. Full vacancy enrichment and scoring foundation
+
+Статус: следующий незавершенный этап.
+
+## Цель
+
+Развить pipeline после preliminary filter, не перекладывая все решение на
+большой LLM prompt.
+
+Планируемый гибрид:
+
+``` text
+preliminary keep_main / keep_alt / uncertain
+↓
+fetch full vacancy details
+↓
+normalization
+↓
+deterministic Python feature extraction
+↓
+compact local semantic assessment
+↓
+deterministic scoring / routing
+```
+
+Принцип:
+
+- Python отвечает за объективные признаки и правила;
+- LLM отвечает только за семантику, которую трудно надежно определить обычным
+  кодом;
+- cloud/large model не является обязательной частью первого рабочего MVP;
+- если cloud analysis будет добавлен позже, он вызывается только для малого
+  количества лучших, спорных или локально неуверенных вакансий.
+
+Ожидаемый эффект:
+
+- снизить нагрузку на `qwen3:4b-instruct`;
+- уменьшить вероятность malformed/неустойчивых решений;
+- увеличить explainability;
+- сократить будущие расходы на cloud AI до момента трудоустройства.
 
 ---
 
@@ -743,14 +985,18 @@ Phase 5 не считается полностью завершенной.
 
 Остаются:
 
-- предварительный AI-фильтр поисковых карточек;
 - автоматическое получение полных карточек после отбора;
+- normalization полного batch после загрузки full details;
+- deterministic feature extraction;
+- compact semantic assessment;
+- deterministic scoring/routing;
 - автоматическая передача Worker → Orchestrator;
 - n8n HH collector workflow.
 
 Следующий этап по текущему roadmap всё ещё находится внутри Phase 5:
-preliminary AI filtering поисковых карточек и последующий collector pipeline
-поверх уже проверенного `POST /hh/collect-search`.
+Phase 5.8 — full vacancy enrichment and scoring foundation поверх уже
+проверенных `POST /hh/collect-search` и
+`POST /hh/collect-and-preliminary-filter`.
 
 ---
 

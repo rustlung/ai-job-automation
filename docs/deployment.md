@@ -271,11 +271,26 @@ OLLAMA_BASE_URL=http://host.docker.internal:11434
 OLLAMA_MODEL=qwen3:4b-instruct
 OLLAMA_REQUEST_TIMEOUT_SECONDS=120
 OLLAMA_KEEP_ALIVE=5m
+PRELIMINARY_FILTER_BATCH_SIZE=10
 ```
 
 Не коммитить локальный `.env`.
 Не перезаписывать рабочий `worker/api/.env` файлом `.env.example`, если в нем уже есть локальные настройки.
 После изменения `.env` контейнер нужно пересоздать.
+
+`PRELIMINARY_FILTER_BATCH_SIZE` является runtime-настройкой preliminary local
+AI filter. Для текущей локальной модели `qwen3:4b-instruct` и ограниченных
+ресурсов Worker допустима стабильная конфигурация:
+
+``` text
+PRELIMINARY_FILTER_BATCH_SIZE=1
+```
+
+`batch_size=1` не является постоянным финальным решением, но приемлем для
+первого рабочего MVP, если полный daily pipeline укладывается в практичное
+время. Приоритет на этом этапе: стабильность и recall выше скорости.
+Увеличение batch size до `3`, `5` или выше требует повторной target acceptance
+проверки.
 
 HH проверяется на Worker без VPN. С текущим VPN-маршрутом HH возвращал HTTP 451.
 Public HH endpoints используют `httpx`. Authenticated resume profiles используют
