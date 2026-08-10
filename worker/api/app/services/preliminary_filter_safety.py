@@ -23,6 +23,7 @@ FORCED_REJECT_PATTERNS = (
     ("преподаватель программирования для детей", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
     ("педагог по программированию", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
     ("учитель программирования для детей", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
+    ("программирования для детей", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
     ("детская онлайн-школа", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
     ("детской онлайн-школ", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
     ("студенческих работ", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
@@ -33,16 +34,24 @@ TECHNICAL_SUPPORT_MARKERS = (
     "linux",
     "sql",
     "api",
+    "http",
     "docker",
     "логи",
+    "logs",
     "интеграц",
     "скрипт",
+    "scripting",
     "troubleshooting",
+    "infrastructure",
+    "инфраструктур",
+    "l2",
+    "l3",
     "b2b",
     "saas",
 )
 
 SUPPORT_MARKERS = ("support", "поддержк", "helpdesk", "саппорт")
+NONTECHNICAL_SUPPORT_MARKERS = ("l1", "телефон", "звонк", "клиентск")
 SENIOR_MARKERS = ("senior", "lead", "head", "руководител", "тимлид", "team lead")
 MANDATORY_OFFICE_MARKERS = (
     "только офис",
@@ -65,6 +74,8 @@ OUTSIDE_SAMARA_MARKERS = (
 )
 SAMARA_MARKERS = ("самар",)
 AI_MAIN_MARKERS = (
+    "ai engineer",
+    "ai-инженер",
     "ai agent",
     "ai-агент",
     "ai агент",
@@ -81,17 +92,28 @@ AI_MAIN_MARKERS = (
     "claude",
     "cursor",
 )
-PYTHON_MAIN_MARKERS = (
-    "python",
+PYTHON_ROLE_MARKERS = (
+    "python developer",
+    "python-разработчик",
+    "python разработчик",
+    "python backend",
+    "backend на python",
+)
+PYTHON_TASK_MARKERS = (
     "fastapi",
-    "django",
-    "flask",
+    "api",
+    "rest",
+    "backend",
+    "automation",
+    "автоматизац",
+    "script",
+    "scripts",
+    "скрипт",
+    "integration",
+    "интеграц",
     "postgres",
     "postgresql",
-    "rest api",
-    "backend",
-    "парсер",
-    "парсинг",
+    "sql",
 )
 ALT_TRACK_MARKERS = (
     "qa",
@@ -127,6 +149,9 @@ def apply_preliminary_safety_overrides(
     snippet_text = _snippet_text(vacancy)
     changed = False
 
+    if assessment.fallback_used:
+        return assessment, False
+
     assessment, location_changed = _remove_invalid_location_risk(assessment, snippet_text)
     changed = changed or location_changed
 
@@ -146,9 +171,9 @@ def apply_preliminary_safety_overrides(
             True,
         )
 
-    track_rescue = _track_rescue_update(text, assessment)
-    if track_rescue is not None:
-        assessment = assessment.model_copy(update=track_rescue)
+    guardrail = _positive_guardrail_update(text, assessment)
+    if guardrail is not None:
+        assessment = assessment.model_copy(update=guardrail)
         changed = True
 
     if _is_nontechnical_support(text) and assessment.decision == PreliminaryDecision.KEEP_MAIN:
@@ -259,56 +284,91 @@ def _has_explicit_office_outside_samara(snippet_text: str) -> bool:
     return any(marker in snippet_text for marker in OUTSIDE_SAMARA_MARKERS)
 
 
-def _track_rescue_update(text: str, assessment: PreliminaryVacancyAssessment) -> dict[str, object] | None:
-    if assessment.decision != PreliminaryDecision.REJECT:
+def _positive_guardrail_update(text: str, assessment: PreliminaryVacancyAssessment) -> dict[str, object] | None:
+    if PreliminaryRiskCode.OFFICE_OUTSIDE_SAMARA in assessment.risk_codes:
         return None
     if PreliminaryRiskCode.SENIORITY_HIGH in assessment.risk_codes and any(marker in text for marker in SENIOR_MARKERS):
         return None
-    if _is_technical_support(text):
-        return {
-            "decision": PreliminaryDecision.UNCERTAIN,
-            "recommended_track": PreliminaryRecommendedTrack.ALT_TECHNICAL,
-            "score": max(assessment.score, 45),
-            "confidence": min(assessment.confidence, 0.75),
-            "risk_codes": _append_unique(assessment.risk_codes, PreliminaryRiskCode.SUPPORT_ROLE),
-            "short_reason": "Technical Support содержит инженерные маркеры; reject заменен на uncertain до проверки полного описания.",
-        }
     if _has_alt_marker(text):
+        if not _guardrail_needed(assessment, PreliminaryDecision.KEEP_ALT, PreliminaryRecommendedTrack.ALT_QA, 55):
+            return None
         return {
             "decision": PreliminaryDecision.KEEP_ALT,
             "recommended_track": PreliminaryRecommendedTrack.ALT_QA,
-            "score": max(assessment.score, 45),
-            "confidence": min(assessment.confidence, 0.75),
+            "score": max(assessment.score, 55),
+            "confidence": max(assessment.confidence, 0.7),
             "reason_codes": _append_unique_reason(assessment.reason_codes, PreliminaryReasonCode.QA_RELEVANT),
-            "short_reason": "Карточка содержит явные ALT-маркеры; preliminary reject заменен на keep_alt.",
+            "short_reason": "Карточка содержит сильные QA/API/testing маркеры; предварительно подходит для ALT.",
+        }
+    if _is_technical_support(text):
+        if not _guardrail_needed(assessment, PreliminaryDecision.KEEP_ALT, PreliminaryRecommendedTrack.ALT_TECHNICAL, 55):
+            return None
+        return {
+            "decision": PreliminaryDecision.KEEP_ALT,
+            "recommended_track": PreliminaryRecommendedTrack.ALT_TECHNICAL,
+            "score": max(assessment.score, 55),
+            "confidence": max(assessment.confidence, 0.7),
+            "risk_codes": _append_unique(assessment.risk_codes, PreliminaryRiskCode.SUPPORT_ROLE),
+            "short_reason": "Техническая поддержка содержит инженерные маркеры; предварительно подходит для ALT.",
         }
     if _has_ai_main_marker(text):
+        if not _guardrail_needed(assessment, PreliminaryDecision.KEEP_MAIN, PreliminaryRecommendedTrack.AI, 65):
+            return None
         return {
             "decision": PreliminaryDecision.KEEP_MAIN,
             "recommended_track": PreliminaryRecommendedTrack.AI,
-            "score": max(assessment.score, 55),
-            "confidence": min(assessment.confidence, 0.75),
+            "score": max(assessment.score, 65),
+            "confidence": max(assessment.confidence, 0.7),
             "reason_codes": _append_unique_reason(assessment.reason_codes, PreliminaryReasonCode.AI_AUTOMATION),
-            "short_reason": "Карточка содержит явные AI/automation маркеры; preliminary reject заменен на main candidate.",
+            "short_reason": "Карточка содержит сильные AI/LLM/automation маркеры; предварительно подходит для MAIN.",
         }
     if _has_python_main_marker(text):
+        if not _guardrail_needed(assessment, PreliminaryDecision.KEEP_MAIN, PreliminaryRecommendedTrack.PYTHON, 65):
+            return None
         return {
             "decision": PreliminaryDecision.KEEP_MAIN,
             "recommended_track": PreliminaryRecommendedTrack.PYTHON,
-            "score": max(assessment.score, 55),
-            "confidence": min(assessment.confidence, 0.75),
+            "score": max(assessment.score, 65),
+            "confidence": max(assessment.confidence, 0.7),
             "reason_codes": _append_unique_reason(assessment.reason_codes, PreliminaryReasonCode.PYTHON_BACKEND),
-            "short_reason": "Карточка содержит явные Python/backend/automation маркеры; reject заменен на main candidate.",
+            "short_reason": "Карточка содержит сильные Python/backend/automation маркеры; предварительно подходит для MAIN.",
         }
     return None
 
 
 def _has_ai_main_marker(text: str) -> bool:
-    return any(marker in text for marker in AI_MAIN_MARKERS)
+    if any(marker in text for marker in AI_MAIN_MARKERS):
+        return True
+    if "n8n" in text and "ai" in text:
+        return True
+    if "llm" in text and any(marker in text for marker in ("workflow", "workflows", "интеграц", "prompt", "промпт")):
+        return True
+    if any(marker in text for marker in ("prompt engineer", "промпт-инженер")) and any(marker in text for marker in ("llm", "workflow", "workflows")):
+        return True
+    if "автоматизац" in text and "ai" in text:
+        return True
+    return False
+
+
+def _guardrail_needed(
+    assessment: PreliminaryVacancyAssessment,
+    decision: PreliminaryDecision,
+    track: PreliminaryRecommendedTrack,
+    min_score: int,
+) -> bool:
+    if assessment.decision not in {PreliminaryDecision.REJECT, PreliminaryDecision.UNCERTAIN, decision}:
+        return False
+    if assessment.decision == decision and assessment.score >= min_score:
+        return False
+    return True
 
 
 def _has_python_main_marker(text: str) -> bool:
-    return any(marker in text for marker in PYTHON_MAIN_MARKERS)
+    if _is_nontechnical_support(text):
+        return False
+    if any(marker in text for marker in PYTHON_ROLE_MARKERS):
+        return True
+    return "python" in text and sum(1 for marker in PYTHON_TASK_MARKERS if marker in text) >= 1
 
 
 def _has_alt_marker(text: str) -> bool:
@@ -316,7 +376,7 @@ def _has_alt_marker(text: str) -> bool:
 
 
 def _is_technical_support(text: str) -> bool:
-    return any(marker in text for marker in SUPPORT_MARKERS) and any(marker in text for marker in TECHNICAL_SUPPORT_MARKERS)
+    return any(marker in text for marker in SUPPORT_MARKERS) and sum(1 for marker in TECHNICAL_SUPPORT_MARKERS if marker in text) >= 2
 
 
 def _apply_score_floor(assessment: PreliminaryVacancyAssessment) -> tuple[PreliminaryVacancyAssessment, bool]:

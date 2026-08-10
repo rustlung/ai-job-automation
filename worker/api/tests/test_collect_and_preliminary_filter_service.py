@@ -105,7 +105,7 @@ def filter_result(vacancies: list[HHSearchCollectedVacancy]) -> PreliminaryFilte
                 risk_codes=[],
                 short_reason="Релевантная карточка.",
                 model="qwen3:4b-instruct",
-                prompt_version="v3",
+                prompt_version="v4",
             ),
         )
         for item in vacancies
@@ -121,7 +121,7 @@ def filter_result(vacancies: list[HHSearchCollectedVacancy]) -> PreliminaryFilte
         fallback_count=0,
         failed_batch_count=0,
         model="qwen3:4b-instruct",
-        prompt_version="v3",
+        prompt_version="v4",
         duration_ms=10,
         items=items,
         errors=[],

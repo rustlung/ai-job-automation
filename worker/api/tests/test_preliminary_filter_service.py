@@ -23,15 +23,20 @@ class FakeOllamaClient:
         return result
 
 
-def vacancy(external_id: str, title: str = "Python Backend Developer") -> HHSearchCollectedVacancy:
+def vacancy(
+    external_id: str,
+    title: str = "Python Backend Developer",
+    responsibility_snippet: str = "Develop FastAPI services",
+    requirement_snippet: str = "Python, SQL, Docker",
+) -> HHSearchCollectedVacancy:
     return HHSearchCollectedVacancy(
         external_id=external_id,
         url=f"https://hh.ru/vacancy/{external_id}",
         title=title,
         company="Test",
         is_remote=True,
-        responsibility_snippet="Develop FastAPI services",
-        requirement_snippet="Python, SQL, Docker",
+        responsibility_snippet=responsibility_snippet,
+        requirement_snippet=requirement_snippet,
         provenance=HHSearchVacancyProvenance(
             profile_ids=["python_expanded_search"],
             query_variant_ids=["python_backend"],
@@ -74,7 +79,7 @@ async def test_filter_single_batch_success_sorts_and_counts() -> None:
 
     result = await service(client).filter_vacancies(
         [
-            vacancy("1"),
+            vacancy("1", "IT Specialist", "Разные задачи", "Подробности не указаны"),
             vacancy("2"),
             vacancy("3"),
             vacancy("4", "Оператор call-центра"),

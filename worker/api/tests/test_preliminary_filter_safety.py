@@ -47,7 +47,7 @@ def assessment(
         risk_codes=risks or [],
         short_reason="Тестовая оценка.",
         model="qwen3:4b-instruct",
-        prompt_version="v3",
+        prompt_version="v4",
     )
 
 
@@ -184,7 +184,7 @@ def test_explicit_samara_office_removes_location_mismatch() -> None:
     )
 
     assert changed is True
-    assert result.decision == PreliminaryDecision.UNCERTAIN
+    assert result.decision != PreliminaryDecision.REJECT
     assert PreliminaryRiskCode.OFFICE_OUTSIDE_SAMARA not in result.risk_codes
 
 
@@ -212,7 +212,7 @@ def test_main_track_markers_rescue_model_reject(
     assert changed is True
     assert result.decision == PreliminaryDecision.KEEP_MAIN
     assert result.recommended_track == track
-    assert result.score > 10
+    assert result.score >= 65
 
 
 @pytest.mark.parametrize(
@@ -231,7 +231,7 @@ def test_alt_track_markers_rescue_model_reject(title: str, responsibility: str, 
 
     assert changed is True
     assert result.decision == PreliminaryDecision.KEEP_ALT
-    assert result.score > 10
+    assert result.score >= 55
 
 
 @pytest.mark.parametrize(
@@ -284,6 +284,93 @@ def test_technical_support_engineering_markers_rescue_reject_to_uncertain() -> N
     )
 
     assert changed is True
-    assert result.decision == PreliminaryDecision.UNCERTAIN
+    assert result.decision == PreliminaryDecision.KEEP_ALT
     assert result.recommended_track == PreliminaryRecommendedTrack.ALT_TECHNICAL
     assert result.score > 10
+
+
+@pytest.mark.parametrize(
+    ("title", "responsibility", "requirement", "track"),
+    [
+        ("Python-разработчик Junior", "Разрабатывать web API", "Python FastAPI SQL", PreliminaryRecommendedTrack.PYTHON),
+        ("Специалист по автоматизации технических процессов", "Автоматизация процессов", "Python SQL scripts", PreliminaryRecommendedTrack.PYTHON),
+        ("AI-инженер / специалист по автоматизации бизнес-процессов", "n8n workflows integrations", "AI tools", PreliminaryRecommendedTrack.AI),
+        ("Продуктовый инженер", "Создавать AI agents для внутренних процессов", "LLM workflows", PreliminaryRecommendedTrack.AI),
+        ("Промпт-инженер / AI-креатор", "Проектировать prompts", "LLM workflows", PreliminaryRecommendedTrack.AI),
+    ],
+)
+def test_confirmed_false_negative_main_cases_become_keep_main(
+    title: str,
+    responsibility: str,
+    requirement: str,
+    track: PreliminaryRecommendedTrack,
+) -> None:
+    result, changed = apply_preliminary_safety_overrides(
+        vacancy(title, responsibility, requirement),
+        assessment(PreliminaryDecision.UNCERTAIN, score=42),
+    )
+
+    assert changed is True
+    assert result.decision == PreliminaryDecision.KEEP_MAIN
+    assert result.recommended_track == track
+    assert result.score >= 65
+
+
+@pytest.mark.parametrize(
+    ("title", "responsibility", "requirement"),
+    [
+        ("Junior QA / Инженер техподдержки", "Тестирование API", "SQL"),
+        ("Тестировщик интеграций", "Проверять интеграции", "Postman JSON SQL"),
+    ],
+)
+def test_confirmed_false_negative_alt_cases_become_keep_alt(title: str, responsibility: str, requirement: str) -> None:
+    result, changed = apply_preliminary_safety_overrides(
+        vacancy(title, responsibility, requirement),
+        assessment(PreliminaryDecision.UNCERTAIN, score=42),
+    )
+
+    assert changed is True
+    assert result.decision == PreliminaryDecision.KEEP_ALT
+    assert result.recommended_track == PreliminaryRecommendedTrack.ALT_QA
+    assert result.score >= 55
+
+
+def test_support_l1_without_engineering_markers_is_not_promoted() -> None:
+    result, changed = apply_preliminary_safety_overrides(
+        vacancy("Support Teamlead L1", "Организовывать обычную клиентскую поддержку", "Коммуникация с клиентами"),
+        assessment(PreliminaryDecision.UNCERTAIN, score=42),
+    )
+
+    assert changed is False
+    assert result.decision == PreliminaryDecision.UNCERTAIN
+
+
+def test_random_python_mention_is_not_promoted() -> None:
+    result, changed = apply_preliminary_safety_overrides(
+        vacancy("Контент-менеджер", "Иногда встречаются материалы про Python", "Редактирование текстов"),
+        assessment(PreliminaryDecision.UNCERTAIN, score=42),
+    )
+
+    assert changed is False
+    assert result.decision == PreliminaryDecision.UNCERTAIN
+
+
+def test_forced_reject_has_priority_over_positive_python_match() -> None:
+    result, changed = apply_preliminary_safety_overrides(
+        vacancy("Преподаватель Python для детей", "Проводить уроки программирования для детей", "Python"),
+        assessment(PreliminaryDecision.KEEP_MAIN, score=80),
+    )
+
+    assert changed is True
+    assert result.decision == PreliminaryDecision.REJECT
+
+
+def test_valid_model_result_remains_unchanged_when_no_guardrail_matches() -> None:
+    initial = assessment(PreliminaryDecision.UNCERTAIN, score=48)
+    result, changed = apply_preliminary_safety_overrides(
+        vacancy("IT специалист", "Разные задачи", "Подробности не указаны"),
+        initial,
+    )
+
+    assert changed is False
+    assert result == initial

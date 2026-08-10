@@ -45,14 +45,17 @@ def test_prompt_contains_ids_without_urls_or_secret_fields() -> None:
     assert "resume=" not in combined
 
 
-def test_prompt_v3_is_compact_and_uses_item_id_contract() -> None:
+def test_prompt_v4_is_compact_and_uses_item_id_contract() -> None:
     messages = build_preliminary_filter_messages([])
     system_prompt = messages[0]["content"]
 
-    assert PRELIMINARY_VACANCY_FILTER_PROMPT_VERSION == "v3"
+    assert PRELIMINARY_VACANCY_FILTER_PROMPT_VERSION == "v4"
     assert "используй только item_id" in system_prompt
     assert "Не возвращай external_id" in system_prompt
     assert "Вакансия не обязана содержать одновременно AI и Python" in system_prompt
+    assert "Не ищи AI в каждой вакансии" in system_prompt
+    assert "Отсутствие AI НЕ является отрицательным фактором" in system_prompt
+    assert "Отсутствие backend НЕ является отрицательным фактором" in system_prompt
     assert "location city alone is not negative" in system_prompt
     assert "teaching programming" in system_prompt
 

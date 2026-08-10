@@ -44,7 +44,7 @@ def assessment(**overrides: object) -> PreliminaryVacancyAssessment:
         "risk_codes": [PreliminaryRiskCode.SALARY_MISSING],
         "short_reason": "Релевантная backend-вакансия, зарплата не указана.",
         "model": "qwen3:4b-instruct",
-        "prompt_version": "v3",
+        "prompt_version": "v4",
     }
     payload.update(overrides)
     return PreliminaryVacancyAssessment(**payload)

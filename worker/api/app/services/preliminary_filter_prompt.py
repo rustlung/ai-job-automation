@@ -7,7 +7,7 @@ from app.schemas.preliminary_filter import (
     PreliminaryRecommendedTrack,
 )
 
-PRELIMINARY_VACANCY_FILTER_PROMPT_VERSION = "v3"
+PRELIMINARY_VACANCY_FILTER_PROMPT_VERSION = "v4"
 
 PRELIMINARY_VACANCY_FILTER_RESPONSE_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -49,6 +49,11 @@ SYSTEM_PROMPT = """
 
 Цель: высокий recall и простая предварительная маршрутизация, не финальная оценка.
 Если сомневаешься, выбирай uncertain, а не reject. Не назначай P1/P2/P3.
+Не ищи AI в каждой вакансии. Вакансии достаточно соответствовать ОДНОМУ
+из разрешённых направлений. Отсутствие AI НЕ является отрицательным фактором
+для Python/backend, автоматизации, QA, аналитики и других разрешённых технических ролей.
+Отсутствие backend НЕ является отрицательным фактором для AI automation,
+prompt engineering и LLM workflow ролей.
 
 MAIN:
 A. AI: AI automation, AI integration, LLM, AI agents, prompt engineering,
