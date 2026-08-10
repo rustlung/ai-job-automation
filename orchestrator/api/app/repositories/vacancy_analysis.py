@@ -38,6 +38,34 @@ class VacancyAnalysisRepository:
         )
         return self.session.scalar(statement)
 
+    def get_by_vacancy_run_id(self, vacancy_id: int, run_id: str) -> VacancyAnalysis | None:
+        statement = select(VacancyAnalysis).where(
+            VacancyAnalysis.vacancy_id == vacancy_id,
+            VacancyAnalysis.run_id == run_id,
+        )
+        return self.session.scalar(statement)
+
+    def list_by_run_id(self, run_id: str) -> list[VacancyAnalysis]:
+        statement = (
+            select(VacancyAnalysis)
+            .where(VacancyAnalysis.run_id == run_id)
+            .order_by(VacancyAnalysis.priority, VacancyAnalysis.final_score.desc(), VacancyAnalysis.id)
+        )
+        return list(self.session.scalars(statement).all())
+
+    def list_latest(self, *, priority: str | None = None, limit: int = 100, offset: int = 0) -> list[VacancyAnalysis]:
+        statement = select(VacancyAnalysis).where(VacancyAnalysis.run_id.is_not(None))
+        if priority is not None:
+            statement = statement.where(VacancyAnalysis.priority == priority)
+        statement = statement.order_by(VacancyAnalysis.created_at.desc(), VacancyAnalysis.id.desc()).limit(limit).offset(offset)
+        return list(self.session.scalars(statement).all())
+
+    def count_latest(self, *, priority: str | None = None) -> int:
+        statement = select(VacancyAnalysis.id).where(VacancyAnalysis.run_id.is_not(None))
+        if priority is not None:
+            statement = statement.where(VacancyAnalysis.priority == priority)
+        return len(self.session.scalars(statement).all())
+
     def count(self) -> int:
         return len(self.session.scalars(select(VacancyAnalysis.id)).all())
 

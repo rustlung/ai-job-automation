@@ -38,7 +38,17 @@ def test_vacancy_migration_upgrade_and_downgrade(tmp_path, monkeypatch) -> None:
     assert "ck_vacancies_seen_count_positive" in check_constraints
     analysis_indexes = {index["name"] for index in inspector.get_indexes("vacancy_analyses")}
     assert "ix_vacancy_analyses_vacancy_id" in analysis_indexes
+    assert "ix_vacancy_analyses_run_id" in analysis_indexes
+    assert "ix_vacancy_analyses_priority" in analysis_indexes
+    assert "ix_vacancy_analyses_final_score" in analysis_indexes
     assert "ix_vacancy_analyses_created_at" in analysis_indexes
+    analysis_columns = {column["name"]: column for column in inspector.get_columns("vacancy_analyses")}
+    assert "run_id" in analysis_columns
+    assert "final_score" in analysis_columns
+    assert "priority" in analysis_columns
+    assert "preliminary_snapshot" in analysis_columns
+    analysis_checks = {constraint["name"] for constraint in inspector.get_check_constraints("vacancy_analyses")}
+    assert "ck_vacancy_analyses_final_score_range" in analysis_checks
     processing_event_indexes = {index["name"] for index in inspector.get_indexes("vacancy_processing_events")}
     assert "ix_vacancy_processing_events_vacancy_id" in processing_event_indexes
     assert "ix_vacancy_processing_events_run_id" in processing_event_indexes
@@ -55,10 +65,14 @@ def test_vacancy_migration_upgrade_and_downgrade(tmp_path, monkeypatch) -> None:
     assert "vacancies" in inspector.get_table_names()
     assert "vacancy_analyses" in inspector.get_table_names()
     assert "vacancy_processing_events" in inspector.get_table_names()
-    downgraded_columns = {column["name"] for column in inspector.get_columns("vacancies")}
-    assert "first_seen_at" not in downgraded_columns
-    assert "last_seen_at" not in downgraded_columns
-    assert "seen_count" not in downgraded_columns
+    downgraded_analysis_columns = {column["name"] for column in inspector.get_columns("vacancy_analyses")}
+    assert "run_id" not in downgraded_analysis_columns
+    assert "final_score" not in downgraded_analysis_columns
+    assert "priority" not in downgraded_analysis_columns
+    vacancy_columns_after_one_downgrade = {column["name"] for column in inspector.get_columns("vacancies")}
+    assert "first_seen_at" in vacancy_columns_after_one_downgrade
+    assert "last_seen_at" in vacancy_columns_after_one_downgrade
+    assert "seen_count" in vacancy_columns_after_one_downgrade
 
     command.upgrade(make_alembic_config(database_url), "head")
     inspector = inspect(engine)
@@ -133,6 +147,7 @@ def test_processing_event_migration_preserves_existing_tables_on_downgrade(tmp_p
     assert "vacancies" in inspector.get_table_names()
     assert "vacancy_analyses" in inspector.get_table_names()
     assert "vacancy_processing_events" in inspector.get_table_names()
+    assert "run_id" not in {column["name"] for column in inspector.get_columns("vacancy_analyses")}
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT COUNT(*) FROM vacancies")) == 1
         assert connection.scalar(text("SELECT COUNT(*) FROM vacancy_analyses")) == 1
@@ -221,7 +236,7 @@ def test_seen_fields_migration_backfills_existing_rows(tmp_path, monkeypatch) ->
         assert connection.scalar(text("SELECT COUNT(*) FROM vacancy_analyses")) == 1
         assert connection.scalar(text("SELECT COUNT(*) FROM vacancy_processing_events")) == 1
 
-    command.downgrade(config, "-1")
+    command.downgrade(config, "20260801_0001")
     inspector = inspect(engine)
     downgraded_columns = {column["name"] for column in inspector.get_columns("vacancies")}
     assert "first_seen_at" not in downgraded_columns

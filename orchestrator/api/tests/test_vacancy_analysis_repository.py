@@ -60,13 +60,31 @@ def test_repository_get_by_vacancy_id(
     assert [item.id for item in analyses] == [analysis.id]
 
 
-def test_repository_enforces_unique_identity(
+def test_repository_allows_legacy_history_without_run_id(
     db_session,
     vacancy_payload: dict[str, object],
     vacancy_analysis_payload: dict[str, object],
 ) -> None:
     vacancy = create_vacancy(db_session, vacancy_payload)
     repository = VacancyAnalysisRepository(db_session)
+    analysis_input = VacancyAnalysisCreate(**vacancy_analysis_payload)
+    repository.create(vacancy.id, analysis_input)
+    db_session.commit()
+    second = repository.create(vacancy.id, analysis_input)
+    db_session.commit()
+
+    assert second.id is not None
+    assert repository.count() == 2
+
+
+def test_repository_enforces_unique_vacancy_run_id(
+    db_session,
+    vacancy_payload: dict[str, object],
+    vacancy_analysis_payload: dict[str, object],
+) -> None:
+    vacancy = create_vacancy(db_session, vacancy_payload)
+    repository = VacancyAnalysisRepository(db_session)
+    vacancy_analysis_payload["run_id"] = "run-001"
     analysis_input = VacancyAnalysisCreate(**vacancy_analysis_payload)
     repository.create(vacancy.id, analysis_input)
     db_session.commit()

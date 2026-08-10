@@ -7,12 +7,14 @@ from app.schemas.preliminary_filter import (
     PreliminaryFilterBatchResult,
     PreliminaryFilterRequest,
 )
+from app.schemas.pipeline_persistence import HHCollectFilterEnrichAndPersistRequest, HHCollectFilterEnrichAndPersistResult
 from app.schemas.vacancy_enrichment import HHCollectFilterAndEnrichRequest, HHCollectFilterAndEnrichResult
 from app.services.preliminary_filter import (
     HHCollectAndPreliminaryFilterService,
     PreliminaryFilterInputTooLargeError,
     PreliminaryVacancyFilterService,
 )
+from app.services.pipeline_persistence import HHCollectFilterEnrichAndPersistService
 from app.services.vacancy_enrichment import HHCollectFilterAndEnrichService
 from app.services.hh_search_collection import (
     HHSearchCollectionIdentityConflictError,
@@ -32,6 +34,10 @@ def get_hh_collect_and_preliminary_filter_service() -> HHCollectAndPreliminaryFi
 
 def get_hh_collect_filter_and_enrich_service() -> HHCollectFilterAndEnrichService:
     return HHCollectFilterAndEnrichService.from_settings(get_settings())
+
+
+def get_hh_collect_filter_enrich_and_persist_service() -> HHCollectFilterEnrichAndPersistService:
+    return HHCollectFilterEnrichAndPersistService.from_settings(get_settings())
 
 
 @router.post("/vacancies/preliminary-filter", response_model=PreliminaryFilterBatchResult)
@@ -63,6 +69,19 @@ async def collect_filter_and_enrich(
     service = get_hh_collect_filter_and_enrich_service()
     try:
         return await service.collect_filter_and_enrich(request)
+    except HHSearchCollectionUnknownProfileError as exc:
+        raise HTTPException(status_code=422, detail=f"Unknown HH search profile: {exc.profile_id}") from exc
+    except HHSearchCollectionIdentityConflictError as exc:
+        raise HTTPException(status_code=409, detail="HH search collection identity conflict") from exc
+
+
+@router.post("/hh/collect-filter-enrich-and-persist", response_model=HHCollectFilterEnrichAndPersistResult)
+async def collect_filter_enrich_and_persist(
+    request: HHCollectFilterEnrichAndPersistRequest,
+) -> HHCollectFilterEnrichAndPersistResult:
+    service = get_hh_collect_filter_enrich_and_persist_service()
+    try:
+        return await service.collect_filter_enrich_and_persist(request)
     except HHSearchCollectionUnknownProfileError as exc:
         raise HTTPException(status_code=422, detail=f"Unknown HH search profile: {exc.profile_id}") from exc
     except HHSearchCollectionIdentityConflictError as exc:

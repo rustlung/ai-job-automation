@@ -9,6 +9,7 @@ class Settings:
         self.app_port = int(getenv("APP_PORT", "8000"))
         self.log_level = getenv("LOG_LEVEL", "INFO")
         self.orchestrator_api_url = getenv("ORCHESTRATOR_API_URL", "http://localhost:8000")
+        self.orchestrator_request_timeout_seconds = float(getenv("ORCHESTRATOR_REQUEST_TIMEOUT_SECONDS", "30"))
         self.ollama_base_url = getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
         self.ollama_model = getenv("OLLAMA_MODEL", "qwen3:4b-instruct")
         self.ollama_request_timeout_seconds = float(getenv("OLLAMA_REQUEST_TIMEOUT_SECONDS", "120"))

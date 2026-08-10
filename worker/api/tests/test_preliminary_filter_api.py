@@ -21,6 +21,7 @@ from app.schemas.preliminary_filter import (
     PreliminaryRecommendedTrack,
     PreliminaryVacancyAssessment,
 )
+from app.schemas.pipeline_persistence import HHCollectFilterEnrichAndPersistResult
 from app.schemas.vacancy_enrichment import HHCollectFilterAndEnrichResult, VacancyEnrichmentStats, VacancyEnrichmentStatus
 
 
@@ -50,6 +51,16 @@ class FakeCollectFilterAndEnrichService:
         self.requests = []
 
     async def collect_filter_and_enrich(self, request):
+        self.requests.append(request)
+        return self.result
+
+
+class FakeCollectFilterEnrichAndPersistService:
+    def __init__(self, result: HHCollectFilterEnrichAndPersistResult) -> None:
+        self.result = result
+        self.requests = []
+
+    async def collect_filter_enrich_and_persist(self, request):
         self.requests.append(request)
         return self.result
 
@@ -301,5 +312,70 @@ def test_collect_filter_and_enrich_endpoint_success(client: TestClient, monkeypa
 )
 def test_collect_filter_and_enrich_rejects_unsafe_fields(payload: dict[str, object], client: TestClient) -> None:
     response = client.post("/hh/collect-filter-and-enrich", json=payload)
+
+    assert response.status_code == 422
+
+
+def persist_result() -> HHCollectFilterEnrichAndPersistResult:
+    enrichment = enrichment_result()
+    return HHCollectFilterEnrichAndPersistResult(
+        status=VacancyEnrichmentStatus.SUCCEEDED,
+        pipeline_run_id="run-001",
+        collection_stats=enrichment.collection_stats,
+        filter_stats=enrichment.filter_stats,
+        enrichment_stats=enrichment.enrichment_stats,
+        persistence_stats={
+            "run_id": "run-001",
+            "input_count": 0,
+            "persisted_count": 0,
+            "created_vacancy_count": 0,
+            "updated_vacancy_count": 0,
+            "analysis_created_count": 0,
+            "already_persisted_count": 0,
+            "failed_count": 0,
+            "status": "succeeded",
+            "duration_ms": 1,
+        },
+        items=[],
+        duration_ms=21,
+    )
+
+
+def test_collect_filter_enrich_and_persist_endpoint_success(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    service = FakeCollectFilterEnrichAndPersistService(persist_result())
+    monkeypatch.setattr(filter_routes, "get_hh_collect_filter_enrich_and_persist_service", lambda: service)
+
+    response = client.post(
+        "/hh/collect-filter-enrich-and-persist",
+        json={
+            "profile_ids": ["ai_resume_recommendations"],
+            "max_pages_override": 1,
+            "max_filter_items_override": 10,
+            "max_enrich_items_override": 5,
+            "pipeline_run_id": "run-001",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["pipeline_run_id"] == "run-001"
+    assert body["persistence_stats"]["status"] == "succeeded"
+    assert service.requests[0].pipeline_run_id == "run-001"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"url": "https://hh.ru/search/vacancy"},
+        {"query": "Python"},
+        {"cookie": "secret"},
+        {"storage_state_path": "/tmp/state.json"},
+        {"orchestrator_url": "http://example.com"},
+        {"api_key": "secret"},
+        {"sql": "select 1"},
+    ],
+)
+def test_collect_filter_enrich_and_persist_rejects_unsafe_fields(payload: dict[str, object], client: TestClient) -> None:
+    response = client.post("/hh/collect-filter-enrich-and-persist", json=payload)
 
     assert response.status_code == 422
