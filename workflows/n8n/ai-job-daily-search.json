@@ -1,0 +1,577 @@
+{
+  "name": "AI Job Automation — Daily Search CRM Digest",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1600,
+        0
+      ],
+      "id": "0f1cba29-5f23-4b0f-a9eb-a5e31e25ef01",
+      "name": "Manual Trigger"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1600,
+        220
+      ],
+      "id": "601364f3-a838-4d27-9f98-a8ac703cc376",
+      "name": "Schedule Trigger (disabled until workflow activation)",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{\n  {\n    worker_api_url: $env.WORKER_API_URL,\n    orchestrator_api_url: $env.ORCHESTRATOR_API_URL,\n    spreadsheet_id: $env.GOOGLE_SHEETS_CRM_DOCUMENT_ID,\n    spreadsheet_url: $env.GOOGLE_SHEETS_CRM_URL || \"\",\n    sheet_name: $env.GOOGLE_SHEETS_CRM_SHEET_NAME || \"Вакансии_TEST\",\n    email_to: $env.JOB_DIGEST_EMAIL_TO,\n    profile_ids: [\"ai_resume_recommendations\"],\n    max_pages_override: 1,\n    max_filter_items_override: 10,\n    max_enrich_items_override: 5,\n    crm_sync_priorities: [\"P1\", \"P2\", \"ALT\"],\n    top_vacancy_limit: 10\n  }\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1360,
+        100
+      ],
+      "id": "7df9044f-0a62-49e8-a2c5-3f96e50f67f4",
+      "name": "Config"
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $input.first().json;\nconst now = new Date();\nconst stamp = now.toISOString().replace(/[-:]/g, '').replace(/\\.\\d{3}Z$/, 'Z').replace('T', '-');\nconst random = Math.random().toString(36).slice(2, 8);\nconst runId = `n8n-${stamp}-${random}`;\nreturn [{\n  json: {\n    config,\n    run_id: runId,\n    worker_request: {\n      profile_ids: config.profile_ids,\n      max_pages_override: config.max_pages_override,\n      max_filter_items_override: config.max_filter_items_override,\n      max_enrich_items_override: config.max_enrich_items_override,\n      pipeline_run_id: runId\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1130,
+        100
+      ],
+      "id": "5b985608-49c0-4507-b484-a6c6c80ba01d",
+      "name": "Generate Run ID"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.config.worker_api_url }}/hh/collect-filter-enrich-and-persist",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.worker_request }}",
+        "options": {
+          "timeout": 1800000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -900,
+        100
+      ],
+      "id": "cf0a0f65-28a6-42af-8893-d6d45136229f",
+      "name": "HTTP Worker Pipeline",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const worker = $input.first().json;\nconst context = $('Generate Run ID').first().json;\nconst stats = worker.persistence_stats || {};\nconst workerFailed = Boolean(worker.error) || worker.status === 'failed';\nconst persistenceFailed = !worker.persistence_stats || stats.status === 'failed' || stats.failed_count > 0 && stats.persisted_count === 0;\nconst ok = !workerFailed && !persistenceFailed;\nconst warnings = [];\nif (worker.status === 'completed_with_errors') warnings.push('Worker completed with errors');\nif (stats.status === 'completed_with_errors' || (stats.failed_count || 0) > 0) warnings.push('Persistence completed with errors');\nreturn [{\n  json: {\n    ok,\n    run_id: worker.pipeline_run_id || context.run_id,\n    config: context.config,\n    worker,\n    persistence_stats: stats,\n    warnings,\n    failure_stage: workerFailed ? 'worker_pipeline' : (persistenceFailed ? 'orchestrator_persistence' : null),\n    safe_error: worker.error?.message || worker.errors?.[0]?.message || null\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -670,
+        100
+      ],
+      "id": "8f953b92-f95b-45eb-b454-5106a278de6c",
+      "name": "Check Worker Result"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "a2ce3e65-90d8-4557-9c59-71b7b3f14b3a",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -440,
+        100
+      ],
+      "id": "f0d8ae01-7a7c-443a-9e7d-5cc0a5c3a0c2",
+      "name": "Pipeline OK?"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.config.orchestrator_api_url }}/pipeline-results/runs/{{ $json.run_id }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -170,
+        -20
+      ],
+      "id": "9818e19a-9c4e-460e-8f42-914a977f05fb",
+      "name": "Get Current Run"
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Check Worker Result').first().json.config.spreadsheet_id }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('Check Worker Result').first().json.config.sheet_name }}",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        80,
+        -20
+      ],
+      "id": "3f44e998-d9bf-464b-a67d-66d5bcf41fbd",
+      "name": "Read CRM Rows"
+    },
+    {
+      "parameters": {
+        "jsCode": "function nodeItems(name) {\n  try { return $(name).all().map(item => item.json); } catch (error) {}\n  try { return $items(name).map(item => item.json); } catch (error) {}\n  return [];\n}\nfunction firstNode(name) { return nodeItems(name)[0] || {}; }\nfunction compact(values, limit = 8) {\n  return [...new Set((values || []).filter(Boolean).map(String))].slice(0, limit);\n}\nfunction join(values, limit = 8) { return compact(values, limit).join(', '); }\nfunction formatDate(value) {\n  if (!value) return '';\n  const date = new Date(value);\n  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);\n  return date.toLocaleDateString('ru-RU', { timeZone: 'Europe/Samara' });\n}\nfunction externalIdFromUrl(url) {\n  const match = String(url || '').match(/\\/vacancy\\/(\\d+)/);\n  return match ? match[1] : null;\n}\nfunction riskLabel(code) {\n  const map = {\n    salary_low_strong: 'Низкая зарплата',\n    salary_low_moderate: 'Зарплата ниже желаемой',\n    responsibility_stretch: 'Повышенный уровень ответственности',\n    english_required: 'Требуется английский',\n    office_outside_samara: 'Обязательный офис вне Самары',\n    relocation_required: 'Требуется релокация',\n    travel_required: 'Командировки'\n  };\n  return map[code] || code;\n}\nfunction typeLabel(analysis) {\n  const semantic = analysis.semantic_snapshot || {};\n  const features = analysis.deterministic_features || {};\n  const track = semantic.target_track || '';\n  const nature = semantic.role_nature || '';\n  if (track === 'ai') return 'AI';\n  if (track === 'python') return 'Python';\n  if (track === 'alt_qa' || nature === 'qa') return 'QA';\n  if (track === 'alt_analytics' || nature === 'analytics') return 'Analytics';\n  if (features.automation_signal || nature === 'automation') return 'Automation';\n  if (track === 'alt_technical' || nature === 'technical_support') return 'Technical';\n  return analysis.priority || '';\n}\nfunction workFormat(features) {\n  if (!features) return 'Не указано';\n  if (features.work_format === 'remote') return 'Удалённо';\n  if (features.work_format === 'hybrid') return 'Гибрид';\n  if (features.work_format === 'office') return 'Офис';\n  return 'Не указано';\n}\nfunction stackText(analysis) {\n  const features = analysis.deterministic_features || {};\n  const skills = compact([...(features.matching_skills || []), ...(features.detected_skills || [])], 8);\n  return skills.join(', ').slice(0, 180);\n}\nconst run = firstNode('Get Current Run');\nconst check = firstNode('Check Worker Result');\nconst sheetRows = $input.all().map(item => item.json || {});\nconst syncPriorities = new Set(check.config?.crm_sync_priorities || ['P1', 'P2', 'ALT']);\nconst existingByKey = new Map();\nconst existingByUrlExternalId = new Map();\nlet maxNumber = 0;\nfor (const row of sheetRows) {\n  const number = Number(row['№'] || row['No'] || 0);\n  if (Number.isFinite(number) && number > maxNumber) maxNumber = number;\n  const key = String(row['CRM Key'] || '').trim();\n  if (key) existingByKey.set(key, row);\n  const urlExternalId = externalIdFromUrl(row['Ссылка']);\n  if (urlExternalId) existingByUrlExternalId.set(`hh:${urlExternalId}`, row);\n}\nlet nextNumber = maxNumber + 1;\nconst rows = [];\nfor (const analysis of run.analyses || []) {\n  if (!syncPriorities.has(analysis.priority)) continue;\n  const vacancy = analysis.vacancy_snapshot || {};\n  const key = `${vacancy.source || 'hh'}:${vacancy.external_id || ''}`;\n  const existingByCrmKey = existingByKey.get(key);\n  const existingByUrl = existingByUrlExternalId.get(key);\n  const existing = existingByCrmKey || existingByUrl || null;\n  const semantic = analysis.semantic_snapshot || {};\n  const features = analysis.deterministic_features || {};\n  const risks = (analysis.risks || []).map(riskLabel);\n  const blockers = (analysis.hard_blockers || []).map(riskLabel);\n  const rowNumber = existing ? (existing['№'] || existing['No'] || '') : nextNumber++;\n  const date = existing && existing['Дата'] ? existing['Дата'] : formatDate(vacancy.collected_at || analysis.created_at);\n  const crmRow = {\n    '№': rowNumber,\n    'Компания': vacancy.company || '',\n    'Должность': vacancy.title || '',\n    'Тип': typeLabel(analysis),\n    'Приоритет': analysis.priority || '',\n    'ЗП': vacancy.salary_text || '',\n    'Формат': workFormat(features),\n    'Стек': stackText(analysis),\n    'Дата': date,\n    'Ссылка': vacancy.url || '',\n    'Score': analysis.final_score ?? '',\n    'AI причина': semantic.short_reason || analysis.summary || '',\n    'Риски': join(risks, 6),\n    'Hard blockers': join(blockers, 6),\n    'CRM Key': key,\n    'Run ID': analysis.run_id || run.run_id,\n    'Анализ обновлён': analysis.created_at || '',\n    crm_key: key,\n    match_strategy: existingByCrmKey ? 'crm_key' : (existingByUrl ? 'legacy_url' : 'new'),\n    crm_action: existing ? 'updated' : 'new'\n  };\n  rows.push(crmRow);\n}\nreturn rows.map(row => ({ json: row }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        330,
+        -20
+      ],
+      "id": "7354a3c2-fabd-4d9a-8f2d-78b9b860d741",
+      "name": "Prepare CRM Rows"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "b0e83f50-a581-4ffe-9c9d-20636da6af08",
+              "leftValue": "={{ $json.match_strategy }}",
+              "rightValue": "legacy_url",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        570,
+        -20
+      ],
+      "id": "50ec148d-9b6c-445e-9c96-f4c45ef25e46",
+      "name": "Legacy URL Match?"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Check Worker Result').first().json.config.spreadsheet_id }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('Check Worker Result').first().json.config.sheet_name }}",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "№": "={{ $json['№'] }}",
+            "Компания": "={{ $json['Компания'] }}",
+            "Должность": "={{ $json['Должность'] }}",
+            "Тип": "={{ $json['Тип'] }}",
+            "Приоритет": "={{ $json['Приоритет'] }}",
+            "ЗП": "={{ $json['ЗП'] }}",
+            "Формат": "={{ $json['Формат'] }}",
+            "Стек": "={{ $json['Стек'] }}",
+            "Дата": "={{ $json['Дата'] }}",
+            "Ссылка": "={{ $json['Ссылка'] }}",
+            "Score": "={{ $json['Score'] }}",
+            "AI причина": "={{ $json['AI причина'] }}",
+            "Риски": "={{ $json['Риски'] }}",
+            "Hard blockers": "={{ $json['Hard blockers'] }}",
+            "CRM Key": "={{ $json['CRM Key'] }}",
+            "Run ID": "={{ $json['Run ID'] }}",
+            "Анализ обновлён": "={{ $json['Анализ обновлён'] }}"
+          },
+          "matchingColumns": [
+            "CRM Key"
+          ],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        830,
+        80
+      ],
+      "id": "f41ca1f2-d3c0-4be2-9432-5f4827d49e2e",
+      "name": "CRM Upsert by CRM Key",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Check Worker Result').first().json.config.spreadsheet_id }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('Check Worker Result').first().json.config.sheet_name }}",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "№": "={{ $json['№'] }}",
+            "Компания": "={{ $json['Компания'] }}",
+            "Должность": "={{ $json['Должность'] }}",
+            "Тип": "={{ $json['Тип'] }}",
+            "Приоритет": "={{ $json['Приоритет'] }}",
+            "ЗП": "={{ $json['ЗП'] }}",
+            "Формат": "={{ $json['Формат'] }}",
+            "Стек": "={{ $json['Стек'] }}",
+            "Дата": "={{ $json['Дата'] }}",
+            "Ссылка": "={{ $json['Ссылка'] }}",
+            "Score": "={{ $json['Score'] }}",
+            "AI причина": "={{ $json['AI причина'] }}",
+            "Риски": "={{ $json['Риски'] }}",
+            "Hard blockers": "={{ $json['Hard blockers'] }}",
+            "CRM Key": "={{ $json['CRM Key'] }}",
+            "Run ID": "={{ $json['Run ID'] }}",
+            "Анализ обновлён": "={{ $json['Анализ обновлён'] }}"
+          },
+          "matchingColumns": [
+            "Ссылка"
+          ],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        830,
+        -140
+      ],
+      "id": "2dbf2732-4605-4217-b871-101770b94909",
+      "name": "CRM Upsert Legacy by URL",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "function nodeItems(name) {\n  try { return $(name).all().map(item => item.json); } catch (error) {}\n  try { return $items(name).map(item => item.json); } catch (error) {}\n  return [];\n}\nfunction firstNode(name) { return nodeItems(name)[0] || {}; }\nfunction escapeHtml(value) {\n  return String(value || '').replace(/[&<>\"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[char]));\n}\nconst check = firstNode('Check Worker Result');\nconst run = firstNode('Get Current Run');\nconst worker = check.worker || {};\nconst crmRows = nodeItems('Prepare CRM Rows');\nconst priorityCounts = { P1: 0, P2: 0, P3: 0, ALT: 0 };\nfor (const analysis of run.analyses || []) {\n  if (analysis.priority in priorityCounts) priorityCounts[analysis.priority] += 1;\n}\nconst crmStats = {\n  crm_new_count: crmRows.filter(row => row.crm_action === 'new').length,\n  crm_updated_count: crmRows.filter(row => row.crm_action === 'updated').length,\n  crm_failed_count: 0,\n  crm_skipped_count: (run.analyses || []).filter(a => a.priority === 'P3').length\n};\nconst warnings = [...(check.warnings || [])];\nconst subject = warnings.length\n  ? `AI Job Automation — поиск завершён с предупреждениями — ${new Date().toLocaleDateString('ru-RU')}`\n  : `AI Job Automation — поиск завершён — ${new Date().toLocaleDateString('ru-RU')}`;\nconst sortedTop = crmRows\n  .filter(row => ['P1', 'P2', 'ALT'].includes(row['Приоритет']))\n  .sort((a, b) => {\n    const order = { P1: 0, P2: 1, ALT: 2 };\n    return (order[a['Приоритет']] - order[b['Приоритет']]) || (Number(b.Score || 0) - Number(a.Score || 0));\n  })\n  .slice(0, check.config?.top_vacancy_limit || 10);\nconst topHtml = sortedTop.map(row => `\n  <li>\n    <b>[${escapeHtml(row['Приоритет'])}] ${escapeHtml(row.Score)} — ${escapeHtml(row['Должность'])}</b><br>\n    ${escapeHtml(row['Компания'])}<br>\n    Причина: ${escapeHtml(row['AI причина'])}<br>\n    Риски: ${escapeHtml(row['Риски'] || 'нет')}<br>\n    <a href=\"${escapeHtml(row['Ссылка'])}\">Ссылка</a>\n  </li>`).join('');\nconst stats = worker.persistence_stats || check.persistence_stats || {};\nconst html = `\n<p>Поиск вакансий завершён.</p>\n<p><b>Run:</b> ${escapeHtml(check.run_id)}</p>\n${warnings.length ? `<p><b>Warnings:</b> ${escapeHtml(warnings.join('; '))}</p>` : ''}\n<ul>\n  <li>Найдено collection: ${escapeHtml(worker.collection_stats?.unique_vacancy_count ?? worker.collection_stats?.raw_vacancy_count ?? '')}</li>\n  <li>После preliminary filter: ${escapeHtml(worker.filter_stats?.processed_count ?? '')}</li>\n  <li>Полностью проанализировано: ${escapeHtml(worker.enrichment_stats?.enriched_count ?? '')}</li>\n  <li>Сохранено в DB: ${escapeHtml(stats.persisted_count ?? '')}</li>\n  <li>P1: ${priorityCounts.P1}, P2: ${priorityCounts.P2}, ALT: ${priorityCounts.ALT}, P3: ${priorityCounts.P3}</li>\n  <li>CRM новых строк: ${crmStats.crm_new_count}, обновлено: ${crmStats.crm_updated_count}, ошибок: ${crmStats.crm_failed_count}</li>\n  <li>Время выполнения Worker: ${escapeHtml(worker.duration_ms ?? '')} ms</li>\n</ul>\n${check.config?.spreadsheet_url ? `<p><a href=\"${escapeHtml(check.config.spreadsheet_url)}\">Открыть CRM</a></p>` : ''}\n<h3>Top vacancies</h3>\n<ol>${topHtml}</ol>`;\nreturn [{ json: { to: check.config?.email_to, subject, html, text: html.replace(/<[^>]*>/g, ' '), run_id: check.run_id, crm_stats: crmStats } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1090,
+        -20
+      ],
+      "id": "f5e67b25-4a9f-45b6-b070-885b63a2b45b",
+      "name": "Prepare Success Email"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1330,
+        -20
+      ],
+      "id": "e98b99ef-3527-406e-ac13-82f4d9377cfe",
+      "name": "Gmail Send Digest"
+    },
+    {
+      "parameters": {
+        "jsCode": "const check = $input.first().json;\nconst subject = `AI Job Automation — ошибка поиска — ${new Date().toLocaleDateString('ru-RU')}`;\nconst html = `<p>Pipeline failed.</p><ul><li>Run: ${check.run_id}</li><li>Stage: ${check.failure_stage || 'unknown'}</li><li>Error: ${check.safe_error || 'see n8n/Worker logs'}</li></ul><p>DB remains source of truth for successfully persisted earlier runs.</p>`;\nreturn [{ json: { to: check.config?.email_to, subject, html, text: html.replace(/<[^>]*>/g, ' '), run_id: check.run_id } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -170,
+        240
+      ],
+      "id": "94e69947-d77a-4069-a4ed-4385b4753fa3",
+      "name": "Prepare Failure Email"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        80,
+        240
+      ],
+      "id": "3d390d0e-19b0-4256-9436-e937a6291345",
+      "name": "Gmail Send Failure"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger (disabled until workflow activation)": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Generate Run ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Run ID": {
+      "main": [
+        [
+          {
+            "node": "HTTP Worker Pipeline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Worker Pipeline": {
+      "main": [
+        [
+          {
+            "node": "Check Worker Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Worker Result": {
+      "main": [
+        [
+          {
+            "node": "Pipeline OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pipeline OK?": {
+      "main": [
+        [
+          {
+            "node": "Get Current Run",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Failure Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Current Run": {
+      "main": [
+        [
+          {
+            "node": "Read CRM Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read CRM Rows": {
+      "main": [
+        [
+          {
+            "node": "Prepare CRM Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare CRM Rows": {
+      "main": [
+        [
+          {
+            "node": "Legacy URL Match?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Legacy URL Match?": {
+      "main": [
+        [
+          {
+            "node": "CRM Upsert Legacy by URL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "CRM Upsert by CRM Key",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CRM Upsert Legacy by URL": {
+      "main": [
+        [
+          {
+            "node": "Prepare Success Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CRM Upsert by CRM Key": {
+      "main": [
+        [
+          {
+            "node": "Prepare Success Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Success Email": {
+      "main": [
+        [
+          {
+            "node": "Gmail Send Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Failure Email": {
+      "main": [
+        [
+          {
+            "node": "Gmail Send Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "6f549bb5-0638-4e49-bb24-2f4f2b257511",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "nodeGroups": [],
+  "tags": []
+}

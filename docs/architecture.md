@@ -493,7 +493,8 @@ Worker умеет получать одну страницу поисковой 
 -   browser client отвечает за авторизацию, navigation и DOM stabilization;
 -   collector оркестрирует profiles, query variants, pages и transport routing;
 -   deduplication не зависит от transport;
--   Orchestrator из Worker collector пока не вызывается.
+-   persistence bridge отправляет результаты принятого enrichment pipeline в
+    Orchestrator через HTTP API.
 
 Контракт краткой карточки `HHSearchVacancy`:
 
@@ -597,10 +598,10 @@ n8n / collector
 ```
 
 На текущем этапе реализованы search collection batch кратких карточек,
-preliminary local AI filter поверх deduplicated search vacancies и full vacancy
-enrichment для кандидатов `keep_main`, `keep_alt` и `uncertain`.
-Запись full enrichment results в Orchestrator и n8n HH collector workflow ещё
-не реализованы.
+preliminary local AI filter поверх deduplicated search vacancies, full vacancy
+enrichment для кандидатов `keep_main`, `keep_alt` и `uncertain`, а также
+persistence bridge в Orchestrator DB через `POST /pipeline-results`.
+n8n HH collector workflow ещё не реализован.
 
 ## 10.2.1. Preliminary local AI filter
 
@@ -871,8 +872,10 @@ logic:
 -   `P2` при score `>= 55`;
 -   ниже — `P3`.
 
-Worker пока не сохраняет full enrichment results в Orchestrator. Результат
-живёт в API response.
+Worker сохраняет full enrichment results в Orchestrator через persistence
+bridge endpoint `POST /hh/collect-filter-enrich-and-persist`. Stateless
+endpoint `POST /hh/collect-filter-and-enrich` остается доступным для
+диагностики и возвращает результат только в API response.
 
 ## 10.3. HH search collection profiles
 
@@ -1244,14 +1247,17 @@ deduplication и объединение разных external_id.
 
 ## 11.1. Vacancy persistence
 
-`NormalizedVacancy` в будущем будет передаваться в Orchestrator через:
+Worker передает результаты полного pipeline в Orchestrator через batch
+persistence endpoint:
 
 ``` text
-Orchestrator POST /vacancies
+POST /pipeline-results
 ```
 
-Сейчас endpoint уже реализован как идемпотентный upsert. Финальная защита
-постоянного хранилища:
+Внутри batch persistence Orchestrator выполняет `Vacancy` upsert, создает
+`VacancyAnalysis` revision, сохраняет provenance, snapshots анализа,
+processing events и `run_id`. Диагностический `POST /vacancies` также остается
+доступен как идемпотентный upsert. Финальная защита постоянного хранилища:
 
 ``` text
 UNIQUE(source, external_id)
@@ -1304,7 +1310,16 @@ Worker-дедупликация не заменяет constraint в БД. Orches
 UTC, либо текущее серверное UTC-время. Naive datetime запрещен.
 
 Discovery counters показывают агрегированное состояние вакансии. Они не
-используют `run_id` и не заменяют подробную историю обработки.
+заменяют подробную историю обработки.
+
+Для pipeline persistence действует дополнительное distinction:
+
+-   same-run retry для той же `vacancy + run_id` не увеличивает `seen_count`,
+    не меняет `first_seen_at` и не создает ложное повторное обнаружение;
+-   новый collection/pipeline run для существующей вакансии обновляет
+    `last_seen_at`, увеличивает `seen_count` и сохраняет `first_seen_at`.
+
+Persistence retry не считается новым обнаружением vacancy.
 
 ## 11.3. Processing history
 
@@ -1363,8 +1378,9 @@ GET /processing-runs/{run_id}/events
     хранятся.
 
 Полный AI-результат хранится в `VacancyAnalysis`, а не в event metadata.
-Processing events создаются только явными API-вызовами. Автоматическая запись
-событий из Worker или n8n пока не реализована.
+Processing events могут создаваться явными API-вызовами, а для
+`POST /pipeline-results` создаются автоматически внутри успешной persistence
+transaction конкретного item.
 
 ## 11.4. Текущее разделение Worker и Orchestrator
 
@@ -1393,21 +1409,76 @@ Orchestrator отвечает за:
 -   seen_count;
 -   API постоянного хранилища.
 
-Планируемый архитектурный поток:
+Реализованный persistence flow:
 
 ``` text
+HH
+↓
 Worker
-→ NormalizedVacancy
-→ batch deduplication
-→ Orchestrator POST /vacancies
-→ Vacancy persistence
-→ explicit processing event calls
-→ AI analysis persistence
+collect/filter/enrich/score
+↓
+Persistence Bridge
+↓
+Orchestrator API
+↓
+Orchestrator DB
+├── Vacancy
+├── VacancyAnalysis history
+└── Processing events
 ```
 
-Автоматический end-to-end HH pipeline пока не реализован.
+Worker остается stateless processing node. Orchestrator DB является source of
+truth для автоматических данных vacancy pipeline. n8n и будущая CRM-витрина
+должны читать данные через HTTP API, а не напрямую из SQLite.
 
-## 11.5. Future AI evaluation decision
+Read API для следующих фаз:
+
+``` text
+GET /pipeline-results/runs/{run_id}
+GET /pipeline-results/analyses/latest?priority=P1&limit=100&offset=0
+GET /vacancies/{vacancy_id}/analyses
+GET /processing-runs/{run_id}/events
+```
+
+`GET /pipeline-results/runs/{run_id}` возвращает `run_id`, `count` и список
+`analyses`. `GET /pipeline-results/analyses/latest` поддерживает `priority`,
+`limit` и `offset` и является основным кандидатом для n8n / CRM
+synchronization.
+
+## 11.5. Future CRM and notification flow
+
+Статус: planned для Phase 5.10.
+
+Будущий поток:
+
+``` text
+Orchestrator read API
+↓
+n8n
+├── Google Sheets CRM
+└── Email digest
+```
+
+Google Sheets не является вторым независимым хранилищем анализа. Orchestrator
+DB хранит подробные technical/system данные, а Google Sheets должна быть
+рабочей CRM-витриной. Автоматическая синхронизация идет в направлении:
+
+``` text
+Orchestrator DB → n8n → Google Sheets
+```
+
+Интеграция Google Sheets не реализуется Python-модулем в Worker или
+Orchestrator. Она будет сделана через n8n: Google OAuth уже настроен там,
+external integration belongs to orchestration layer, а отказ Google не должен
+влиять на сохранение результата в DB.
+
+Email является первым надежным notification channel для MVP. Telegram не входит
+в critical path Phase 5.10: ранее Telegram node n8n не смог отправить запрос
+из-за сетевой доступности Telegram API с homeserver. Telegram рассматривается
+как optional/future через proxy, отдельный route, relay или небольшой bot/relay
+на VPS.
+
+## 11.6. Future AI evaluation decision
 
 Статус: planned.
 
@@ -1502,13 +1573,15 @@ Custom engine:
 -   Worker реализует HH parsing, normalization, exact batch deduplication,
     local AI, HH search collection profiles, preliminary local AI filter и
     full vacancy enrichment/scoring;
--   Phase 5.8 принята на целевом Worker.
+-   Worker передает принятые enrichment/scoring results в Orchestrator через
+    persistence bridge;
+-   Orchestrator DB является source of truth для автоматических данных vacancy
+    pipeline;
+-   Phase 5.9 принята на целевых узлах.
 
 Следующие шаги:
 
-1.  Реализовать Phase 5.9: Worker → Orchestrator persistence bridge для
-    сохранения vacancy, analysis/result, processing history и run provenance.
+1.  Собрать Phase 5.10: n8n orchestration, Google Sheets CRM upsert и email
+    digest.
 
-2.  Собрать n8n HH collector workflow.
-
-3.  Добавить расписание, уведомления и production calibration.
+2.  Добавить расписание, уведомления и production calibration.

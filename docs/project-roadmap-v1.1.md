@@ -926,10 +926,10 @@ Runtime batch size configurable через `PRELIMINARY_FILTER_BATCH_SIZE`.
 - возможны ошибки `recommended_track`;
 - `uncertain` намеренно используется консервативно;
 - `batch_size=1` может быть медленным;
-- full vacancy description ещё не анализируется;
-- окончательный `P1/P2/P3` отсутствует;
-- persistence отсутствует;
-- Orchestrator пока не участвует в реальном HH pipeline;
+- full vacancy description ещё не анализировался на этом этапе;
+- окончательный `P1/P2/P3` отсутствовал на этом этапе;
+- persistence отсутствовала на этом этапе;
+- Orchestrator ещё не участвовал в реальном HH pipeline на этом этапе;
 - n8n workflow ещё не собран;
 - ProxyAPI/cloud analysis не входит в текущий MVP path;
 - RAG не реализуется на данном этапе.
@@ -1126,10 +1126,9 @@ Acceptance examples:
 - возможны ошибки track classification;
 - salary parsing не является универсальным;
 - некоторые признаки могут оставаться `unknown`;
-- persistence отсутствует;
-- результат пока живёт только в response;
-- Orchestrator пока не получает реальные enrichment results;
-- processing events реального run ещё не связаны;
+- persistence отсутствовала на момент приемки Phase 5.8 и реализована в
+  Phase 5.9;
+- stateless endpoint по-прежнему возвращает результат только в response;
 - n8n workflow ещё отсутствует;
 - email delivery и cloud deep analysis отсутствуют.
 
@@ -1137,24 +1136,99 @@ Acceptance examples:
 
 ## Phase 5.9. Worker → Orchestrator persistence bridge
 
-Статус: следующий незавершенный этап.
+Статус: завершена и принята на целевых узлах.
 
 ## Цель
 
 Передать результаты рабочего Worker enrichment pipeline в постоянное хранилище
 Orchestrator.
 
-Планируемые задачи:
+Результат:
 
-- сохранить vacancy через существующий idempotent upsert;
-- сохранить analysis/result;
-- связать processing history;
-- сохранить run provenance/status;
-- обеспечить идемпотентную передачу результата;
-- не дублировать persistence logic в Worker;
-- не терять `source + external_id` identity и provenance collection.
+- добавлен Worker Orchestrator client;
+- добавлен Worker vertical endpoint
+  `POST /hh/collect-filter-enrich-and-persist`;
+- stateless endpoint `POST /hh/collect-filter-and-enrich` сохранен для
+  диагностики и тестирования;
+- добавлен Orchestrator batch endpoint `POST /pipeline-results`;
+- batch persistence выполняет `Vacancy` upsert;
+- сохраняются `VacancyAnalysis` results с `run_id`, `final_score`, `priority`,
+  snapshots анализа и provenance;
+- `Vacancy` имеет history analyses: новый run создает новую analysis revision и
+  не перезаписывает старую;
+- identity вакансии остается `source + external_id`;
+- same-run retry для той же `vacancy + pipeline_run_id` идемпотентен;
+- same-run retry не создает новую `Vacancy`, `VacancyAnalysis` или повторные
+  processing events и не увеличивает `seen_count`;
+- новый pipeline run для существующей vacancy обновляет seen state и создает
+  новую analysis revision;
+- processing events создаются append-only для стадий `discovered`,
+  `deduplicated`, `preliminary_analyzed`, `details_fetched`, `normalized`,
+  `fully_analyzed`, `saved`;
+- AI metadata сохраняет `provider`, `model` и `prompt_version` для preliminary
+  и full semantic stages;
+- добавлены read endpoints:
+  - `GET /pipeline-results/runs/{run_id}`;
+  - `GET /pipeline-results/analyses/latest`;
+- existing endpoints `GET /vacancies/{vacancy_id}/analyses` и
+  `GET /processing-runs/{run_id}/events` остаются доступными для истории;
+- Orchestrator DB стал source of truth для автоматических данных vacancy
+  pipeline;
+- target acceptance подтвердила idempotency, seen semantics, analysis history,
+  processing events и read API.
 
-Phase 5.9 сейчас не реализована.
+Acceptance examples:
+
+- same-run retry: `input_count=16`, `persisted_count=0`,
+  `already_persisted_count=16`, `failed_count=0`, `status=succeeded`;
+- new run `manual-phase-5-9-test-002`: `input_count=15`,
+  `persisted_count=15`, `updated_vacancy_count=15`,
+  `analysis_created_count=15`, `failed_count=0`, `status=succeeded`;
+- processing history для принятого run: `17 × 7 = 119` succeeded events;
+- read API `GET /pipeline-results/analyses/latest?priority=P1&limit=3`
+  вернул последние P1 analyses.
+
+Эти числа фиксируют acceptance-поведение, а не постоянные продуктовые метрики.
+
+---
+
+## Phase 5.10. n8n orchestration + CRM + notifications
+
+Статус: следующий незавершенный этап.
+
+## Цель
+
+Собрать MVP orchestration flow поверх принятого Worker persistence endpoint и
+Orchestrator read API.
+
+Минимальный MVP workflow:
+
+``` text
+Schedule / Manual Trigger
+↓
+Worker
+POST /hh/collect-filter-enrich-and-persist
+↓
+Orchestrator DB
+↓
+Orchestrator read API
+↓
+Google Sheets CRM upsert
+↓
+Email digest
+```
+
+План:
+
+- запускать Worker vertical endpoint из n8n;
+- читать результаты через Orchestrator API, а не через SQLite;
+- синхронизировать Google Sheets как CRM-витрину;
+- не хранить весь technical payload в Sheets;
+- не затирать пользовательские CRM-поля автоматической синхронизацией;
+- отправлять email digest как первый надежный notification channel.
+
+Telegram не является blocker Phase 5.10. Он остается optional follow-up после
+решения сетевой доступности Telegram API с homeserver.
 
 ---
 
@@ -1164,14 +1238,14 @@ Phase 5 не считается полностью завершенной.
 
 Остаются:
 
-- автоматическая передача Worker → Orchestrator;
-- сохранение enrichment results;
-- связь с processing history реального run;
-- n8n HH collector workflow.
+- n8n orchestration workflow;
+- Google Sheets CRM upsert;
+- email digest;
+- schedule/manual production entrypoint;
+- production calibration.
 
-Следующий этап по текущему roadmap всё ещё находится внутри Phase 5:
-Phase 5.9 — Worker → Orchestrator persistence bridge поверх уже проверенного
-`POST /hh/collect-filter-and-enrich`.
+Следующий этап по текущему roadmap находится внутри Phase 5:
+Phase 5.10 — n8n orchestration + Google Sheets CRM upsert + email digest.
 
 ---
 

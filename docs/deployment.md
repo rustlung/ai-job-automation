@@ -91,11 +91,16 @@ docker compose run --rm api alembic current
 Текущий Alembic head после реализации processing history и vacancy seen fields:
 
 ``` text
-20260801_0002
+20260810_0001
 ```
 
 Перед миграциями SQLite обязателен timestamped backup `orchestrator/data/app.db`.
-Особенно это важно для миграций processing history и vacancy seen fields.
+Особенно это важно для миграций processing history, vacancy seen fields и
+pipeline results persistence.
+
+Persistence endpoint `POST /pipeline-results` предназначен для внутренней LAN
+связи Worker → Orchestrator. Если service authentication еще не включена, этот
+endpoint нельзя публиковать наружу.
 
 Проверить создание processing event:
 
@@ -274,6 +279,8 @@ OLLAMA_KEEP_ALIVE=5m
 PRELIMINARY_FILTER_BATCH_SIZE=10
 FULL_ENRICHMENT_MAX_ITEMS=30
 FULL_ANALYSIS_BATCH_SIZE=1
+ORCHESTRATOR_API_URL=http://localhost:8000
+ORCHESTRATOR_REQUEST_TIMEOUT_SECONDS=30
 ```
 
 Не коммитить локальный `.env`.
@@ -310,6 +317,12 @@ FULL_ANALYSIS_BATCH_SIZE=1
 Стабильность важнее скорости. Увеличение full analysis batch size требует
 отдельной target acceptance проверки.
 
+`ORCHESTRATOR_API_URL` задает базовый URL Orchestrator API для Worker
+persistence bridge. `ORCHESTRATOR_REQUEST_TIMEOUT_SECONDS` задает timeout
+запроса к Orchestrator. Worker должен иметь сетевой доступ к Orchestrator
+внутри trusted LAN. Реальные IP-адреса, локальные URL и секреты не фиксировать
+в Git.
+
 HH проверяется на Worker без VPN. С текущим VPN-маршрутом HH возвращал HTTP 451.
 Public HH endpoints используют `httpx`. Authenticated resume profiles используют
 Playwright/Chromium, сохраненный storage state и read-only secrets mount.
@@ -327,6 +340,27 @@ docker compose up -d --build
 curl http://localhost:8001/health
 curl http://localhost:8001/health/ollama
 ```
+
+Проверить vertical persistence endpoint без фиксации реальных URL или secrets:
+
+``` powershell
+$body = @{
+  profile_ids = @("python_expanded_search")
+  max_pages_override = 5
+  max_filter_items_override = 20
+  max_enrich_items_override = 20
+  pipeline_run_id = "manual-phase-5-9-check"
+} | ConvertTo-Json -Depth 10
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8001/hh/collect-filter-enrich-and-persist" `
+  -Method Post `
+  -ContentType "application/json; charset=utf-8" `
+  -Body $body
+```
+
+Stateless diagnostic endpoint `POST /hh/collect-filter-and-enrich` остается
+доступным, но не сохраняет результаты в Orchestrator DB.
 
 Проверить локальный AI endpoint:
 

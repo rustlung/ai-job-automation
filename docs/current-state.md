@@ -94,6 +94,17 @@
 ✅ Compact local semantic full-vacancy assessment
 ✅ Deterministic P1/P2/P3/ALT scoring
 ✅ Phase 5.8 target Worker acceptance
+✅ Worker → Orchestrator persistence bridge
+✅ POST /hh/collect-filter-enrich-and-persist
+✅ POST /pipeline-results
+✅ Orchestrator DB source of truth для vacancy pipeline
+✅ Batch persistence в Orchestrator DB
+✅ VacancyAnalysis history by run_id
+✅ Pipeline persistence idempotency
+✅ Pipeline seen semantics
+✅ Processing events from persistence bridge
+✅ Pipeline read API
+✅ Phase 5.9 target acceptance
 
 Phase 1 — Orchestrator foundation завершена.
 Phase 2.1 — Worker API foundation завершена.
@@ -110,6 +121,7 @@ Phase 5.6.1 — Authenticated HH browser spike завершена и приня�
 Phase 5.6.2 — Authenticated resume profiles integrated into collector завершена и принята.
 Phase 5.7 — Preliminary local AI vacancy filter завершена и принята на целевом Worker.
 Phase 5.8 — Full vacancy enrichment and deterministic scoring завершена и принята на целевом Worker.
+Phase 5.9 — Persistence Bridge: Worker → Orchestrator DB завершена и принята на целевых узлах.
 
 Создан и развернут на homeserver базовый backend оркестрационного слоя на FastAPI.
 Работает endpoint `GET /health`.
@@ -386,11 +398,98 @@ version, которая будет уточняться по реальным е
 - salary parsing не является универсальным;
 - некоторые признаки могут оставаться `unknown`;
 - `P1/P2` thresholds ещё не откалиброваны на большой реальной выборке;
-- persistence enrichment results отсутствует;
-- результат пока живёт только в API response;
-- Orchestrator пока не получает реальные enrichment results;
-- processing events реального run ещё не связаны;
 - n8n HH collector workflow, email delivery и cloud deep analysis отсутствуют.
+
+Phase 5.9 реализовала persistence bridge между Worker и Orchestrator DB.
+
+Текущий принятый поток:
+
+``` text
+Worker
+→ collect / filter / enrich / score
+→ Persistence Bridge
+→ Orchestrator API
+→ Orchestrator DB
+```
+
+Worker endpoint `POST /hh/collect-filter-enrich-and-persist` выполняет HH collection,
+preliminary filter, full enrichment, deterministic + semantic analysis, final
+scoring и отправку результатов в Orchestrator. Stateless endpoint
+`POST /hh/collect-filter-and-enrich` остается доступным для диагностики и
+тестирования без записи в БД.
+
+Orchestrator endpoint `POST /pipeline-results` принимает batch результатов
+Worker и сохраняет `Vacancy`, `VacancyAnalysis`, provenance, processing history,
+`run_id`, final score / priority и snapshots анализа. Orchestrator DB теперь
+является постоянным source of truth для автоматических данных vacancy pipeline.
+Worker остается stateless processing node и не имеет прямого доступа к SQLite.
+
+Identity вакансии остается `source + external_id`. Повторное обнаружение той же
+вакансии не создает новую `Vacancy` row. Same-run persistence retry по той же
+`vacancy + pipeline_run_id` не создает новую `VacancyAnalysis`, не создает
+повторные processing events и не увеличивает `seen_count`. Новый pipeline run для
+существующей вакансии обновляет `last_seen_at`, увеличивает `seen_count`,
+сохраняет `first_seen_at` и создает новую revision в истории analyses.
+
+Подтвержденная same-run retry acceptance:
+
+- `input_count = 16`;
+- `persisted_count = 0`;
+- `created_vacancy_count = 0`;
+- `updated_vacancy_count = 0`;
+- `analysis_created_count = 0`;
+- `already_persisted_count = 16`;
+- `failed_count = 0`;
+- `status = succeeded`.
+
+Подтвержденный новый run `manual-phase-5-9-test-002`:
+
+- `input_count = 15`;
+- `persisted_count = 15`;
+- `created_vacancy_count = 0`;
+- `updated_vacancy_count = 15`;
+- `analysis_created_count = 15`;
+- `already_persisted_count = 0`;
+- `failed_count = 0`;
+- `status = succeeded`.
+
+Analysis history подтверждена на примере `vacancy_id=15`: run
+`manual-phase-5-9-test-001` сохранил `ALT / score 88`, следующий run
+`manual-phase-5-9-test-002` сохранил `P1 / score 91`. Оба analysis records
+остались доступны. Это пример working history, а не эталон качества scoring.
+
+Processing history создается append-only. Для принятого run было сохранено
+`17 × 7 = 119` processing events со стадиями `discovered`, `deduplicated`,
+`preliminary_analyzed`, `details_fetched`, `normalized`, `fully_analyzed`,
+`saved`; все acceptance events имели `status = succeeded`. Стадия `notified`
+отсутствует, потому что уведомления еще не реализованы. Endpoint processing
+events использует pagination: при `total = 119` default `limit = 100` не означает
+потерю данных.
+
+AI metadata в events и analysis фиксирует используемые версии:
+
+- preliminary analysis: `provider=ollama`, `model=qwen3:4b-instruct`,
+  `prompt_version=v4`;
+- full semantic analysis: `provider=ollama`, `model=qwen3:4b-instruct`,
+  `prompt_version=v1`.
+
+Raw prompts, raw responses, полный HTML и secrets не документируются и не должны
+логироваться.
+
+Read API для следующих фаз:
+
+- `GET /pipeline-results/runs/{run_id}` возвращает `run_id`, `count` и
+  `analyses`;
+- `GET /pipeline-results/analyses/latest` поддерживает `priority`, `limit` и
+  `offset`;
+- `GET /vacancies/{vacancy_id}/analyses` читает историю конкретной вакансии;
+- `GET /processing-runs/{run_id}/events` читает processing history.
+
+Acceptance read API:
+`GET /pipeline-results/analyses/latest?priority=P1&limit=3` успешно вернул
+последние P1 analyses с `vacancy_id`, `analysis id`, `run_id`, `priority`,
+`final_score` и `created_at`. Следовательно, n8n сможет читать результаты через
+HTTP API без прямого доступа к SQLite.
 
 Orchestrator хранит постоянную историю обработки вакансий в append-only таблице `vacancy_processing_events`.
 События создаются только явными API-вызовами, связываются через `run_id`, имеют `stage`, `status`, безопасный `error_code`, небольшие `metadata` и AI-поля `provider`, `model`, `prompt_version` только для AI-этапов.
@@ -401,20 +500,18 @@ Orchestrator хранит discovery-состояние вакансии в по�
 Существующие строки `Vacancy` были backfill-мигрированы из `created_at` и `updated_at`.
 `POST /vacancies` не создает processing event автоматически.
 
-Следующий незавершенный этап по `docs/project-roadmap-v1.1.md`: Phase 5.9 — Worker → Orchestrator persistence bridge.
+Следующий незавершенный этап по `docs/project-roadmap-v1.1.md`: Phase 5.10 — n8n orchestration + Google Sheets CRM upsert + email digest.
 
 Не реализовано:
-⬜ запись полных HH данных в orchestrator
 ⬜ n8n HH collector workflow
 ⬜ расписание HH collector
-⬜ массовая обработка вакансий
-⬜ production filtering
+⬜ Google Sheets CRM upsert через n8n
+⬜ email digest
+⬜ production calibration
 ⬜ персональный профиль пользователя
 ⬜ внешняя LLM
 ⬜ Telegram workflow
 ⬜ полноценный ежедневный pipeline
-⬜ автоматическая передача Worker → Orchestrator
-⬜ автоматическая запись processing events из Worker или n8n
 ⬜ ProxyAPI fallback
 ⬜ cross-source deduplication
 ⬜ fuzzy matching и объединение разных external_id

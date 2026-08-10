@@ -251,12 +251,16 @@ Git используется для фиксации проверенных из
   локальный AI как преимущественно stateless compute layer;
 - Worker реализует HH search collection profiles и routing transport по
   `source_type`;
+- Worker реализует full enrichment/scoring и persistence bridge в Orchestrator
+  через HTTP API;
 - Orchestrator владеет постоянной БД, `Vacancy`, `VacancyAnalysis`,
   `VacancyProcessingEvent`, idempotent upsert, discovery counters и final
   `UNIQUE(source, external_id)`;
-- processing history находится в Orchestrator и создается только явными API
-  calls;
-- automatic HH collector pipeline с записью в Orchestrator пока не реализован.
+- Orchestrator DB является source of truth для автоматических данных vacancy
+  pipeline;
+- processing history находится в Orchestrator; для `POST /pipeline-results`
+  события создаются автоматически в persistence transaction item;
+- n8n должен работать с Orchestrator через HTTP API, а не напрямую с SQLite.
 
 Preliminary local AI filtering decisions:
 
@@ -327,7 +331,53 @@ Full vacancy enrichment decisions:
 - cloud AI остается optional и может использоваться позже только для лучших,
   спорных или low-confidence cases;
 - tuning scoring откладывается до накопления реальных ежедневных результатов;
-- Worker пока не сохраняет full enrichment results в Orchestrator.
+- Worker сохраняет принятые full enrichment results в Orchestrator через
+  `POST /hh/collect-filter-enrich-and-persist`;
+- stateless endpoint `POST /hh/collect-filter-and-enrich` остается доступным
+  для диагностики и тестирования без записи в БД.
+
+Persistence bridge decisions:
+
+- Worker остается stateless processing node и не владеет основной БД;
+- batch persistence выполняется через Orchestrator endpoint
+  `POST /pipeline-results`;
+- стабильная identity вакансии: `source + external_id`;
+- repeated vacancy discovery не создает новую `Vacancy` row;
+- same-run retry для той же `vacancy + pipeline_run_id` не создает новую
+  `VacancyAnalysis`, не создает повторные processing events и не увеличивает
+  `seen_count`;
+- новый pipeline run для существующей vacancy создает новую analysis revision,
+  обновляет `last_seen_at`, увеличивает `seen_count` и сохраняет
+  `first_seen_at`;
+- `VacancyAnalysis` хранит историю analyses by run: `run_id`, `final_score`,
+  `priority`, preliminary snapshot, deterministic features snapshot, semantic
+  assessment snapshot, score breakdown, hard blockers, risks, provenance,
+  vacancy snapshot, provider/model/prompt metadata и timestamps;
+- валидные historical analyses не должны перезаписываться новым run;
+- read API для следующих фаз: `GET /pipeline-results/runs/{run_id}`,
+  `GET /pipeline-results/analyses/latest`, `GET /vacancies/{vacancy_id}/analyses`
+  и `GET /processing-runs/{run_id}/events`;
+- raw prompt, raw response, полный HTML, full description, cookies, storage
+  state, resume identifiers и secrets не должны попадать в logs, docs или Git.
+
+CRM and external integration decisions:
+
+- Google Sheets является будущей пользовательской CRM-витриной, а не вторым
+  source of truth;
+- автоматическая синхронизация идет в направлении Orchestrator DB → n8n →
+  Google Sheets;
+- Google Sheets integration не реализуется Python-модулем в Worker или
+  Orchestrator;
+- Google OAuth уже настроен в n8n, поэтому external integration belongs to
+  orchestration layer;
+- отказ Google Sheets, email или другой внешней интеграции не должен приводить
+  к потере vacancy: DB persistence выполняется раньше внешних интеграций;
+- Sheets должна хранить рабочие CRM-поля, а не весь technical payload;
+- пользовательские CRM-поля вроде отклика, даты отклика, ответа, интервью,
+  тестового, отказа и комментария не должны затираться автоматической
+  синхронизацией;
+- email является первым надежным notification channel для MVP;
+- Telegram deferred и не является blocker Phase 5.10.
 
 HH search collection decisions:
 
