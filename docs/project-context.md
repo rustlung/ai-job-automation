@@ -294,18 +294,40 @@ Preliminary track decisions:
   integration testing, data/system/business analysis, AI evaluation,
   technical implementation и engineering-heavy technical support.
 
-Phase 5.8 direction:
+Full vacancy enrichment decisions:
 
-- не строить следующую фазу как `full vacancy → большой prompt → LLM решает
-  всё`;
-- использовать гибрид: full vacancy fetch, normalization, deterministic
-  feature extraction, compact semantic assessment, deterministic
-  scoring/routing;
-- Python отвечает за объективные признаки и правила;
-- LLM отвечает только за семантику, которую трудно надежно определить обычным
-  кодом;
-- цель — снизить нагрузку на локальную модель, повысить explainability и
-  сократить будущие расходы на cloud AI.
+- Phase 5.8 реализована как гибридный full analysis, а не как `full vacancy →
+  большой prompt → LLM решает всё`;
+- vertical pipeline: HH collection → preliminary filter → full vacancy fetch →
+  normalization → deterministic feature extraction → compact semantic
+  assessment → deterministic scoring → `P1/P2/P3/ALT`;
+- `reject` из preliminary filter не отправляется на full enrichment;
+- после full analysis результаты `P1`, `P2`, `P3` и `ALT` не удаляются и
+  остаются доступными для ручной проверки;
+- Python отвечает за objective facts: salary, geography, office/relocation,
+  experience, seniority, technical signals, hard blockers и final priority;
+- local LLM отвечает только за semantic assessment задач и характера роли;
+- final score и `P1/P2/P3/ALT` назначает Python, а не LLM;
+- hard blockers должны быть консервативными;
+- false negative опаснее false positive, особенно для AI/LLM/Python/automation
+  и adjacent IT roles;
+- `vacancy.location` сам по себе не является офисным blocker;
+- missing salary не является автоматическим negative decision;
+- salary risk отделён от technical/task fit;
+- 1-3 года, commercial experience и Middle не являются автоматическими
+  blockers;
+- `clearly_nontechnical` требует явного nontechnical signal и отсутствия
+  сильных technical signals;
+- forced nontechnical roles сохраняют приоритет: например, преподаватель
+  Python детям остаётся нерелевантным;
+- `responsibility_stretch` не должен назначаться почти любой технической
+  вакансии и требует реальных признаков senior/lead/head/ownership/5+ years;
+- `FULL_ANALYSIS_BATCH_SIZE=1` допустим для MVP, если pipeline стабилен и
+  укладывается в практичное время;
+- cloud AI остается optional и может использоваться позже только для лучших,
+  спорных или low-confidence cases;
+- tuning scoring откладывается до накопления реальных ежедневных результатов;
+- Worker пока не сохраняет full enrichment results в Orchestrator.
 
 HH search collection decisions:
 

@@ -711,7 +711,7 @@ Processing history показывает подробную последоват�
 - `request.max_pages_override` может только уменьшать configured limit;
 - `count < items_on_page` не используется как универсальный stop condition.
 
-## Ограничения Phase 5.6
+## Ограничения Phase 5.6 на момент приемки
 
 - storage state обновляется вручную;
 - сессия HH может истечь;
@@ -916,7 +916,7 @@ Runtime batch size configurable через `PRELIMINARY_FILTER_BATCH_SIZE`.
 откладываются до момента, когда весь pipeline уже будет приносить практическую
 пользу.
 
-## Ограничения Phase 5.7
+## Ограничения Phase 5.7 на момент приемки
 
 - анализируется только search-card;
 - snippets могут быть короткими;
@@ -938,17 +938,21 @@ Runtime batch size configurable через `PRELIMINARY_FILTER_BATCH_SIZE`.
 
 ## Phase 5.8. Full vacancy enrichment and scoring foundation
 
-Статус: следующий незавершенный этап.
+Статус: завершена и принята на целевом Worker.
 
 ## Цель
 
 Развить pipeline после preliminary filter, не перекладывая все решение на
 большой LLM prompt.
 
-Планируемый гибрид:
+Реализованный вертикальный pipeline:
 
 ``` text
-preliminary keep_main / keep_alt / uncertain
+HH collection
+↓
+Phase 5.7 preliminary filter
+↓
+keep_main / keep_alt / uncertain
 ↓
 fetch full vacancy details
 ↓
@@ -959,6 +963,8 @@ deterministic Python feature extraction
 compact local semantic assessment
 ↓
 deterministic scoring / routing
+↓
+P1 / P2 / P3 / ALT
 ```
 
 Принцип:
@@ -970,12 +976,185 @@ deterministic scoring / routing
 - если cloud analysis будет добавлен позже, он вызывается только для малого
   количества лучших, спорных или локально неуверенных вакансий.
 
-Ожидаемый эффект:
+## Результат
+
+- добавлен integrated endpoint `POST /hh/collect-filter-and-enrich`;
+- endpoint объединяет HH collection, deduplication, preliminary filtering,
+  full vacancy fetch, normalization, feature extraction, semantic analysis и
+  final scoring;
+- `reject` из Phase 5.7 не отправляется на full enrichment;
+- после full analysis `P1`, `P2`, `P3` и `ALT` остаются в result;
+- full vacancy fetch переиспользует существующий HH vacancy-details слой;
+- второй fetcher не создавался;
+- `VacancyNormalizationService` переиспользуется для объединения search-card и
+  full details в `NormalizedVacancy`;
+- ошибки fetch/normalization отдельной вакансии не останавливают весь batch и
+  отражаются в result;
+- identity остается `source + external_id`;
+- реализован deterministic Python feature extraction;
+- реализован compact full-vacancy semantic assessment на
+  `qwen3:4b-instruct`;
+- текущая full semantic prompt version — `v1`;
+- LLM использует локальный `item_id`, а не HH `external_id`;
+- реализован deterministic Python scoring `0..100`;
+- реализована priority classification `P1/P2/P3/ALT`;
+- добавлены runtime limits для безопасной обработки batch:
+  `FULL_ENRICHMENT_MAX_ITEMS` и `FULL_ANALYSIS_BATCH_SIZE`;
+- выполнена target Worker acceptance.
+
+## Deterministic feature extraction
+
+Извлекаются фактически реализованные группы признаков:
+
+- формат работы: remote, explicit office, office city, relocation, travel;
+- финансы: salary min/max, currency, gross/net, salary risks, missing salary;
+- опыт: required years, commercial experience, seniority;
+- язык: explicit English requirements;
+- роль: support, phone support, sales, teaching children, nontechnical role,
+  seniority/management indicators;
+- technical signals: Python, backend, FastAPI, API, SQL/PostgreSQL,
+  SQLAlchemy, Docker, AI/LLM, prompt engineering, automation, integrations,
+  n8n, QA/testing, analytics и related signals.
+
+География: `vacancy.location` само по себе не означает обязательный офис.
+Hard blocker возможен только при подтвержденном обязательном офисе или
+обязательном гибриде вне Самары. Офис/гибрид в Самаре допустим.
+Обязательная релокация является blocker.
+
+Зарплата анализируется отдельно от technical/task fit. Missing salary не
+является автоматическим негативным решением. Низкая зарплата сохраняется как
+отдельный risk.
+
+Experience/responsibility: 1-3 года, commercial experience и Middle не являются
+автоматическими blockers. Senior/Lead/Head и повышенная ответственность дают
+risk/blocker по фактическим признакам.
+
+## Semantic layer
+
+Semantic layer не определяет salary, office, years of experience, final score
+или `P1/P2/P3`.
+
+Текущий compact contract:
+
+- `task_fit`;
+- `target_track`;
+- `responsibility_level`;
+- `role_nature`;
+- `semantic_risk`;
+- `short_reason`.
+
+Semantic AI failure не приводит к потере вакансии: deterministic features
+сохраняются, semantic layer получает безопасный fallback, а item остается
+доступным для дальнейшей обработки.
+
+## Scoring
+
+Final score `0..100` рассчитывается Python-кодом.
+
+Группы факторов:
+
+- semantic/task fit;
+- stack/technical fit;
+- experience/responsibility;
+- work format/location;
+- salary;
+- additional alignment.
+
+Текущая priority logic из кода:
+
+- `ALT` для ALT semantic tracks без hard blockers;
+- `P3` при hard blockers;
+- `P1` при score `>= 75`;
+- `P2` при score `>= 55`;
+- ниже — `P3`.
+
+Это первая calibration version. Thresholds будут уточняться позже по реальным
+ежедневным результатам, а не на небольшой synthetic выборке.
+
+## Deterministic blocker hotfix
+
+После target acceptance исправлены два правила:
+
+- `clearly_nontechnical` стал консервативным: явный nontechnical signal плюс
+  отсутствие сильных AI/LLM/Python/backend/automation/integration/QA/
+  technical-support signals;
+- explicit nontechnical role сохраняет приоритет, поэтому преподаватель Python
+  детям остается нерелевантным;
+- `responsibility_stretch` больше не назначается почти любой технической
+  вакансии и требует признаков повышенного уровня ответственности:
+  senior/lead/head, 5+ лет, ownership или аналогичные факторы.
+
+## Target Worker acceptance
+
+Небольшой реальный enrichment batch после hotfix успешно сформировал разумные
+результаты:
+
+- 5 full enrichment candidates;
+- 5 успешно enriched;
+- 0 fetch failures;
+- 0 normalization failures;
+- 0 semantic fallbacks;
+- runtime около 86 секунд.
+
+Acceptance examples:
+
+- Prompt engineer / Промпт-инженер — `P1`, score около `92`, semantic
+  `strong`, track `ai`, false `clearly_nontechnical` отсутствует;
+- Prompt-инженер — `P1`, score около `91`, semantic `strong`, track `ai`;
+- Python-разработчик (Junior) — `P1`, score около `85`, track `python`,
+  salary risk сохраняется отдельно;
+- Специалист по автоматизации технических процессов — `P1`, score около `85`,
+  semantic `strong`, salary risk сохраняется отдельно;
+- AI-инженер / специалист по автоматизации бизнес-процессов — `P2`, score
+  около `74`, semantic `strong`, track `ai`.
+
+Эти scores являются acceptance examples, а не фиксированными эталонами.
+
+## Эффект
 
 - снизить нагрузку на `qwen3:4b-instruct`;
 - уменьшить вероятность malformed/неустойчивых решений;
 - увеличить explainability;
 - сократить будущие расходы на cloud AI до момента трудоустройства.
+
+## Ограничения Phase 5.8
+
+- feature extractors не покрывают все возможные формулировки;
+- scoring calibration предварительная;
+- semantic model небольшая;
+- возможны false positive;
+- возможны ошибки track classification;
+- salary parsing не является универсальным;
+- некоторые признаки могут оставаться `unknown`;
+- persistence отсутствует;
+- результат пока живёт только в response;
+- Orchestrator пока не получает реальные enrichment results;
+- processing events реального run ещё не связаны;
+- n8n workflow ещё отсутствует;
+- email delivery и cloud deep analysis отсутствуют.
+
+---
+
+## Phase 5.9. Worker → Orchestrator persistence bridge
+
+Статус: следующий незавершенный этап.
+
+## Цель
+
+Передать результаты рабочего Worker enrichment pipeline в постоянное хранилище
+Orchestrator.
+
+Планируемые задачи:
+
+- сохранить vacancy через существующий idempotent upsert;
+- сохранить analysis/result;
+- связать processing history;
+- сохранить run provenance/status;
+- обеспечить идемпотентную передачу результата;
+- не дублировать persistence logic в Worker;
+- не терять `source + external_id` identity и provenance collection.
+
+Phase 5.9 сейчас не реализована.
 
 ---
 
@@ -985,18 +1164,14 @@ Phase 5 не считается полностью завершенной.
 
 Остаются:
 
-- автоматическое получение полных карточек после отбора;
-- normalization полного batch после загрузки full details;
-- deterministic feature extraction;
-- compact semantic assessment;
-- deterministic scoring/routing;
 - автоматическая передача Worker → Orchestrator;
+- сохранение enrichment results;
+- связь с processing history реального run;
 - n8n HH collector workflow.
 
 Следующий этап по текущему roadmap всё ещё находится внутри Phase 5:
-Phase 5.8 — full vacancy enrichment and scoring foundation поверх уже
-проверенных `POST /hh/collect-search` и
-`POST /hh/collect-and-preliminary-filter`.
+Phase 5.9 — Worker → Orchestrator persistence bridge поверх уже проверенного
+`POST /hh/collect-filter-and-enrich`.
 
 ---
 

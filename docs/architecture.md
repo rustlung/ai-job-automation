@@ -596,11 +596,11 @@ n8n / collector
 → orchestrator persistence
 ```
 
-На текущем этапе реализованы search collection batch кратких карточек и
-preliminary local AI filter поверх deduplicated search vacancies.
-Автоматическая загрузка полных карточек после предварительного фильтра,
-запись полных HH данных в orchestrator и n8n HH collector workflow ещё не
-реализованы.
+На текущем этапе реализованы search collection batch кратких карточек,
+preliminary local AI filter поверх deduplicated search vacancies и full vacancy
+enrichment для кандидатов `keep_main`, `keep_alt` и `uncertain`.
+Запись full enrichment results в Orchestrator и n8n HH collector workflow ещё
+не реализованы.
 
 ## 10.2.1. Preliminary local AI filter
 
@@ -738,38 +738,141 @@ batch size, модели или inference откладывается до мом
 
 Это acceptance run, а не постоянный benchmark.
 
-## 10.2.2. Phase 5.8 direction
+## 10.2.2. Full vacancy enrichment and scoring
 
-Следующий этап не должен превращаться в архитектуру:
+Статус: implemented и принят на целевом Windows 11 Worker.
+
+Интегрированный endpoint:
 
 ``` text
-full vacancy
-↓
-большой prompt
-↓
-LLM решает всё
+POST /hh/collect-filter-and-enrich
 ```
 
-Планируемый гибридный поток:
+Pipeline:
 
 ``` text
-kept vacancies
+HH collector
+↓
+deduplication
+↓
+Phase 5.7 preliminary filter
+↓
+keep_main / keep_alt / uncertain
 ↓
 full vacancy fetch
 ↓
 normalization
 ↓
-deterministic extraction
+deterministic features
 ↓
 compact local semantic assessment
 ↓
-scoring / routing
+deterministic scoring
+↓
+P1 / P2 / P3 / ALT
 ```
 
-Python отвечает за объективные признаки и правила. LLM отвечает только за
-семантику, которую трудно надежно определить обычным кодом. Это должно снизить
-нагрузку на `qwen3:4b-instruct`, повысить explainability и сократить будущие
-расходы на cloud AI.
+`reject` из preliminary filter не отправляется на full enrichment. После full
+analysis вакансии не удаляются: `P1`, `P2`, `P3` и `ALT` остаются в result.
+
+Full vacancy fetch переиспользует существующий HH vacancy-details слой.
+Отдельный второй fetcher не создавался. Ошибка загрузки или normalization одной
+вакансии не останавливает весь batch и возвращается как controlled batch error.
+Identity остается `source + external_id`.
+
+Normalization переиспользует `VacancyNormalizationService`, который объединяет
+search-card и full details в `NormalizedVacancy`. Логика объединения не
+дублируется внутри enrichment service.
+
+Ключевое архитектурное решение Phase 5.8: full vacancy analysis не строится как
+`full vacancy → большой prompt → LLM решает всё`.
+
+Используется гибрид:
+
+``` text
+NormalizedVacancy
+↓
+Python deterministic extraction
+↓
+compact facts
+↓
+Qwen semantic assessment
+↓
+Python final scoring
+```
+
+Python отвечает за objective facts и проверяемые правила: зарплату, географию,
+офис, релокацию, опыт, seniority, технические сигналы и hard blockers. LLM
+отвечает только за семантическую оценку задач и характера роли. Это снижает
+нагрузку на небольшую локальную модель, нестабильность structured output,
+стоимость будущего cloud analysis и непрозрачность итогового решения.
+
+Deterministic feature extraction извлекает:
+
+-   формат работы: remote, explicit office, office city, relocation, travel;
+-   финансы: salary min/max, currency, gross/net, salary risks, missing salary;
+-   опыт: required years, commercial experience, seniority;
+-   язык: explicit English requirements;
+-   роль: support, phone support, sales, teaching children, nontechnical role,
+    seniority/management indicators;
+-   technical signals: Python, backend, FastAPI, API, SQL/PostgreSQL,
+    SQLAlchemy, Docker, AI/LLM, prompt engineering, automation, integrations,
+    n8n, QA/testing, analytics и adjacent signals.
+
+Географическое правило: `vacancy.location` само по себе не означает
+обязательный офис. Москва, Санкт-Петербург или другой город не являются
+негативным фактором, если нет явного требования посещать офис. Hard blocker
+возможен только при подтвержденном обязательном офисе или обязательном гибриде
+вне Самары. Офис/гибрид в Самаре допустим. Обязательная релокация является
+blocker.
+
+Salary анализируется детерминированно. Отсутствующая зарплата не является
+автоматическим negative decision. Низкая зарплата выражается отдельным risk:
+релевантность вакансии и финансовая пригодность оффера разделены.
+
+Experience/responsibility правила консервативны: 1-3 года, commercial
+experience и Middle не являются автоматическим blocker. Senior/Lead/Head и
+реальная высокая ответственность дают risk/blocker по фактическим признакам.
+`responsibility_stretch` используется только при явных признаках повышенного
+уровня ответственности, а не для любой самостоятельной технической работы.
+
+`clearly_nontechnical` вычисляется консервативно: явный nontechnical signal
+плюс отсутствие сильных technical signals. AI/LLM/Python/backend/automation/
+integration/QA/technical-support signals защищают техническую роль от ложного
+hard blocker. Explicit nontechnical role имеет приоритет: например,
+преподаватель Python детям остается нерелевантным.
+
+Semantic layer использует локальную модель `qwen3:4b-instruct` и compact
+contract:
+
+-   `task_fit`;
+-   `target_track`;
+-   `responsibility_level`;
+-   `role_nature`;
+-   `semantic_risk`;
+-   `short_reason`.
+
+Текущая full semantic prompt version: `v1`. LLM использует локальный `item_id`,
+не возвращает HH `external_id`, URL, salary decision, location decision, final
+score или `P1/P2/P3`.
+
+Semantic AI failure не приводит к потере вакансии: deterministic features
+сохраняются, semantic layer получает безопасный fallback, а вакансия остается
+доступной для дальнейшей обработки и ручной проверки.
+
+Final score `0..100` рассчитывается Python-кодом. Используются группы факторов:
+semantic/task fit, stack/technical fit, experience/responsibility, work
+format/location, salary и дополнительные alignment-факторы. Текущая priority
+logic:
+
+-   `ALT` для ALT semantic tracks без hard blockers;
+-   `P3` при hard blockers;
+-   `P1` при score `>= 75`;
+-   `P2` при score `>= 55`;
+-   ниже — `P3`.
+
+Worker пока не сохраняет full enrichment results в Orchestrator. Результат
+живёт в API response.
 
 ## 10.3. HH search collection profiles
 
@@ -1397,17 +1500,15 @@ Custom engine:
 -   Orchestrator хранит вакансии, AI-анализы, processing events и discovery
     counters;
 -   Worker реализует HH parsing, normalization, exact batch deduplication,
-    local AI, HH search collection profiles и preliminary local AI filter;
--   Phase 5.7 принята на целевом Worker.
+    local AI, HH search collection profiles, preliminary local AI filter и
+    full vacancy enrichment/scoring;
+-   Phase 5.8 принята на целевом Worker.
 
 Следующие шаги:
 
-1.  Реализовать Phase 5.8: загрузку полных карточек для вакансий,
-    прошедших preliminary filter, normalization, deterministic feature
-    extraction, compact semantic assessment и scoring/routing.
+1.  Реализовать Phase 5.9: Worker → Orchestrator persistence bridge для
+    сохранения vacancy, analysis/result, processing history и run provenance.
 
-2.  Передавать выбранные вакансии из Worker/n8n в Orchestrator.
+2.  Собрать n8n HH collector workflow.
 
-3.  Собрать n8n HH collector workflow.
-
-4.  Добавить расписание, уведомления и production scoring.
+3.  Добавить расписание, уведомления и production calibration.

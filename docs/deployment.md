@@ -272,6 +272,8 @@ OLLAMA_MODEL=qwen3:4b-instruct
 OLLAMA_REQUEST_TIMEOUT_SECONDS=120
 OLLAMA_KEEP_ALIVE=5m
 PRELIMINARY_FILTER_BATCH_SIZE=10
+FULL_ENRICHMENT_MAX_ITEMS=30
+FULL_ANALYSIS_BATCH_SIZE=1
 ```
 
 Не коммитить локальный `.env`.
@@ -291,6 +293,22 @@ PRELIMINARY_FILTER_BATCH_SIZE=1
 время. Приоритет на этом этапе: стабильность и recall выше скорости.
 Увеличение batch size до `3`, `5` или выше требует повторной target acceptance
 проверки.
+
+`FULL_ENRICHMENT_MAX_ITEMS` ограничивает число вакансий, которые integrated
+endpoint `POST /hh/collect-filter-and-enrich` отправляет на full vacancy fetch,
+normalization, full semantic assessment и scoring. Request
+`max_enrich_items_override` может только уменьшить этот лимит.
+
+`FULL_ANALYSIS_BATCH_SIZE` управляет batch size compact full-vacancy semantic
+assessment. Для текущей локальной модели и ограниченных ресурсов допустима
+консервативная конфигурация:
+
+``` text
+FULL_ANALYSIS_BATCH_SIZE=1
+```
+
+Стабильность важнее скорости. Увеличение full analysis batch size требует
+отдельной target acceptance проверки.
 
 HH проверяется на Worker без VPN. С текущим VPN-маршрутом HH возвращал HTTP 451.
 Public HH endpoints используют `httpx`. Authenticated resume profiles используют
