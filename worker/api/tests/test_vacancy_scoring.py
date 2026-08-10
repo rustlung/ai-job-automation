@@ -17,6 +17,7 @@ def semantic(
     target_track: FullVacancyTargetTrack = FullVacancyTargetTrack.PYTHON,
     risk: FullVacancySemanticRisk = FullVacancySemanticRisk.NONE,
     role_nature: FullVacancyRoleNature = FullVacancyRoleNature.ENGINEERING,
+    responsibility_level: FullVacancyResponsibilityLevel = FullVacancyResponsibilityLevel.SUITABLE,
 ) -> FullVacancySemanticAssessment:
     return FullVacancySemanticAssessment(
         source="hh",
@@ -24,7 +25,7 @@ def semantic(
         item_id=1,
         task_fit=task_fit,
         target_track=target_track,
-        responsibility_level=FullVacancyResponsibilityLevel.SUITABLE,
+        responsibility_level=responsibility_level,
         role_nature=role_nature,
         semantic_risk=risk,
         short_reason="Подходит по задачам.",
@@ -192,3 +193,81 @@ def test_semantic_fallback_is_not_automatic_p3() -> None:
 
     assert priority in {"P2", "P3"}
     assert final_score >= 45
+
+
+def test_prompt_engineer_strong_ai_without_blockers_does_not_fall_to_p3() -> None:
+    final_score, priority, _, blockers, risks = score(
+        VacancyDeterministicFeatures(
+            work_format=WorkFormat.REMOTE,
+            salary_missing=True,
+            matching_skills=["ai", "llm", "api", "sql", "integration"],
+            ai_signal=True,
+            llm_signal=True,
+            prompt_engineering_signal=True,
+            api_signal=True,
+            sql_signal=True,
+            integration_signal=True,
+        ),
+        semantic(
+            target_track=FullVacancyTargetTrack.AI,
+            role_nature=FullVacancyRoleNature.PRODUCT_TECHNICAL,
+            responsibility_level=FullVacancyResponsibilityLevel.STRETCH,
+        ),
+    )
+
+    assert priority in {"P1", "P2"}
+    assert final_score > 45
+    assert blockers == []
+    assert "clearly_nontechnical" not in risks
+    assert "responsibility_stretch" not in risks
+
+
+def test_junior_python_with_semantic_stretch_has_no_responsibility_stretch_without_evidence() -> None:
+    _, _, _, blockers, risks = score(
+        VacancyDeterministicFeatures(
+            seniority_level=SeniorityLevel.JUNIOR,
+            required_experience_min_years=1,
+            matching_skills=["python", "api"],
+            python_signal=True,
+            api_signal=True,
+        ),
+        semantic(responsibility_level=FullVacancyResponsibilityLevel.STRETCH),
+    )
+
+    assert blockers == []
+    assert "responsibility_stretch" not in risks
+
+
+def test_senior_ai_lead_keeps_responsibility_stretch_risk() -> None:
+    _, _, _, blockers, risks = score(
+        VacancyDeterministicFeatures(
+            seniority_level=SeniorityLevel.LEAD,
+            required_experience_min_years=5,
+            matching_skills=["ai", "llm", "api"],
+            ai_signal=True,
+            llm_signal=True,
+            api_signal=True,
+            deterministic_risks=["experience_5_plus", "seniority_lead"],
+        ),
+        semantic(
+            target_track=FullVacancyTargetTrack.AI,
+            role_nature=FullVacancyRoleNature.ENGINEERING,
+            responsibility_level=FullVacancyResponsibilityLevel.STRETCH,
+        ),
+    )
+
+    assert blockers == []
+    assert "responsibility_stretch" in risks
+
+
+def test_too_high_responsibility_is_preserved_even_without_stretch_evidence() -> None:
+    _, _, _, _, risks = score(
+        VacancyDeterministicFeatures(
+            matching_skills=["python", "api"],
+            python_signal=True,
+            api_signal=True,
+        ),
+        semantic(responsibility_level=FullVacancyResponsibilityLevel.TOO_HIGH),
+    )
+
+    assert "responsibility_too_high" in risks

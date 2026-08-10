@@ -18,11 +18,42 @@ TARGET_SKILLS = {
     "parser": ("parser", "парсер", "парсинг", "scraping"),
     "automation": ("automation", "автоматизац", "скрипт", "scripts"),
     "n8n": ("n8n",),
-    "llm": ("llm", "gpt", "ollama", "нейросет"),
-    "ai": ("ai ", "ai-", "ai/", " ии ", "искусствен", "нейросет", "machine learning", "ml"),
+    "llm": ("llm", "gpt", "ollama", "claude", "rag", "embedding", "нейросет", "structured output"),
+    "ai": ("ai ", "ai-", "ai/", " ии ", "искусствен", "нейросет", "machine learning", "ml", "ai workflow"),
     "qa": ("qa", "тестиров", "testing", "postman"),
     "analytics": ("аналитик", "analysis", "bi", "data analyst"),
 }
+
+FORCED_NONTECHNICAL_MARKERS = (
+    "преподаватель python для детей",
+    "преподаватель программирования для детей",
+    "обучать программированию детей",
+    "программирования для детей",
+    "детская школа программирования",
+    "детская онлайн-школа",
+    "автор студенческих работ",
+    "студенческие работы",
+    "курсовые работы",
+    "дипломные работы",
+)
+
+EXPLICIT_NONTECHNICAL_MARKERS = (
+    "бухгалтер",
+    "курьер",
+    "водитель",
+    "кладовщик",
+    "оператор склада",
+    "оператор call",
+    "call-центр",
+    "колл-центр",
+    "менеджер по продажам",
+    "sales manager",
+    "холодные продажи",
+    "холодные звонки",
+    "администратор офиса",
+    "офис-менеджер",
+    "документооборот",
+)
 
 ADJACENT_SKILLS = {
     "redis": ("redis",),
@@ -83,9 +114,50 @@ class VacancyFeatureExtractionService:
         sales_role = _has_any(text, ("холодные продажи", "холодные звонки", "менеджер по продажам", "sales manager"))
         teaching_children = _has_any(text, ("детей", "детская школа", "детская онлайн-школа")) and _has_any(
             text,
-            ("преподаватель", "педагог", "учитель", "обучать программированию", "программирования"),
+            ("преподаватель", "педагог", "учитель", "обучать программированию", "программирования", "python"),
         )
-        clearly_nontechnical = _has_any(text, ("курьер", "бухгалтер", "водитель", "кладовщик", "оператор склада"))
+        python_signal = "python" in matching_skills
+        backend_signal = _has_any(text, ("backend", "бэкенд", "бекенд", "серверн"))
+        fastapi_signal = "fastapi" in matching_skills
+        api_signal = "api" in matching_skills
+        sql_signal = "sql" in matching_skills
+        docker_signal = "docker" in matching_skills
+        ai_signal = "ai" in matching_skills
+        llm_signal = "llm" in matching_skills
+        agent_signal = _has_any(text, ("ai agent", "ai-agent", "ai-агент", "агент"))
+        prompt_engineering_signal = _has_any(
+            text,
+            ("prompt", "промпт", "prompt engineering", "промпт-инженер", "structured output", "structured outputs"),
+        )
+        automation_signal = "automation" in matching_skills
+        n8n_signal = "n8n" in matching_skills
+        integration_signal = "integration" in matching_skills
+        qa_signal = "qa" in matching_skills
+        analytics_signal = "analytics" in matching_skills
+        system_analysis_signal = _has_any(text, ("системный аналитик", "system analyst"))
+        strong_technical_signal = any(
+            [
+                ai_signal,
+                llm_signal,
+                agent_signal,
+                prompt_engineering_signal,
+                python_signal,
+                backend_signal,
+                fastapi_signal,
+                api_signal,
+                sql_signal,
+                docker_signal,
+                automation_signal,
+                n8n_signal,
+                integration_signal,
+                qa_signal,
+                system_analysis_signal,
+                len(technical_support_signals) >= 2,
+            ]
+        )
+        forced_nontechnical = teaching_children or _has_any(text, FORCED_NONTECHNICAL_MARKERS)
+        explicit_nontechnical = forced_nontechnical or _has_any(text, EXPLICIT_NONTECHNICAL_MARKERS)
+        clearly_nontechnical = forced_nontechnical or (explicit_nontechnical and not strong_technical_signal)
         relocation_required = _has_any(text, ("обязательная релокация", "релокация обязательна", "готовность к релокации"))
         travel_required = _has_any(text, ("командировки", "готовность к командировкам", "travel"))
         hard_blockers = self._hard_blockers(
@@ -139,22 +211,22 @@ class VacancyFeatureExtractionService:
             detected_skills=detected_skills,
             matching_skills=matching_skills,
             missing_relevant_skills=missing_relevant_skills,
-            python_signal="python" in matching_skills,
-            backend_signal=_has_any(text, ("backend", "бэкенд", "бекенд", "серверн")),
-            fastapi_signal="fastapi" in matching_skills,
-            api_signal="api" in matching_skills,
-            sql_signal="sql" in matching_skills,
-            docker_signal="docker" in matching_skills,
-            ai_signal="ai" in matching_skills,
-            llm_signal="llm" in matching_skills,
-            agent_signal=_has_any(text, ("ai agent", "ai-агент", "агент")),
-            prompt_engineering_signal=_has_any(text, ("prompt", "промпт")),
-            automation_signal="automation" in matching_skills,
-            n8n_signal="n8n" in matching_skills,
-            integration_signal="integration" in matching_skills,
-            qa_signal="qa" in matching_skills,
-            analytics_signal="analytics" in matching_skills,
-            system_analysis_signal=_has_any(text, ("системный аналитик", "system analyst")),
+            python_signal=python_signal,
+            backend_signal=backend_signal,
+            fastapi_signal=fastapi_signal,
+            api_signal=api_signal,
+            sql_signal=sql_signal,
+            docker_signal=docker_signal,
+            ai_signal=ai_signal,
+            llm_signal=llm_signal,
+            agent_signal=agent_signal,
+            prompt_engineering_signal=prompt_engineering_signal,
+            automation_signal=automation_signal,
+            n8n_signal=n8n_signal,
+            integration_signal=integration_signal,
+            qa_signal=qa_signal,
+            analytics_signal=analytics_signal,
+            system_analysis_signal=system_analysis_signal,
             test_assignment_mentioned=_has_any(text, ("тестовое задание", "тестового задания")),
             hard_blockers=hard_blockers,
             deterministic_risks=risks,

@@ -22,7 +22,9 @@ class VacancyScoringService:
         risks = list(features.deterministic_risks)
         if semantic.semantic_risk in {FullVacancySemanticRisk.MEDIUM, FullVacancySemanticRisk.HIGH}:
             risks.append(f"semantic_risk_{semantic.semantic_risk.value}")
-        if semantic.responsibility_level.value in {"stretch", "too_high"}:
+        if semantic.responsibility_level.value == "too_high" or (
+            semantic.responsibility_level.value == "stretch" and self._has_responsibility_stretch_evidence(features)
+        ):
             risks.append(f"responsibility_{semantic.responsibility_level.value}")
 
         breakdown = VacancyScoreBreakdown(
@@ -166,6 +168,15 @@ class VacancyScoringService:
         if final_score >= 55:
             return VacancyPriority.P2
         return VacancyPriority.P3
+
+    @staticmethod
+    def _has_responsibility_stretch_evidence(features: VacancyDeterministicFeatures) -> bool:
+        return (
+            features.seniority_level in {SeniorityLevel.SENIOR, SeniorityLevel.LEAD, SeniorityLevel.HEAD}
+            or (features.required_experience_min_years is not None and features.required_experience_min_years >= 5)
+            or "seniority_mismatch" in features.hard_blockers
+            or "experience_5_plus" in features.deterministic_risks
+        )
 
 
 def _unique(items: list[str]) -> list[str]:

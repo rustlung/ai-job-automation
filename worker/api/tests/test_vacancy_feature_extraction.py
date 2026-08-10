@@ -140,3 +140,91 @@ def test_technical_l3_support_with_linux_logs_api_is_not_phone_blocker() -> None
     assert result.support_role is True
     assert len(result.technical_support_signals) >= 3
     assert "phone_support" not in result.hard_blockers
+
+
+def test_prompt_engineer_with_llm_api_python_sql_is_not_clearly_nontechnical() -> None:
+    result = features(
+        vacancy(
+            "Работа с LLM, prompts, structured outputs, API, Python и SQL.",
+            title="Prompt-инженер",
+        )
+    )
+
+    assert result.llm_signal is True
+    assert result.prompt_engineering_signal is True
+    assert result.clearly_nontechnical is False
+    assert "clearly_nontechnical" not in result.hard_blockers
+
+
+def test_bilingual_prompt_engineer_with_ai_workflows_is_not_clearly_nontechnical() -> None:
+    result = features(
+        vacancy(
+            "LLM, AI workflows, model evaluation, API integrations.",
+            title="Prompt engineer / Промпт-инженер",
+        )
+    )
+
+    assert result.ai_signal is True
+    assert result.llm_signal is True
+    assert result.prompt_engineering_signal is True
+    assert result.clearly_nontechnical is False
+    assert "clearly_nontechnical" not in result.hard_blockers
+
+
+def test_ai_python_qa_automation_and_l3_support_roles_are_not_false_nontechnical() -> None:
+    cases = [
+        vacancy("AI workflows, RAG, embeddings.", title="AI Engineer"),
+        vacancy("Разработка REST API на Python.", title="Python Developer"),
+        vacancy("API testing, Postman, test cases.", title="QA Engineer"),
+        vacancy("Integration testing for REST API.", title="Integration tester"),
+        vacancy("Automation scripts, n8n, API integrations.", title="Automation specialist"),
+        vacancy("Linux API logs L2/L3 troubleshooting.", title="Technical support L3"),
+    ]
+
+    for item in cases:
+        result = features(item)
+
+        assert result.clearly_nontechnical is False
+        assert "clearly_nontechnical" not in result.hard_blockers
+
+
+def test_obvious_nontechnical_roles_are_clearly_nontechnical() -> None:
+    cases = [
+        vacancy("Первичная документация и отчеты.", title="Бухгалтер"),
+        vacancy("Доставка заказов по району.", title="Курьер"),
+        vacancy("Холодные продажи и холодные звонки.", title="Менеджер по продажам"),
+        vacancy("Оператор call-центра, входящие звонки.", title="Оператор"),
+        vacancy("Автор студенческих работ по разным дисциплинам.", title="Автор работ"),
+    ]
+
+    for item in cases:
+        result = features(item)
+
+        assert result.clearly_nontechnical is True
+        assert "clearly_nontechnical" in result.hard_blockers
+
+
+def test_teacher_python_for_children_remains_forced_nontechnical() -> None:
+    result = features(vacancy("Обучать Python и SQL детей 8-12 лет.", title="Преподаватель Python для детей"))
+
+    assert result.python_signal is True
+    assert result.teaching_children is True
+    assert result.clearly_nontechnical is True
+    assert "teaching_children" in result.hard_blockers
+    assert "clearly_nontechnical" in result.hard_blockers
+
+
+def test_responsibility_stretch_extraction_is_not_added_for_ordinary_roles() -> None:
+    cases = [
+        vacancy("Junior Python Developer. Задачи по REST API под руководством наставника."),
+        vacancy("Python backend role. Разработка API и интеграций с командой."),
+        vacancy("LLM prompts, API, Python, SQL.", title="Prompt Engineer"),
+        vacancy("Автоматизация процессов, scripts, integrations.", title="Automation specialist"),
+        vacancy("Junior QA. API testing, test cases, Postman.", title="Junior QA"),
+        vacancy("Middle Python Developer. Разработка сервисов без lead ownership."),
+    ]
+
+    for item in cases:
+        result = features(item)
+
+        assert "responsibility_stretch" not in result.deterministic_risks
