@@ -1244,7 +1244,11 @@ Email digest
   `Nginx Full`;
 - Worker и Orchestrator остаются LAN-only;
 - workflow export хранится в `workflows/n8n/ai-job-daily-search.json` без
-  credentials и с отключенным schedule trigger.
+  credentials и с disabled Schedule Trigger;
+- Manual Trigger является production trigger, потому что Windows Worker
+  включается и проверяется пользователем перед каждым поиском;
+- Schedule Trigger не входит в текущий production process и не является
+  незавершенной частью MVP.
 
 Acceptance limits:
 
@@ -1262,18 +1266,18 @@ Telegram не является blocker Phase 5.10. Он остается optiona
 
 ## Оставшиеся части Phase 5
 
-Phase 5 имеет рабочий accepted MVP pipeline. Production schedule и calibration
-остаются отдельными операционными шагами.
+Phase 5 имеет рабочий accepted MVP pipeline. Production запуск выполняется
+вручную через Manual Trigger. Calibration остается отдельным операционным
+шагом.
 
 Остаются:
 
 - full manual production run без acceptance limits;
-- production schedule;
 - production calibration.
 
 Следующий операционный шаг: переключить workflow с acceptance limits на
-production config и выполнить полный ручной production run до включения
-расписания.
+production config и выполнить полноценный Manual Trigger run. После успешного
+полного manual run система считается готовой к повседневному использованию.
 
 ---
 

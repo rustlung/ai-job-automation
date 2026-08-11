@@ -88,8 +88,8 @@ AI Job Automation — Daily Search CRM Digest
 ```
 
 Export не содержит credentials. Workflow `active=false`; node
-`Schedule Trigger (disabled until workflow activation)` отключен до явного
-production activation.
+`Schedule Trigger (disabled until workflow activation)` остается disabled и не
+используется в текущем production process.
 
 ### Назначение
 
@@ -114,7 +114,7 @@ calculation или canonical persistence.
 Success branch:
 
 ``` text
-Manual Trigger / Schedule Trigger (disabled until workflow activation)
+Manual Trigger
 → Config
 → Generate Run ID
 → HTTP Worker Pipeline
@@ -266,9 +266,12 @@ max_filter_items_override=10
 max_enrich_items_override=5
 ```
 
-These values are not production policy. Next operational step: switch the
-workflow to production config and run a full manual production run before
-enabling schedule.
+These values are not production policy. Manual Trigger is the production trigger:
+before each search the user wakes or starts the Windows Worker, checks Docker,
+Worker services and Ollama health, then starts the n8n workflow manually. Next
+operational step: switch the workflow to production config and run a full Manual
+Trigger production run. After a successful full manual run, the system is ready
+for daily manual use.
 
 ## HH collection flow
 
@@ -352,7 +355,6 @@ Worker /hh/collect-search
 
 Ограничения текущего состояния:
 
--   production schedule еще не включен;
 -   acceptance limits еще нужно заменить production config;
 -   scoring calibration предварительная;
 -   нет ProxyAPI fallback;

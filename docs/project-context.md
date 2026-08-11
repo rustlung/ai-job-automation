@@ -396,7 +396,15 @@ CRM and external integration decisions:
 - public HTTPS открыт только для n8n на `https://n8n.vsigaev.ru`; Worker и
   Orchestrator остаются LAN-only;
 - acceptance limits Phase 5.10 не являются production policy;
-- production schedule включается только после полного ручного production run.
+- Manual Trigger является production trigger, потому что Windows Worker не
+  работает постоянно;
+- перед каждым production run пользователь вручную включает или будит Worker,
+  проверяет Docker, Worker services и Ollama health, затем запускает n8n
+  workflow через Manual Trigger;
+- Schedule Trigger не входит в текущий production process и остается disabled в
+  export только как возможная будущая опция;
+- после переключения acceptance limits на production config и успешного полного
+  manual run система считается готовой к повседневному использованию.
 
 HH search collection decisions:
 

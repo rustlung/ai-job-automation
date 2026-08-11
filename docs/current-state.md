@@ -584,12 +584,14 @@ Git.
 Acceptance workflow был проверен на малых лимитах:
 `max_pages_override=1`, `max_filter_items_override=10`,
 `max_enrich_items_override=5`. Эти значения являются безопасной приемочной
-конфигурацией, а не production policy. Следующий операционный шаг: переключить
-workflow с acceptance limits на production config и выполнить полный ручной
-production run до включения расписания.
+конфигурацией, а не production policy. Production workflow запускается вручную:
+пользователь включает или будит Windows Worker, проверяет Docker, Worker services
+и Ollama health, затем запускает n8n workflow через Manual Trigger. Следующий
+операционный шаг: переключить workflow с acceptance limits на production config
+и выполнить полноценный Manual Trigger run. После успешного полного manual run
+система считается готовой к повседневному использованию.
 
 Не реализовано:
-⬜ production schedule
 ⬜ production calibration
 ⬜ персональный профиль пользователя
 ⬜ внешняя LLM

@@ -1649,7 +1649,7 @@ Custom engine:
 Следующие шаги:
 
 1.  Переключить n8n workflow с acceptance limits на production config и
-    выполнить полный ручной production run.
+    выполнить полноценный Manual Trigger production run.
 
-2.  После успешного полного ручного run включить production schedule и заняться
-    calibration.
+2.  После успешного полного manual run использовать систему в повседневном
+    ручном production process и отдельно продолжать calibration.

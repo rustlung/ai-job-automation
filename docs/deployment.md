@@ -745,13 +745,13 @@ workflows/n8n/ai-job-daily-search.json
 ```
 
 Export хранит topology и node settings, но не хранит credentials. Workflow
-`active=false`; schedule trigger в export отключен до явного production
-activation.
+`active=false`; Schedule Trigger в export отключен и не используется в текущем
+production process.
 
 Принятый flow:
 
 ``` text
-Manual Trigger / Schedule Trigger (disabled until workflow activation)
+Manual Trigger
 → Config
 → Generate Run ID
 → HTTP Worker Pipeline
@@ -782,8 +782,13 @@ n8n responsibilities:
 - читает текущий run через Orchestrator
   `GET /pipeline-results/runs/{run_id}`;
 - синхронизирует Google Sheets CRM;
-- отправляет Gmail digest;
-- в будущем может запускаться по расписанию.
+- отправляет Gmail digest.
+
+Manual Trigger является production trigger. Перед каждым поиском пользователь
+вручную включает или будит Windows Worker, проверяет Docker, Worker services и
+Ollama health, затем запускает workflow в n8n. Schedule Trigger может оставаться
+disabled в export для возможного будущего использования, но он не является
+частью текущего production process.
 
 n8n не выполняет HH parsing, AI inference, semantic scoring, final priority
 calculation или canonical persistence. Orchestrator DB остается source of truth.
@@ -852,8 +857,9 @@ max_filter_items_override=10
 max_enrich_items_override=5
 ```
 
-These values are not production policy. Before enabling schedule, switch the
-workflow to production config and run a full manual production run.
+These values are not production policy. Switch the workflow to production config
+and run a full Manual Trigger production run. After a successful full manual run,
+the system is ready for daily manual use.
 
 Email digest includes:
 
