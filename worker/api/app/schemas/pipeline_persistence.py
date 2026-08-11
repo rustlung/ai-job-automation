@@ -40,6 +40,8 @@ class PipelinePersistenceError(BaseModel):
 
     error_code: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=ERROR_CODE_MAX_LENGTH)]
     message: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=SAFE_MESSAGE_MAX_LENGTH)]
+    stage: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)] | None = None
+    item_index: int | None = Field(default=None, ge=0)
 
 
 class HHCollectFilterEnrichAndPersistResult(BaseModel):

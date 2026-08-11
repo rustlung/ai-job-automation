@@ -15,6 +15,7 @@ from app.schemas.vacancy_enrichment import (
     FullVacancyTargetTrack,
     FullVacancyTaskFit,
     HHCollectFilterAndEnrichResult,
+    VacancyEnrichmentError,
     VacancyDeterministicFeatures,
     VacancyEnrichmentStats,
     VacancyEnrichmentStatus,
@@ -204,6 +205,33 @@ async def test_persistence_failure_preserves_enrichment_items() -> None:
     assert result.items[0].final_score == 91
     assert result.persistence_stats is None
     assert result.errors[0].error_code == "orchestrator_persistence_failed"
+
+
+@pytest.mark.anyio
+async def test_enrichment_errors_are_exposed_in_persist_response_without_orchestrator_call() -> None:
+    enrichment = enrichment_result()
+    enrichment.status = VacancyEnrichmentStatus.COMPLETED_WITH_ERRORS
+    enrichment.enrichment_stats.status = VacancyEnrichmentStatus.COMPLETED_WITH_ERRORS
+    enrichment.items = []
+    enrichment.errors.append(
+        VacancyEnrichmentError(
+            stage="feature_extraction",
+            error_code="feature_extraction_failed",
+            message="Vacancy deterministic feature extraction failed; item was skipped from enrichment",
+            item_index=0,
+        )
+    )
+    client = FakeOrchestratorClient()
+    service = HHCollectFilterEnrichAndPersistService(FakeEnrichmentService(enrichment), client)  # type: ignore[arg-type]
+
+    result = await service.collect_filter_enrich_and_persist(HHCollectFilterEnrichAndPersistRequest(pipeline_run_id="run-001"))
+
+    assert result.status == "completed_with_errors"
+    assert result.persistence_stats is None
+    assert client.payloads == []
+    assert result.errors[0].stage == "feature_extraction"
+    assert result.errors[0].error_code == "feature_extraction_failed"
+    assert result.errors[0].item_index == 0
 
 
 @pytest.mark.anyio

@@ -22,7 +22,12 @@ from app.schemas.preliminary_filter import (
     PreliminaryVacancyAssessment,
 )
 from app.schemas.pipeline_persistence import HHCollectFilterEnrichAndPersistResult
-from app.schemas.vacancy_enrichment import HHCollectFilterAndEnrichResult, VacancyEnrichmentStats, VacancyEnrichmentStatus
+from app.schemas.vacancy_enrichment import (
+    HHCollectFilterAndEnrichResult,
+    VacancyEnrichmentError,
+    VacancyEnrichmentStats,
+    VacancyEnrichmentStatus,
+)
 
 
 class FakePreliminaryFilterService:
@@ -298,6 +303,38 @@ def test_collect_filter_and_enrich_endpoint_success(client: TestClient, monkeypa
     assert service.requests[0].max_enrich_items_override == 5
 
 
+def test_collect_filter_and_enrich_endpoint_returns_completed_with_errors(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    result = enrichment_result()
+    result.status = VacancyEnrichmentStatus.COMPLETED_WITH_ERRORS
+    result.enrichment_stats.status = VacancyEnrichmentStatus.COMPLETED_WITH_ERRORS
+    result.errors.append(
+        VacancyEnrichmentError(
+            stage="feature_extraction",
+            error_code="feature_extraction_failed",
+            message="Vacancy deterministic feature extraction failed; item was skipped from enrichment",
+            item_index=0,
+        )
+    )
+    service = FakeCollectFilterAndEnrichService(result)
+    monkeypatch.setattr(filter_routes, "get_hh_collect_filter_and_enrich_service", lambda: service)
+
+    response = client.post(
+        "/hh/collect-filter-and-enrich",
+        json={
+            "profile_ids": ["python_expanded_search"],
+            "max_pages_override": 1,
+            "max_filter_items_override": 10,
+            "max_enrich_items_override": 5,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "completed_with_errors"
+    assert body["errors"][0]["stage"] == "feature_extraction"
+    assert body["errors"][0]["error_code"] == "feature_extraction_failed"
+
+
 @pytest.mark.parametrize(
     "payload",
     [
@@ -361,6 +398,34 @@ def test_collect_filter_enrich_and_persist_endpoint_success(client: TestClient, 
     assert body["pipeline_run_id"] == "run-001"
     assert body["persistence_stats"]["status"] == "succeeded"
     assert service.requests[0].pipeline_run_id == "run-001"
+
+
+def test_collect_filter_enrich_and_persist_endpoint_returns_completed_with_errors(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = persist_result()
+    result.status = VacancyEnrichmentStatus.COMPLETED_WITH_ERRORS
+    result.enrichment_stats.status = VacancyEnrichmentStatus.COMPLETED_WITH_ERRORS
+    result.persistence_stats = None
+    service = FakeCollectFilterEnrichAndPersistService(result)
+    monkeypatch.setattr(filter_routes, "get_hh_collect_filter_enrich_and_persist_service", lambda: service)
+
+    response = client.post(
+        "/hh/collect-filter-enrich-and-persist",
+        json={
+            "profile_ids": ["ai_resume_recommendations"],
+            "max_pages_override": 1,
+            "max_filter_items_override": 10,
+            "max_enrich_items_override": 5,
+            "pipeline_run_id": "run-001",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "completed_with_errors"
+    assert body["pipeline_run_id"] == "run-001"
 
 
 @pytest.mark.parametrize(

@@ -102,6 +102,7 @@ class HHCollectFilterAndEnrichService:
         prepared = []
         failed_fetch_count = 0
         failed_normalization_count = 0
+        failed_feature_extraction_count = 0
         for item_index, item in enumerate(candidates):
             logger.info("vacancy_full_fetch_started item_index=%s", item_index)
             try:
@@ -139,7 +140,23 @@ class HHCollectFilterAndEnrichService:
                 )
                 continue
 
-            features = self.feature_service.extract(normalized)
+            try:
+                features = self.feature_service.extract(normalized)
+            except Exception:
+                failed_feature_extraction_count += 1
+                logger.warning(
+                    "vacancy_feature_extraction_failed item_index=%s error_code=feature_extraction_failed",
+                    item_index,
+                )
+                errors.append(
+                    VacancyEnrichmentError(
+                        stage="feature_extraction",
+                        error_code="feature_extraction_failed",
+                        message="Vacancy deterministic feature extraction failed; item was skipped from enrichment",
+                        item_index=item_index,
+                    )
+                )
+                continue
             logger.info(
                 "vacancy_feature_extraction_succeeded item_index=%s hard_blocker_count=%s risk_count=%s",
                 item_index,
@@ -207,13 +224,14 @@ class HHCollectFilterAndEnrichService:
         )
         logger.info(
             "vacancy_enrichment_completed status=%s input_count=%s enriched_count=%s failed_fetch_count=%s "
-            "failed_normalization_count=%s semantic_fallback_count=%s p1_count=%s p2_count=%s alt_count=%s "
-            "p3_count=%s duration_ms=%s",
+            "failed_normalization_count=%s failed_feature_extraction_count=%s semantic_fallback_count=%s "
+            "p1_count=%s p2_count=%s alt_count=%s p3_count=%s duration_ms=%s",
             status.value,
             stats.input_count,
             stats.enriched_count,
             failed_fetch_count,
             failed_normalization_count,
+            failed_feature_extraction_count,
             semantic_fallback_count,
             stats.p1_count,
             stats.p2_count,

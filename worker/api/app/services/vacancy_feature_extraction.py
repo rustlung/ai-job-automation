@@ -6,6 +6,8 @@ from app.schemas.vacancy_enrichment import SalaryTax, SeniorityLevel, VacancyDet
 
 LOW_SALARY_STRONG_RUB = 80_000
 LOW_SALARY_MODERATE_RUB = 120_000
+MIN_EXPERIENCE_YEARS = 0
+MAX_EXPERIENCE_YEARS = 50
 
 TARGET_SKILLS = {
     "python": ("python", "питон"),
@@ -259,13 +261,19 @@ class VacancyFeatureExtractionService:
         return min(numbers[:2]), max(numbers[:2]), currency, salary_tax
 
     def _parse_experience(self, text: str) -> tuple[int | None, int | None]:
-        if match := EXPERIENCE_RANGE_RE.search(text):
-            return int(match.group("min")), int(match.group("max"))
-        if match := EXPERIENCE_FROM_RE.search(text):
-            return int(match.group("min")), None
-        if match := EXPERIENCE_SINGLE_RE.search(text):
+        for match in EXPERIENCE_RANGE_RE.finditer(text):
+            minimum = int(match.group("min"))
+            maximum = int(match.group("max"))
+            if _is_valid_experience_years(minimum) and _is_valid_experience_years(maximum) and minimum <= maximum:
+                return minimum, maximum
+        for match in EXPERIENCE_FROM_RE.finditer(text):
+            minimum = int(match.group("min"))
+            if _is_valid_experience_years(minimum):
+                return minimum, None
+        for match in EXPERIENCE_SINGLE_RE.finditer(text):
             years = int(match.group("years"))
-            return years, years
+            if _is_valid_experience_years(years):
+                return years, years
         if _has_any(text, ("без опыта", "no experience")):
             return 0, 0
         return None, None
@@ -412,6 +420,10 @@ def _normalize_text(value: str) -> str:
 
 def _has_any(text: str, markers: tuple[str, ...]) -> bool:
     return any(marker in text for marker in markers)
+
+
+def _is_valid_experience_years(value: int) -> bool:
+    return MIN_EXPERIENCE_YEARS <= value <= MAX_EXPERIENCE_YEARS
 
 
 def _unique(items: list[str]) -> list[str]:

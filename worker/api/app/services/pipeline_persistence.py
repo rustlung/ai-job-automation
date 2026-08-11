@@ -54,7 +54,15 @@ class HHCollectFilterEnrichAndPersistService:
         )
         persistence_result: dict | None = None
         persistence_stats: PipelinePersistenceStats | None = None
-        errors: list[PipelinePersistenceError] = []
+        errors: list[PipelinePersistenceError] = [
+            PipelinePersistenceError(
+                error_code=error.error_code,
+                message=error.message,
+                stage=error.stage,
+                item_index=error.item_index,
+            )
+            for error in enrichment_result.errors
+        ]
         status = enrichment_result.status
 
         if enrichment_result.items:

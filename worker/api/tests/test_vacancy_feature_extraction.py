@@ -93,6 +93,35 @@ def test_experience_range_and_commercial_experience() -> None:
     assert "commercial_experience_required" in result.deterministic_risks
 
 
+def test_experience_from_three_years_is_extracted() -> None:
+    result = features(vacancy("Нужен Python разработчик. Опыт от 3 лет."))
+
+    assert result.required_experience_min_years == 3
+    assert result.required_experience_max_years is None
+
+
+def test_experience_three_to_five_years_is_extracted() -> None:
+    result = features(vacancy("Нужен Python разработчик. Опыт 3–5 лет."))
+
+    assert result.required_experience_min_years == 3
+    assert result.required_experience_max_years == 5
+
+
+def test_calendar_year_is_not_extracted_as_experience() -> None:
+    result = features(vacancy("Компания работает с 2015 года. Python FastAPI API."))
+
+    assert result.required_experience_min_years is None
+    assert result.required_experience_max_years is None
+    assert "experience_5_plus" not in result.deterministic_risks
+
+
+def test_out_of_range_experience_is_unknown() -> None:
+    result = features(vacancy("Нужен Python разработчик. Опыт от 51 лет."))
+
+    assert result.required_experience_min_years is None
+    assert result.required_experience_max_years is None
+
+
 def test_five_plus_senior_lead_has_risk_and_possible_blocker() -> None:
     result = features(vacancy("Senior Lead Python Developer. От 5 лет. Руководить командой и архитектурой."))
 

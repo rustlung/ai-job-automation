@@ -99,6 +99,13 @@ class FailingNormalizationService(VacancyNormalizationService):
         return super().normalize(search_vacancy, vacancy_details, collected_at)
 
 
+class FailingFeatureExtractionService(VacancyFeatureExtractionService):
+    def extract(self, vacancy):
+        if vacancy.external_id == "1":
+            raise RuntimeError("feature extraction failed")
+        return super().extract(vacancy)
+
+
 def vacancy(external_id: str) -> HHSearchCollectedVacancy:
     return HHSearchCollectedVacancy(
         external_id=external_id,
@@ -185,12 +192,13 @@ def service(
     fetch_failures: set[str] | None = None,
     semantic_fallback: bool = False,
     normalization_service: VacancyNormalizationService | None = None,
+    feature_service: VacancyFeatureExtractionService | None = None,
 ) -> HHCollectFilterAndEnrichService:
     return HHCollectFilterAndEnrichService(
         collect_and_filter_service=FakeCollectAndFilterService(result),  # type: ignore[arg-type]
         vacancy_service=FakeVacancyService(fetch_failures),  # type: ignore[arg-type]
         normalization_service=normalization_service or VacancyNormalizationService(lambda: datetime(2026, 8, 10, tzinfo=timezone.utc)),
-        feature_service=VacancyFeatureExtractionService(),
+        feature_service=feature_service or VacancyFeatureExtractionService(),
         semantic_service=FakeSemanticService(semantic_fallback),  # type: ignore[arg-type]
         scoring_service=VacancyScoringService(),
         max_items=max_items,
@@ -237,6 +245,22 @@ async def test_normalization_failure_does_not_stop_run() -> None:
     assert result.status == "completed_with_errors"
     assert result.enrichment_stats.failed_normalization_count == 1
     assert result.enrichment_stats.enriched_count == 1
+
+
+@pytest.mark.anyio
+async def test_feature_extraction_failure_does_not_stop_next_vacancy() -> None:
+    items = [filtered(vacancy("1"), PreliminaryDecision.KEEP_MAIN), filtered(vacancy("2"), PreliminaryDecision.KEEP_MAIN)]
+
+    result = await service(
+        preliminary_result(items),
+        feature_service=FailingFeatureExtractionService(),
+    ).collect_filter_and_enrich(HHCollectFilterAndEnrichRequest())
+
+    assert result.status == "completed_with_errors"
+    assert result.enrichment_stats.enriched_count == 1
+    assert result.items[0].vacancy.external_id == "2"
+    assert result.errors[0].stage == "feature_extraction"
+    assert result.errors[0].error_code == "feature_extraction_failed"
 
 
 @pytest.mark.anyio
