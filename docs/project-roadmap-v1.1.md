@@ -1194,17 +1194,19 @@ Acceptance examples:
 
 ## Phase 5.10. n8n orchestration + CRM + notifications
 
-Статус: следующий незавершенный этап.
+Статус: завершена и принята на целевой инфраструктуре.
 
 ## Цель
 
 Собрать MVP orchestration flow поверх принятого Worker persistence endpoint и
 Orchestrator read API.
 
-Минимальный MVP workflow:
+Принятый MVP workflow:
 
 ``` text
-Schedule / Manual Trigger
+Manual Trigger
+↓
+n8n
 ↓
 Worker
 POST /hh/collect-filter-enrich-and-persist
@@ -1218,14 +1220,40 @@ Google Sheets CRM upsert
 Email digest
 ```
 
-План:
+Результат:
 
-- запускать Worker vertical endpoint из n8n;
-- читать результаты через Orchestrator API, а не через SQLite;
-- синхронизировать Google Sheets как CRM-витрину;
-- не хранить весь technical payload в Sheets;
-- не затирать пользовательские CRM-поля автоматической синхронизацией;
-- отправлять email digest как первый надежный notification channel.
+- workflow `AI Job Automation — Daily Search CRM Digest` запускает Worker
+  vertical endpoint из n8n;
+- workflow создает `pipeline_run_id`, проверяет Worker response и читает
+  текущий run через `GET /pipeline-results/runs/{run_id}`;
+- Orchestrator DB остается source of truth; Google Sheets является
+  пользовательской CRM-витриной;
+- production sync проверен на существующем листе `Вакансии`, acceptance sync
+  проверялся на `Вакансии_TEST`;
+- существующие CRM колонки A:O сохранены, добавлены system-managed P:V:
+  `Score`, `AI причина`, `Риски`, `Hard blockers`, `CRM Key`, `Run ID`,
+  `Анализ обновлён`;
+- `CRM Key = source + external_id` используется как idempotent identity;
+- new row, update by CRM Key и legacy HH URL fallback проверены без дублей;
+- пользовательские поля `Отклик`, `Ответ`, `Интервью`, `Итог`, `Комментарий`
+  сохраняются при автоматическом sync;
+- P1, P2 и ALT синхронизируются в CRM, P3 остается DB-only;
+- Gmail email digest принят как первый production notification channel;
+- Gmail OAuth callback переведен на public HTTPS n8n domain;
+- n8n опубликован на `https://n8n.vsigaev.ru` через Nginx, Let's Encrypt и UFW
+  `Nginx Full`;
+- Worker и Orchestrator остаются LAN-only;
+- workflow export хранится в `workflows/n8n/ai-job-daily-search.json` без
+  credentials и с отключенным schedule trigger.
+
+Acceptance limits:
+
+- `max_pages_override = 1`;
+- `max_filter_items_override = 10`;
+- `max_enrich_items_override = 5`.
+
+Эти значения использовались только для безопасной приемки и не являются
+production policy.
 
 Telegram не является blocker Phase 5.10. Он остается optional follow-up после
 решения сетевой доступности Telegram API с homeserver.
@@ -1234,18 +1262,18 @@ Telegram не является blocker Phase 5.10. Он остается optiona
 
 ## Оставшиеся части Phase 5
 
-Phase 5 не считается полностью завершенной.
+Phase 5 имеет рабочий accepted MVP pipeline. Production schedule и calibration
+остаются отдельными операционными шагами.
 
 Остаются:
 
-- n8n orchestration workflow;
-- Google Sheets CRM upsert;
-- email digest;
-- schedule/manual production entrypoint;
+- full manual production run без acceptance limits;
+- production schedule;
 - production calibration.
 
-Следующий этап по текущему roadmap находится внутри Phase 5:
-Phase 5.10 — n8n orchestration + Google Sheets CRM upsert + email digest.
+Следующий операционный шаг: переключить workflow с acceptance limits на
+production config и выполнить полный ручной production run до включения
+расписания.
 
 ---
 

@@ -1,6 +1,6 @@
 # Current State
 
-2026-08-10
+2026-08-11
 
 Работает:
 ✅ Ubuntu server
@@ -105,6 +105,18 @@
 ✅ Processing events from persistence bridge
 ✅ Pipeline read API
 ✅ Phase 5.9 target acceptance
+✅ Phase 5.10 n8n CRM workflow acceptance
+✅ n8n orchestration over Worker persistence endpoint
+✅ Google Sheets CRM sync
+✅ Production CRM sheet подключён
+✅ Google Sheets Service Account credential
+✅ CRM Key idempotent upsert
+✅ Legacy HH URL fallback for old CRM rows
+✅ User-managed CRM fields protection
+✅ Gmail email digest
+✅ Public HTTPS n8n via Nginx
+✅ Let's Encrypt certificate for n8n
+✅ Google OAuth callback via public n8n domain
 
 Phase 1 — Orchestrator foundation завершена.
 Phase 2.1 — Worker API foundation завершена.
@@ -122,6 +134,7 @@ Phase 5.6.2 — Authenticated resume profiles integrated into collector заве
 Phase 5.7 — Preliminary local AI vacancy filter завершена и принята на целевом Worker.
 Phase 5.8 — Full vacancy enrichment and deterministic scoring завершена и принята на целевом Worker.
 Phase 5.9 — Persistence Bridge: Worker → Orchestrator DB завершена и принята на целевых узлах.
+Phase 5.10 — n8n orchestration + Google Sheets CRM sync + email digest + public HTTPS n8n завершена и принята на целевой инфраструктуре.
 
 Создан и развернут на homeserver базовый backend оркестрационного слоя на FastAPI.
 Работает endpoint `GET /health`.
@@ -500,18 +513,87 @@ Orchestrator хранит discovery-состояние вакансии в по�
 Существующие строки `Vacancy` были backfill-мигрированы из `created_at` и `updated_at`.
 `POST /vacancies` не создает processing event автоматически.
 
-Следующий незавершенный этап по `docs/project-roadmap-v1.1.md`: Phase 5.10 — n8n orchestration + Google Sheets CRM upsert + email digest.
+Phase 5.10 собрала принятый orchestration flow:
+
+``` text
+Manual Trigger
+→ n8n
+→ Worker POST /hh/collect-filter-enrich-and-persist
+→ Orchestrator DB
+→ Orchestrator GET /pipeline-results/runs/{run_id}
+→ Google Sheets CRM sync
+→ Gmail email digest
+```
+
+n8n является orchestration и external integration layer. Он запускает Worker
+pipeline, создает `pipeline_run_id`, проверяет результат Worker, читает текущий
+run из Orchestrator, синхронизирует CRM и отправляет email digest. n8n не
+выполняет HH parsing, AI inference, semantic scoring, final priority calculation
+или canonical persistence.
+
+Orchestrator DB остается source of truth для автоматических данных vacancy
+pipeline. Google Sheets является пользовательской CRM-витриной. Направление
+синхронизации: Orchestrator DB → n8n → Google Sheets. Ошибка Google Sheets не
+теряет результаты pipeline, потому что persistence выполняется раньше внешних
+интеграций.
+
+CRM sync проверен на существующей таблице `CRM_поиска_работы_и_заказов`.
+Acceptance выполнялась на листе `Вакансии_TEST`, после приемки workflow
+переключен на основной лист `Вакансии`. Существующие пользовательские колонки
+A:O сохранены. Добавлены system-managed колонки P:V: `Score`, `AI причина`,
+`Риски`, `Hard blockers`, `CRM Key`, `Run ID`, `Анализ обновлён`. Отдельная
+колонка `Track` не добавлялась: существующее поле `Тип` остается
+пользовательским отображением направления.
+
+CRM Key имеет формат `source + external_id`, например `hh:135997123`, и является
+основным idempotent key. Workflow не использует title, company, row number или
+URL alone как primary identity. Новая вакансия создает новую строку. Повторная
+синхронизация существующей строки с CRM Key выполняет update без дубля. Старые
+строки без CRM Key сопоставляются только через legacy HH URL fallback: workflow
+извлекает external id из HH URL, обновляет найденную строку и добавляет CRM Key.
+Fuzzy matching по title/company не используется.
+
+Automation обновляет system-managed поля: `Компания`, `Должность`, `Тип`,
+`Приоритет`, `ЗП`, `Формат`, `Стек`, `Дата`, `Ссылка`, `Score`, `AI причина`,
+`Риски`, `Hard blockers`, `CRM Key`, `Run ID`, `Анализ обновлён`.
+Пользовательские поля `Отклик`, `Ответ`, `Интервью`, `Итог`, `Комментарий` не
+затираются. AI short reason не записывается в `Комментарий`.
+
+В CRM синхронизируются P1, P2 и ALT. P3 остается DB-only, чтобы Google Sheets
+оставался рабочим shortlist, а не архивом слабых вакансий. Gmail digest принят
+как первый production notification channel: письмо содержит `run_id`, статус и
+warnings, collection/filter/enrichment/persistence counts, сводку P1/P2/ALT/P3,
+CRM new/update/error counts, Worker duration, top vacancies, short reason, risks,
+vacancy links и CRM link при наличии.
+
+n8n опубликован через HTTPS на `https://n8n.vsigaev.ru`: Internet → router
+80/443 forwarding → homeserver → Nginx → `127.0.0.1:5678` → n8n. Worker и
+Orchestrator остаются LAN-only и не публикуются в Internet. Nginx настроен как
+reverse proxy с forwarded headers и websocket upgrade support. UFW использует
+default deny incoming и открыт только нужными правилами, включая `Nginx Full` для
+HTTP/HTTPS. Let's Encrypt certificate выпущен через Certbot, HTTP редиректит на
+HTTPS, `certbot renew --dry-run` прошел.
+
+Google интеграции разделены: Gmail node использует Google OAuth credential в
+n8n, Google Sheets node использует отдельный Google Service Account credential с
+доступом только к CRM spreadsheet. OAuth callback переведен на постоянный public
+HTTPS URL `https://n8n.vsigaev.ru/rest/oauth2-credential/callback`. Client
+secrets, tokens, private keys, spreadsheet IDs и реальные URL не фиксируются в
+Git.
+
+Acceptance workflow был проверен на малых лимитах:
+`max_pages_override=1`, `max_filter_items_override=10`,
+`max_enrich_items_override=5`. Эти значения являются безопасной приемочной
+конфигурацией, а не production policy. Следующий операционный шаг: переключить
+workflow с acceptance limits на production config и выполнить полный ручной
+production run до включения расписания.
 
 Не реализовано:
-⬜ n8n HH collector workflow
-⬜ расписание HH collector
-⬜ Google Sheets CRM upsert через n8n
-⬜ email digest
+⬜ production schedule
 ⬜ production calibration
 ⬜ персональный профиль пользователя
 ⬜ внешняя LLM
 ⬜ Telegram workflow
-⬜ полноценный ежедневный pipeline
 ⬜ ProxyAPI fallback
 ⬜ cross-source deduplication
 ⬜ fuzzy matching и объединение разных external_id

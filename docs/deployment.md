@@ -647,22 +647,62 @@ vacancy_deduplication_succeeded
 Не фиксировать в документации реальные IP-адреса, cookies, resume id,
 локальные `.env`, XSRF token или чувствительные query parameters.
 
-## n8n Workflow Configuration
+## n8n Public HTTPS
 
-Workflow `AI Job Automation — First Slice` запускается в n8n на homeserver.
-Конфигурация сервисов задается через environment variables в `docker-compose.yml` n8n.
-
-Минимальные переменные для текущего workflow:
+n8n опубликован через постоянный public HTTPS endpoint:
 
 ``` text
-ORCHESTRATOR_API_URL=<orchestrator-api-url>
-WORKER_API_URL=<worker-api-url>
-AI_PROVIDER=local_ollama
-AI_MODEL=qwen3:4b-instruct
-AI_PROMPT_VERSION=v1
+https://n8n.vsigaev.ru
 ```
 
-Не фиксировать реальные IP-адреса, локальные URL, токены или секреты в Git.
+Проверенная схема:
+
+``` text
+Internet
+→ router 80/443 forwarding
+→ homeserver
+→ Nginx
+→ 127.0.0.1:5678
+→ n8n
+```
+
+Worker и Orchestrator остаются LAN-only. Их HTTP endpoints не публикуются в
+Internet и используются n8n через локальную сеть.
+
+Nginx reverse proxy:
+
+- `n8n.vsigaev.ru` проксируется на `http://127.0.0.1:5678`;
+- передаются `Host`, `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`;
+- включена поддержка websocket upgrade.
+
+UFW:
+
+- default policy для incoming traffic остается deny;
+- для public n8n открыт профиль `Nginx Full`;
+- SSH и TeamSpeak правила ведутся отдельно;
+- firewall не считается глобально открытым.
+
+TLS:
+
+- Let's Encrypt certificate выпущен для `n8n.vsigaev.ru`;
+- Certbot интегрирован с Nginx;
+- HTTP redirects to HTTPS;
+- `certbot renew --dry-run` прошел.
+
+n8n environment:
+
+``` text
+N8N_HOST=n8n.vsigaev.ru
+N8N_PROTOCOL=https
+N8N_SECURE_COOKIE=true
+N8N_EDITOR_BASE_URL=https://n8n.vsigaev.ru
+WEBHOOK_URL=https://n8n.vsigaev.ru/
+```
+
+LAN endpoints Worker и Orchestrator задаются через отдельные environment
+variables. Не фиксировать реальные IP-адреса, локальные URL, tokens, cookies,
+query strings, spreadsheet IDs, OAuth secrets или service account private keys в
+Git.
 
 После изменения environment variables пересоздать контейнер n8n:
 
@@ -673,30 +713,161 @@ docker compose up -d --force-recreate
 Проверить переменные внутри контейнера:
 
 ``` bash
+docker compose exec n8n printenv N8N_HOST
+docker compose exec n8n printenv N8N_PROTOCOL
+docker compose exec n8n printenv N8N_EDITOR_BASE_URL
+docker compose exec n8n printenv WEBHOOK_URL
 docker compose exec n8n printenv ORCHESTRATOR_API_URL
 docker compose exec n8n printenv WORKER_API_URL
-docker compose exec n8n printenv AI_PROVIDER
-docker compose exec n8n printenv AI_MODEL
-docker compose exec n8n printenv AI_PROMPT_VERSION
 ```
 
-В workflow использовать expressions через `$env`, например:
+Google OAuth callback для n8n:
 
 ``` text
-{{ $env.ORCHESTRATOR_API_URL }}
-{{ $env.WORKER_API_URL }}
-{{ $env.AI_PROVIDER }}
-{{ $env.AI_MODEL }}
-{{ $env.AI_PROMPT_VERSION }}
+https://n8n.vsigaev.ru/rest/oauth2-credential/callback
 ```
 
-Если текущая версия n8n блокирует доступ к environment variables в node expressions, в конфигурации n8n используется:
+Этот URL добавлен в Authorized redirect URIs. Gmail OAuth reconnect прошел,
+Gmail Send работает.
+
+Во время настройки был локальный DNS quirk: homeserver использовал router DNS
+resolver, который временно возвращал NXDOMAIN для нового subdomain. Это не
+заблокировало public HTTPS, Let's Encrypt или Google OAuth и не считается
+постоянным ограничением.
+
+## n8n Workflow Configuration
+
+Workflow `AI Job Automation — Daily Search CRM Digest` запускается в n8n на
+homeserver. Актуальный export:
 
 ``` text
-N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+workflows/n8n/ai-job-daily-search.json
 ```
 
-Credentials создаются только в UI n8n.
-Secret values не должны экспортироваться в workflow.
-Credentials exports не коммитятся.
-Workflow export хранится отдельно в Git в каталоге `workflows/n8n/`.
+Export хранит topology и node settings, но не хранит credentials. Workflow
+`active=false`; schedule trigger в export отключен до явного production
+activation.
+
+Принятый flow:
+
+``` text
+Manual Trigger / Schedule Trigger (disabled until workflow activation)
+→ Config
+→ Generate Run ID
+→ HTTP Worker Pipeline
+→ Check Worker Result
+→ Pipeline OK?
+→ Get Current Run
+→ Read CRM Rows
+→ Prepare CRM Rows
+→ Legacy URL Match?
+→ CRM Upsert by CRM Key / CRM Upsert Legacy by URL
+→ Prepare Success Email
+→ Gmail Send Digest
+```
+
+Failure branch:
+
+``` text
+Pipeline OK?
+→ Prepare Failure Email
+→ Gmail Send Failure
+```
+
+n8n responsibilities:
+
+- запускает Worker `POST /hh/collect-filter-enrich-and-persist`;
+- создает `pipeline_run_id`;
+- проверяет Worker result;
+- читает текущий run через Orchestrator
+  `GET /pipeline-results/runs/{run_id}`;
+- синхронизирует Google Sheets CRM;
+- отправляет Gmail digest;
+- в будущем может запускаться по расписанию.
+
+n8n не выполняет HH parsing, AI inference, semantic scoring, final priority
+calculation или canonical persistence. Orchestrator DB остается source of truth.
+
+Google credentials:
+
+- Gmail node использует Google OAuth credential в n8n;
+- Google Sheets node использует отдельный Google Service Account credential;
+- service account имеет доступ только к существующей CRM spreadsheet;
+- Google Sheets API включен;
+- credential exports и secret values не коммитятся.
+
+CRM:
+
+- spreadsheet title: `CRM_поиска_работы_и_заказов`;
+- production sheet: `Вакансии`;
+- acceptance test sheet: `Вакансии_TEST`;
+- sync direction: Orchestrator DB → n8n → Google Sheets;
+- P1, P2 и ALT синхронизируются в CRM;
+- P3 остается DB-only.
+
+System-managed CRM columns P:V:
+
+``` text
+Score
+AI причина
+Риски
+Hard blockers
+CRM Key
+Run ID
+Анализ обновлён
+```
+
+Existing user-managed columns are preserved. Automation must not overwrite:
+
+``` text
+Отклик
+Ответ
+Интервью
+Итог
+Комментарий
+```
+
+CRM Key:
+
+``` text
+source + external_id
+```
+
+Example:
+
+``` text
+hh:135997123
+```
+
+CRM Key is the primary idempotent key. Do not use title, company, row number or
+URL alone as primary identity. Legacy rows without CRM Key are matched only by
+extracting HH external id from the HH URL; fuzzy matching by title/company is not
+used.
+
+Acceptance workflow used intentionally small limits:
+
+``` text
+max_pages_override=1
+max_filter_items_override=10
+max_enrich_items_override=5
+```
+
+These values are not production policy. Before enabling schedule, switch the
+workflow to production config and run a full manual production run.
+
+Email digest includes:
+
+- `run_id`;
+- status and warnings;
+- collection count;
+- preliminary filter count;
+- fully analyzed count;
+- DB persistence count;
+- P1/P2/ALT/P3 summary;
+- CRM new/update/error counts;
+- Worker duration;
+- top vacancies;
+- short reason;
+- risks;
+- vacancy links;
+- CRM link if configured.

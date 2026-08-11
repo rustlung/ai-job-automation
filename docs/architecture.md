@@ -133,7 +133,8 @@ Docker:
 
 -   установлен;
 -   запущен через Docker;
--   проверена работа workflow.
+-   проверена работа workflow;
+-   опубликован через HTTPS на `https://n8n.vsigaev.ru` за Nginx reverse proxy.
 
 docker-compose:
 
@@ -150,13 +151,34 @@ services:
     environment:
       - TZ=Europe/Samara
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
-      - N8N_SECURE_COOKIE=false
-      - N8N_HOST=localhost
-      - N8N_PROTOCOL=http
+      - N8N_SECURE_COOKIE=true
+      - N8N_HOST=n8n.vsigaev.ru
+      - N8N_PROTOCOL=https
+      - N8N_EDITOR_BASE_URL=https://n8n.vsigaev.ru
+      - WEBHOOK_URL=https://n8n.vsigaev.ru/
 
     volumes:
       - ./data:/home/node/.n8n
 ```
+
+Публичный доступ ограничен n8n:
+
+``` text
+Internet
+→ router 80/443 forwarding
+→ homeserver
+→ Nginx
+→ 127.0.0.1:5678
+→ n8n
+```
+
+Worker и Orchestrator остаются LAN-only и не публикуются в Internet.
+Nginx проксирует `n8n.vsigaev.ru` на `http://127.0.0.1:5678`, передает
+`Host`, `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto` и поддерживает
+websocket upgrade. Для домена выпущен Let's Encrypt certificate через Certbot,
+HTTP перенаправляется на HTTPS, renewal проверен через `certbot renew --dry-run`.
+UFW настроен с default deny incoming; для публичного n8n открыт профиль
+`Nginx Full`, остальные правила, включая SSH и TeamSpeak, ведутся отдельно.
 
 ------------------------------------------------------------------------
 
@@ -165,9 +187,22 @@ services:
 Google Gmail:
 
 -   OAuth2 настроен;
--   отправка тестовых писем проверена.
+-   OAuth2 callback переведен на public HTTPS n8n domain;
+-   отправка email digest проверена.
 
 Используется как первоначальный канал уведомлений.
+
+Google Sheets:
+
+-   используется существующая CRM spreadsheet `CRM_поиска_работы_и_заказов`;
+-   production sync проверен на основном листе `Вакансии`;
+-   acceptance sync проверялся на листе `Вакансии_TEST`;
+-   n8n использует отдельный Google Service Account credential для Sheets;
+-   service account имеет доступ только к CRM spreadsheet.
+
+Gmail OAuth credential и Google Sheets Service Account credential являются
+разными n8n credentials. Client secrets, OAuth tokens, service account private
+keys, spreadsheet IDs и реальные URLs не хранятся в Git.
 
 ------------------------------------------------------------------------
 
@@ -601,7 +636,9 @@ n8n / collector
 preliminary local AI filter поверх deduplicated search vacancies, full vacancy
 enrichment для кандидатов `keep_main`, `keep_alt` и `uncertain`, а также
 persistence bridge в Orchestrator DB через `POST /pipeline-results`.
-n8n HH collector workflow ещё не реализован.
+Phase 5.10 добавила n8n orchestration поверх Worker persistence endpoint,
+чтение текущего run через Orchestrator API, Google Sheets CRM sync и Gmail
+digest.
 
 ## 10.2.1. Preliminary local AI filter
 
@@ -1441,42 +1478,70 @@ GET /processing-runs/{run_id}/events
 ```
 
 `GET /pipeline-results/runs/{run_id}` возвращает `run_id`, `count` и список
-`analyses`. `GET /pipeline-results/analyses/latest` поддерживает `priority`,
-`limit` и `offset` и является основным кандидатом для n8n / CRM
-synchronization.
+`analyses`. Для синхронизации конкретного run n8n использует
+`GET /pipeline-results/runs/{run_id}`. `GET /pipeline-results/analyses/latest`
+остается read API для диагностических и обзорных сценариев, но не заменяет
+current-run sync.
 
-## 11.5. Future CRM and notification flow
+## 11.5. CRM and notification flow
 
-Статус: planned для Phase 5.10.
+Статус: implemented и принят в Phase 5.10.
 
-Будущий поток:
+Принятый поток:
 
 ``` text
-Orchestrator read API
+Manual Trigger
 ↓
 n8n
-├── Google Sheets CRM
-└── Email digest
+↓
+Worker POST /hh/collect-filter-enrich-and-persist
+↓
+Orchestrator DB
+↓
+Orchestrator GET /pipeline-results/runs/{run_id}
+↓
+n8n
+├── Google Sheets CRM sync
+└── Gmail email digest
 ```
 
+n8n запускает pipeline, создает `pipeline_run_id`, проверяет Worker response,
+читает результаты текущего run из Orchestrator, синхронизирует CRM и отправляет
+email digest. n8n не владеет HH parsing, AI inference, semantic scoring, final
+priority calculation или canonical persistence.
+
 Google Sheets не является вторым независимым хранилищем анализа. Orchestrator
-DB хранит подробные technical/system данные, а Google Sheets должна быть
-рабочей CRM-витриной. Автоматическая синхронизация идет в направлении:
+DB хранит подробные technical/system данные, а Google Sheets является рабочей
+CRM-витриной. Автоматическая синхронизация идет в направлении:
 
 ``` text
 Orchestrator DB → n8n → Google Sheets
 ```
 
 Интеграция Google Sheets не реализуется Python-модулем в Worker или
-Orchestrator. Она будет сделана через n8n: Google OAuth уже настроен там,
-external integration belongs to orchestration layer, а отказ Google не должен
-влиять на сохранение результата в DB.
+Orchestrator. Она выполняется через n8n. Отказ Google Sheets, Gmail или другой
+external integration не должен приводить к потере результатов, потому что DB
+persistence выполняется до внешней синхронизации.
+
+CRM sync работает с существующей таблицей `CRM_поиска_работы_и_заказов`.
+Основной лист: `Вакансии`; acceptance лист: `Вакансии_TEST`. Существующие
+колонки A:O сохранены. System-managed колонки P:V: `Score`, `AI причина`,
+`Риски`, `Hard blockers`, `CRM Key`, `Run ID`, `Анализ обновлён`.
+
+CRM Key имеет формат `source + external_id` и является primary idempotent key.
+Новая вакансия создает строку. Существующая строка с CRM Key обновляется без
+дубля. Legacy row без CRM Key может быть сопоставлена только через HH URL
+fallback: n8n извлекает external id из URL, обновляет найденную строку и
+добавляет CRM Key. Fuzzy matching по title/company не используется.
+
+Пользовательские поля `Отклик`, `Ответ`, `Интервью`, `Итог`, `Комментарий`
+защищены от перезаписи автоматизацией. AI short reason пишется в `AI причина`,
+а не в `Комментарий`. В CRM синхронизируются P1, P2 и ALT; P3 остается DB-only.
 
 Email является первым надежным notification channel для MVP. Telegram не входит
-в critical path Phase 5.10: ранее Telegram node n8n не смог отправить запрос
-из-за сетевой доступности Telegram API с homeserver. Telegram рассматривается
-как optional/future через proxy, отдельный route, relay или небольшой bot/relay
-на VPS.
+в critical path Phase 5.10: Gmail digest принят и работает, а Telegram остается
+optional/future через proxy, отдельный route, relay или небольшой bot/relay на
+VPS.
 
 ## 11.6. Future AI evaluation decision
 
@@ -1577,11 +1642,14 @@ Custom engine:
     persistence bridge;
 -   Orchestrator DB является source of truth для автоматических данных vacancy
     pipeline;
--   Phase 5.9 принята на целевых узлах.
+-   Phase 5.9 принята на целевых узлах;
+-   Phase 5.10 n8n orchestration, Google Sheets CRM sync, Gmail digest и public
+    HTTPS n8n приняты на целевой инфраструктуре.
 
 Следующие шаги:
 
-1.  Собрать Phase 5.10: n8n orchestration, Google Sheets CRM upsert и email
-    digest.
+1.  Переключить n8n workflow с acceptance limits на production config и
+    выполнить полный ручной production run.
 
-2.  Добавить расписание, уведомления и production calibration.
+2.  После успешного полного ручного run включить production schedule и заняться
+    calibration.

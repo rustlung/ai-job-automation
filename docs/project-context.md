@@ -362,22 +362,41 @@ Persistence bridge decisions:
 
 CRM and external integration decisions:
 
-- Google Sheets является будущей пользовательской CRM-витриной, а не вторым
-  source of truth;
+- Google Sheets является пользовательской CRM-витриной, а не вторым source of
+  truth;
 - автоматическая синхронизация идет в направлении Orchestrator DB → n8n →
   Google Sheets;
+- n8n читает результаты конкретного run через
+  `GET /pipeline-results/runs/{run_id}`;
 - Google Sheets integration не реализуется Python-модулем в Worker или
   Orchestrator;
-- Google OAuth уже настроен в n8n, поэтому external integration belongs to
-  orchestration layer;
+- external integrations belong to orchestration layer: n8n запускает pipeline,
+  проверяет Worker response, читает current run, синхронизирует CRM и отправляет
+  email digest;
+- n8n не выполняет HH parsing, AI inference, semantic scoring, final priority
+  calculation или canonical persistence;
 - отказ Google Sheets, email или другой внешней интеграции не должен приводить
   к потере vacancy: DB persistence выполняется раньше внешних интеграций;
-- Sheets должна хранить рабочие CRM-поля, а не весь technical payload;
-- пользовательские CRM-поля вроде отклика, даты отклика, ответа, интервью,
-  тестового, отказа и комментария не должны затираться автоматической
-  синхронизацией;
+- существующая CRM spreadsheet называется `CRM_поиска_работы_и_заказов`;
+- основной лист CRM — `Вакансии`, acceptance sheet — `Вакансии_TEST`;
+- CRM identity key — `source + external_id`, например `hh:135997123`;
+- title, company, row number или URL alone не используются как primary identity;
+- legacy rows без CRM Key сопоставляются только через HH URL fallback с
+  извлечением external id; fuzzy matching по title/company не используется;
+- пользовательские поля `Отклик`, `Ответ`, `Интервью`, `Итог`, `Комментарий`
+  не должны затираться автоматической синхронизацией;
+- AI short reason пишется в system-managed `AI причина`, а не в пользовательский
+  `Комментарий`;
+- в CRM синхронизируются P1, P2 и ALT; P3 остается DB-only;
+- Gmail OAuth credential и Google Sheets Service Account credential в n8n
+  разделены;
+- service account имеет доступ только к CRM spreadsheet;
 - email является первым надежным notification channel для MVP;
-- Telegram deferred и не является blocker Phase 5.10.
+- Telegram deferred и не является blocker Phase 5.10;
+- public HTTPS открыт только для n8n на `https://n8n.vsigaev.ru`; Worker и
+  Orchestrator остаются LAN-only;
+- acceptance limits Phase 5.10 не являются production policy;
+- production schedule включается только после полного ручного production run.
 
 HH search collection decisions:
 
