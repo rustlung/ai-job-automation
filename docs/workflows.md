@@ -87,9 +87,9 @@ Workflow name:
 AI Job Automation — Daily Search CRM Digest
 ```
 
-Export не содержит credentials. Workflow `active=false`; node
-`Schedule Trigger (disabled until workflow activation)` остается disabled и не
-используется в текущем production process.
+Export не содержит credentials. Workflow `active=false`. Каноничный production
+trigger — `Manual Trigger`; Schedule Trigger в текущем export отсутствует и не
+является частью production process.
 
 ### Назначение
 
@@ -99,6 +99,7 @@ n8n оркестрирует уже реализованный Worker persistenc
 ``` text
 Manual Trigger
 → n8n
+→ preflight health checks
 → Worker POST /hh/collect-filter-enrich-and-persist
 → Orchestrator DB
 → Orchestrator GET /pipeline-results/runs/{run_id}
@@ -116,6 +117,13 @@ Success branch:
 ``` text
 Manual Trigger
 → Config
+→ Preflight Orchestrator
+→ Preflight Worker
+→ Preflight Ollama
+→ Preflight HH Auth
+→ Preflight HH Session
+→ Validate Preflight
+→ Preflight OK?
 → Generate Run ID
 → HTTP Worker Pipeline
 → Check Worker Result
@@ -132,10 +140,20 @@ Manual Trigger
 Failure branch:
 
 ``` text
+Preflight OK?
+→ Stop Preflight Failed
+
 Pipeline OK?
 → Prepare Failure Email
 → Gmail Send Failure
 ```
+
+Preflight branch uses short bounded checks before the long Worker pipeline:
+Orchestrator `GET /health`, Worker `GET /health`, Worker `GET /health/ollama`,
+Worker `GET /health/hh-auth` and read-only authenticated HH preview. Failed
+preflight stops the workflow before `HTTP Worker Pipeline` and does not send a
+failure email. The long Worker request keeps its production timeout from the
+canonical export.
 
 ### Source of truth
 
@@ -268,10 +286,7 @@ max_enrich_items_override=5
 
 These values are not production policy. Manual Trigger is the production trigger:
 before each search the user wakes or starts the Windows Worker, checks Docker,
-Worker services and Ollama health, then starts the n8n workflow manually. Next
-operational step: switch the workflow to production config and run a full Manual
-Trigger production run. After a successful full manual run, the system is ready
-for daily manual use.
+Worker services and Ollama health, then starts the n8n workflow manually.
 
 ## HH collection flow
 

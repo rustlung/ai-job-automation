@@ -33,3 +33,6 @@ Thumbs.db
 
 # Docker
 docker-compose.override.yml
+
+# Test workflow
+vacancy-first-slice.json

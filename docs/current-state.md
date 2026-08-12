@@ -114,6 +114,7 @@
 ✅ Legacy HH URL fallback for old CRM rows
 ✅ User-managed CRM fields protection
 ✅ Gmail email digest
+✅ n8n preflight health checks before Worker pipeline
 ✅ Public HTTPS n8n via Nginx
 ✅ Let's Encrypt certificate for n8n
 ✅ Google OAuth callback via public n8n domain
@@ -518,6 +519,7 @@ Phase 5.10 собрала принятый orchestration flow:
 ``` text
 Manual Trigger
 → n8n
+→ preflight health checks
 → Worker POST /hh/collect-filter-enrich-and-persist
 → Orchestrator DB
 → Orchestrator GET /pipeline-results/runs/{run_id}
@@ -525,11 +527,14 @@ Manual Trigger
 → Gmail email digest
 ```
 
-n8n является orchestration и external integration layer. Он запускает Worker
-pipeline, создает `pipeline_run_id`, проверяет результат Worker, читает текущий
-run из Orchestrator, синхронизирует CRM и отправляет email digest. n8n не
-выполняет HH parsing, AI inference, semantic scoring, final priority calculation
-или canonical persistence.
+n8n является orchestration и external integration layer. Перед долгим Worker
+pipeline он выполняет preflight checks Orchestrator, Worker, Ollama, HH auth
+storage и live HH session. Если preflight не проходит, workflow останавливается
+до production pipeline и не отправляет Gmail failure digest. После успешного
+preflight n8n запускает Worker pipeline, создает `pipeline_run_id`, проверяет
+результат Worker, читает текущий run из Orchestrator, синхронизирует CRM и
+отправляет email digest. n8n не выполняет HH parsing, AI inference, semantic
+scoring, final priority calculation или canonical persistence.
 
 Orchestrator DB остается source of truth для автоматических данных vacancy
 pipeline. Google Sheets является пользовательской CRM-витриной. Направление

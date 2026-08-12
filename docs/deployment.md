@@ -745,14 +745,21 @@ workflows/n8n/ai-job-daily-search.json
 ```
 
 Export хранит topology и node settings, но не хранит credentials. Workflow
-`active=false`; Schedule Trigger в export отключен и не используется в текущем
-production process.
+`active=false`. Каноничный production trigger — `Manual Trigger`; Schedule
+Trigger в текущем export отсутствует и не является частью production process.
 
 Принятый flow:
 
 ``` text
 Manual Trigger
 → Config
+→ Preflight Orchestrator
+→ Preflight Worker
+→ Preflight Ollama
+→ Preflight HH Auth
+→ Preflight HH Session
+→ Validate Preflight
+→ Preflight OK?
 → Generate Run ID
 → HTTP Worker Pipeline
 → Check Worker Result
@@ -769,6 +776,9 @@ Manual Trigger
 Failure branch:
 
 ``` text
+Preflight OK?
+→ Stop Preflight Failed
+
 Pipeline OK?
 → Prepare Failure Email
 → Gmail Send Failure
@@ -776,7 +786,10 @@ Pipeline OK?
 
 n8n responsibilities:
 
-- запускает Worker `POST /hh/collect-filter-enrich-and-persist`;
+- проверяет Orchestrator, Worker, Ollama, HH auth storage и live HH session
+  короткими preflight checks;
+- запускает Worker `POST /hh/collect-filter-enrich-and-persist` только после
+  успешного preflight;
 - создает `pipeline_run_id`;
 - проверяет Worker result;
 - читает текущий run через Orchestrator
@@ -786,9 +799,22 @@ n8n responsibilities:
 
 Manual Trigger является production trigger. Перед каждым поиском пользователь
 вручную включает или будит Windows Worker, проверяет Docker, Worker services и
-Ollama health, затем запускает workflow в n8n. Schedule Trigger может оставаться
-disabled в export для возможного будущего использования, но он не является
+Ollama health, затем запускает workflow в n8n. Schedule Trigger не является
 частью текущего production process.
+
+Preflight checks:
+
+``` text
+Orchestrator GET /health
+Worker GET /health
+Worker GET /health/ollama
+Worker GET /health/hh-auth
+Worker POST /hh/authenticated-search-preview
+```
+
+Каждый preflight HTTP request использует короткий timeout. Если preflight
+падает, workflow останавливается до `HTTP Worker Pipeline`, не запускает долгий
+pipeline и не отправляет Gmail failure digest.
 
 n8n не выполняет HH parsing, AI inference, semantic scoring, final priority
 calculation или canonical persistence. Orchestrator DB остается source of truth.
@@ -857,9 +883,7 @@ max_filter_items_override=10
 max_enrich_items_override=5
 ```
 
-These values are not production policy. Switch the workflow to production config
-and run a full Manual Trigger production run. After a successful full manual run,
-the system is ready for daily manual use.
+These values are not production policy. Production workflow is started manually.
 
 Email digest includes:
 
