@@ -8,7 +8,7 @@ Self-hosted AI automation system для поиска, фильтрации, ан
 сохраняет историю в Orchestrator DB, обновляет Google Sheets CRM и отправляет
 email digest.
 
-``` text
+```text
 HH → Local AI → Scoring → Orchestrator DB → CRM → Email Digest
 ```
 
@@ -78,7 +78,7 @@ overrides.
 Ключевая инженерная идея проекта: LLM используется не как единственный судья, а
 как часть гибридного pipeline.
 
-``` text
+```text
 Normalized Vacancy
 ↓
 Deterministic Python extraction
@@ -118,7 +118,7 @@ LLM отвечает за смысловую оценку:
 
 ![AI Job Automation architecture](assets/ai-job-automation-architecture.png)
 
-``` text
+```text
 HH
 ↓
 Worker
@@ -197,7 +197,7 @@ Responsibilities:
 
 ![n8n workflow](assets/N8n_workflow.png)
 
-``` text
+```text
 Manual Trigger
 → Preflight
 → Worker Pipeline
@@ -230,7 +230,7 @@ User-managed fields сохраняются:
 
 CRM Key имеет формат:
 
-``` text
+```text
 source:external_id
 ```
 
@@ -262,7 +262,7 @@ workflow вручную и сразу видит ошибку в n8n UI.
 
 Кодовая база разделена по компонентам:
 
-``` text
+```text
 ai-job-automation/
 ├── worker/
 ├── orchestrator/
@@ -289,7 +289,7 @@ ai-job-automation/
 Одна проблемная vacancy не должна ронять весь batch. Pipeline поддерживает
 `completed_with_errors`, per-vacancy isolation и controlled fallbacks:
 
-``` text
+```text
 AI failure
 ↓
 uncertain / fallback
@@ -393,13 +393,6 @@ README не заменяет deployment manual. В рабочем процесс
 - cloud fallback;
 - PostgreSQL;
 - cross-source collectors.
-
-## История проекта
-
-Если интересна история развития от первых n8n экспериментов до распределенной
-Worker/Orchestrator architecture:
-
-- [docs/project-history.md](docs/project-history.md)
 
 ## Документация
 
