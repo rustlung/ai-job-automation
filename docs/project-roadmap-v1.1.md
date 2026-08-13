@@ -25,7 +25,7 @@
 
 # Phase 0. Project foundation
 
-Статус: выполняется.
+Статус: завершена.
 
 ## Цель
 
@@ -403,7 +403,7 @@ Workflow использует environment variables для адресов сер
 
 # Phase 5. Vacancy collector
 
-Статус: выполняется.
+Статус: завершена как рабочий MVP pipeline.
 
 ## Цель
 
@@ -1126,11 +1126,13 @@ Acceptance examples:
 - возможны ошибки track classification;
 - salary parsing не является универсальным;
 - некоторые признаки могут оставаться `unknown`;
-- persistence отсутствовала на момент приемки Phase 5.8 и реализована в
+- persistence отсутствовала на момент приемки Phase 5.8 и позже реализована в
   Phase 5.9;
-- stateless endpoint по-прежнему возвращает результат только в response;
-- n8n workflow ещё отсутствует;
-- email delivery и cloud deep analysis отсутствуют.
+- stateless endpoint по-прежнему доступен для диагностики и возвращает результат
+  только в response;
+- n8n workflow и email delivery отсутствовали на момент Phase 5.8 и позже
+  реализованы в Phase 5.10;
+- cloud deep analysis отсутствует.
 
 ---
 
@@ -1208,6 +1210,8 @@ Manual Trigger
 ↓
 n8n
 ↓
+Preflight health checks
+↓
 Worker
 POST /hh/collect-filter-enrich-and-persist
 ↓
@@ -1222,7 +1226,7 @@ Email digest
 
 Результат:
 
-- workflow `AI Job Automation — Daily Search CRM Digest` запускает Worker
+- workflow `AI Job Automation — Daily Search CRM Digest v2` запускает Worker
   vertical endpoint из n8n;
 - workflow создает `pipeline_run_id`, проверяет Worker response и читает
   текущий run через `GET /pipeline-results/runs/{run_id}`;
@@ -1243,8 +1247,12 @@ Email digest
 - n8n опубликован на `https://n8n.vsigaev.ru` через Nginx, Let's Encrypt и UFW
   `Nginx Full`;
 - Worker и Orchestrator остаются LAN-only;
-- workflow export хранится в `workflows/n8n/ai-job-daily-search.json` без
-  credentials и с disabled Schedule Trigger;
+- workflow export хранится в
+  `workflows/n8n/AI Job Automation — Daily Search CRM Digest v2.json` без
+  credentials;
+- production preflight health checks проверяют Orchestrator, Worker, Ollama, HH
+  auth storage и live HH session до запуска долгого Worker pipeline;
+- основной Worker request в n8n имеет timeout `7200000 ms` как safety margin;
 - Manual Trigger является production trigger, потому что Windows Worker
   включается и проверяется пользователем перед каждым поиском;
 - Schedule Trigger не входит в текущий production process и не является
@@ -1267,17 +1275,16 @@ Telegram не является blocker Phase 5.10. Он остается optiona
 ## Оставшиеся части Phase 5
 
 Phase 5 имеет рабочий accepted MVP pipeline. Production запуск выполняется
-вручную через Manual Trigger. Calibration остается отдельным операционным
-шагом.
+вручную через Manual Trigger. Full manual production run без acceptance limits
+выполнен. Calibration остается отдельным операционным улучшением.
 
 Остаются:
 
-- full manual production run без acceptance limits;
 - production calibration.
 
-Следующий операционный шаг: переключить workflow с acceptance limits на
-production config и выполнить полноценный Manual Trigger run. После успешного
-полного manual run система считается готовой к повседневному использованию.
+Следующий milestone: portfolio packaging / release / public project
+presentation. Phase 6+ являются future improvements, а не обязательными частями
+текущего MVP.
 
 ---
 

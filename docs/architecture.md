@@ -21,6 +21,56 @@
 
 ------------------------------------------------------------------------
 
+## 1.1. Current MVP Architecture
+
+Текущий рабочий MVP pipeline:
+
+``` text
+HH
+↓
+Worker
+├── collection
+├── preliminary local AI
+├── full fetch
+├── normalization
+├── deterministic extraction
+├── semantic local AI
+├── scoring
+└── persistence bridge
+↓
+Orchestrator API
+↓
+Orchestrator DB
+↓
+n8n
+├── Google Sheets CRM
+└── Gmail digest
+```
+
+Control plane:
+
+``` text
+Manual Trigger
+↓
+Preflight
+↓
+Long Worker pipeline
+```
+
+Public exposure:
+
+-   public HTTPS открыт только для n8n;
+-   Worker и Orchestrator остаются LAN-only;
+-   Orchestrator DB является source of truth для автоматических vacancy
+    pipeline данных;
+-   Google Sheets является пользовательской CRM-витриной.
+
+Production процесс осознанно ручной: Windows Worker не работает постоянно,
+поэтому пользователь включает Worker, проверяет Docker/Ollama/HH access и
+запускает n8n workflow через Manual Trigger.
+
+------------------------------------------------------------------------
+
 # 2. Принятые архитектурные принципы
 
 ## 2.1. Разделение orchestration и execution
@@ -1494,6 +1544,8 @@ Manual Trigger
 ↓
 n8n
 ↓
+Preflight health checks
+↓
 Worker POST /hh/collect-filter-enrich-and-persist
 ↓
 Orchestrator DB
@@ -1542,6 +1594,18 @@ Email является первым надежным notification channel для
 в critical path Phase 5.10: Gmail digest принят и работает, а Telegram остается
 optional/future через proxy, отдельный route, relay или небольшой bot/relay на
 VPS.
+
+Production workflow перед долгим Worker pipeline проверяет Orchestrator health,
+Worker health, Ollama health, HH auth storage и live authenticated HH session.
+Live HH session проверяется через authenticated preview, потому что один только
+storage state не подтверждает resume context и не ловит VPN redirect на
+`/vpncheeck`.
+
+Full manual production run выполнен без acceptance overrides. Основной Worker
+HTTP timeout в n8n увеличен до `7200000 ms` как safety margin после реального
+run, который превысил старые `1800000 ms`. Worker сохраняет результаты в
+Orchestrator до CRM/email-интеграций, поэтому сбой внешней интеграции не должен
+терять pipeline result.
 
 ## 11.6. Future AI evaluation decision
 
@@ -1644,12 +1708,16 @@ Custom engine:
     pipeline;
 -   Phase 5.9 принята на целевых узлах;
 -   Phase 5.10 n8n orchestration, Google Sheets CRM sync, Gmail digest и public
-    HTTPS n8n приняты на целевой инфраструктуре.
+    HTTPS n8n приняты на целевой инфраструктуре;
+-   full manual production run выполнен без acceptance overrides;
+-   production workflow имеет preflight health checks и `7200000 ms` timeout для
+    основного Worker request;
+-   Worker поддерживает controlled partial failure semantics и per-vacancy
+    error isolation.
 
 Следующие шаги:
 
-1.  Переключить n8n workflow с acceptance limits на production config и
-    выполнить полноценный Manual Trigger production run.
+1.  Подготовить portfolio packaging / public project presentation.
 
-2.  После успешного полного manual run использовать систему в повседневном
-    ручном production process и отдельно продолжать calibration.
+2.  Продолжать production calibration и AI improvements как backlog, а не как
+    blockers завершенного MVP.

@@ -1,5 +1,137 @@
 # Changelog
 
+## 2026-08-13
+
+### Changed
+
+- Updated the canonical n8n workflow export to the current production v2 export;
+- fixed HTTP and Google Sheets node links in the n8n workflow export.
+
+### Documented
+
+- Full manual production run is now treated as completed;
+- production workflow is documented as a working manually triggered MVP;
+- technical documentation was aligned with current routes, workflow topology,
+  runtime limits and security posture.
+
+## 2026-08-12
+
+### Added
+
+- Production preflight health checks in the n8n workflow:
+  Orchestrator health, Worker health, Ollama health, HH auth storage and live
+  HH session verification;
+- explicit preflight failure branch that stops before the long Worker pipeline.
+
+### Changed
+
+- Main n8n Worker pipeline timeout increased to `7200000 ms`;
+- live HH session preflight timeout increased to a longer bounded timeout after
+  real acceptance showed that `10000 ms` was insufficient.
+
+### Verified
+
+- Production trigger remains Manual Trigger;
+- Schedule Trigger is not part of the current production process.
+
+## 2026-08-11
+
+### Fixed
+
+- Deterministic experience extraction no longer treats calendar years such as
+  `2015` as years of required experience;
+- invalid or out-of-range extracted experience becomes unknown instead of
+  weakening the Pydantic `<= 50` constraint;
+- per-vacancy extraction failures are isolated so one malformed vacancy does not
+  fail the whole production pipeline.
+
+### Added
+
+- n8n CRM workflow rollout documentation;
+- Google Sheets CRM sync documentation;
+- Gmail digest documentation;
+- public HTTPS n8n deployment documentation.
+
+## 2026-08-10
+
+### Added
+
+- Full vacancy enrichment pipeline;
+- deterministic feature extraction for full vacancy data;
+- compact semantic analysis for enriched vacancies;
+- deterministic final scoring and `P1/P2/P3/ALT` priority assignment;
+- Worker persistence bridge to Orchestrator;
+- Orchestrator `POST /pipeline-results`;
+- current-run read API for n8n;
+- analysis history by `run_id`;
+- production n8n CRM workflow foundation.
+
+### Fixed
+
+- Enrichment blocker detection.
+
+### Documented
+
+- Preliminary local AI filtering;
+- full vacancy enrichment;
+- pipeline persistence.
+
+## 2026-08-07
+
+### Added
+
+- Preliminary local AI vacancy filter;
+- `POST /vacancies/preliminary-filter`;
+- `POST /hh/collect-and-preliminary-filter`;
+- structured preliminary output with local `item_id`;
+- deterministic preliminary guardrails;
+- safe validation diagnostics for local AI responses.
+
+### Changed
+
+- Public HH search profile page limits increased;
+- public HH `httpx` searches use the actual HH page size to avoid skipping
+  vacancies;
+- preliminary filter prompt/validation tuned for higher recall.
+
+### Fixed
+
+- Hardened preliminary AI response parsing;
+- unknown or malformed individual AI items no longer force whole-batch fallback
+  when valid items can be preserved.
+
+### Verified
+
+- HH collection profiles accepted on target Worker.
+
+## 2026-08-06
+
+### Added
+
+- Authenticated HH resume profiles integrated into the collector;
+- mixed HH transports: `authenticated_browser` for resume recommendations and
+  `httpx` for public expanded/ALT profiles.
+
+### Fixed
+
+- Authenticated HH browser client now waits for DOM stabilization before
+  returning HTML, preventing premature 20-card parsing when more cards are
+  hydrated in the DOM.
+
+## 2026-08-04
+
+### Added
+
+- Authenticated HH browser spike with Playwright/Chromium;
+- manual HH authorization flow using storage state outside Git;
+- HH auth health endpoint;
+- authenticated search preview endpoint.
+
+### Fixed
+
+- Playwright runtime configuration for Docker;
+- HH collection pagination and privacy-safe logging hardening.
+
 ## 2026-08-01
 
 ### Added

@@ -32,8 +32,10 @@ Self-hosted AI-система для автоматизации поиска и 
 
 ## Статус проекта
 
-Проект находится на этапе реализации Phase 5 — Vacancy collector.
-Базовая распределенная архитектура уже работает: Orchestrator хранит данные на homeserver, Worker выполняет parsing, normalization, exact batch deduplication и локальный AI на Windows 11.
+Проект дошёл до рабочего MVP: production workflow запускается вручную через
+n8n, Worker собирает и анализирует HH-вакансии на Windows 11, Orchestrator
+хранит результаты на homeserver, Google Sheets используется как CRM-витрина, а
+Gmail отправляет digest.
 
 Текущий рабочий статус:
 

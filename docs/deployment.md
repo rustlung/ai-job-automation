@@ -277,6 +277,7 @@ OLLAMA_MODEL=qwen3:4b-instruct
 OLLAMA_REQUEST_TIMEOUT_SECONDS=120
 OLLAMA_KEEP_ALIVE=5m
 PRELIMINARY_FILTER_BATCH_SIZE=10
+PRELIMINARY_FILTER_MAX_ITEMS=100
 FULL_ENRICHMENT_MAX_ITEMS=30
 FULL_ANALYSIS_BATCH_SIZE=1
 ORCHESTRATOR_API_URL=http://localhost:8000
@@ -289,17 +290,18 @@ ORCHESTRATOR_REQUEST_TIMEOUT_SECONDS=30
 
 `PRELIMINARY_FILTER_BATCH_SIZE` является runtime-настройкой preliminary local
 AI filter. Для текущей локальной модели `qwen3:4b-instruct` и ограниченных
-ресурсов Worker допустима стабильная конфигурация:
+ресурсов Worker текущая production MVP конфигурация:
 
 ``` text
+PRELIMINARY_FILTER_MAX_ITEMS=1000
 PRELIMINARY_FILTER_BATCH_SIZE=1
 ```
 
-`batch_size=1` не является постоянным финальным решением, но приемлем для
-первого рабочего MVP, если полный daily pipeline укладывается в практичное
-время. Приоритет на этом этапе: стабильность и recall выше скорости.
-Увеличение batch size до `3`, `5` или выше требует повторной target acceptance
-проверки.
+`worker/api/.env.example` содержит generic/default values и не является полным
+production `.env`. `PRELIMINARY_FILTER_MAX_ITEMS=1000` является safety cap, а не
+целевым размером batch. `batch_size=1` не является постоянным финальным
+performance-решением, но принят для текущего production MVP ради стабильности.
+Увеличение batch size до `3`, `5` или выше требует повторной target acceptance.
 
 `FULL_ENRICHMENT_MAX_ITEMS` ограничивает число вакансий, которые integrated
 endpoint `POST /hh/collect-filter-and-enrich` отправляет на full vacancy fetch,
@@ -737,11 +739,11 @@ resolver, который временно возвращал NXDOMAIN для н�
 
 ## n8n Workflow Configuration
 
-Workflow `AI Job Automation — Daily Search CRM Digest` запускается в n8n на
+Workflow `AI Job Automation — Daily Search CRM Digest v2` запускается в n8n на
 homeserver. Актуальный export:
 
 ``` text
-workflows/n8n/ai-job-daily-search.json
+workflows/n8n/AI Job Automation — Daily Search CRM Digest v2.json
 ```
 
 Export хранит topology и node settings, но не хранит credentials. Workflow
@@ -816,6 +818,18 @@ Worker POST /hh/authenticated-search-preview
 падает, workflow останавливается до `HTTP Worker Pipeline`, не запускает долгий
 pipeline и не отправляет Gmail failure digest.
 
+Timeouts:
+
+- Orchestrator/Worker/Ollama/HH auth storage health checks: `10000 ms`;
+- live HH session preview: `45000 ms`;
+- main `HTTP Worker Pipeline`: `7200000 ms`.
+
+Live HH session timeout длиннее обычных health checks, потому что Playwright
+navigation и DOM stabilization могут занимать десятки секунд. Main Worker
+timeout был увеличен со старого `1800000 ms`: реальный full run превысил 30
+минут, а Worker продолжил выполнение и сохранил результаты в Orchestrator после
+n8n timeout. `7200000 ms` является safety margin, не SLA.
+
 n8n не выполняет HH parsing, AI inference, semantic scoring, final priority
 calculation или canonical persistence. Orchestrator DB остается source of truth.
 
@@ -883,7 +897,10 @@ max_filter_items_override=10
 max_enrich_items_override=5
 ```
 
-These values are not production policy. Production workflow is started manually.
+These values are not production policy. Production workflow is started manually
+and now passes `max_pages_override`, `max_filter_items_override` and
+`max_enrich_items_override` as `null`/absent so Worker runtime config is used.
+Full Manual Trigger production run has been completed.
 
 Email digest includes:
 

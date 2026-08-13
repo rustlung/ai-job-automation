@@ -396,15 +396,23 @@ CRM and external integration decisions:
 - public HTTPS открыт только для n8n на `https://n8n.vsigaev.ru`; Worker и
   Orchestrator остаются LAN-only;
 - acceptance limits Phase 5.10 не являются production policy;
+- full manual production run без acceptance overrides выполнен;
+- current MVP готов к practical/manual use;
 - Manual Trigger является production trigger, потому что Windows Worker не
   работает постоянно;
 - перед каждым production run пользователь вручную включает или будит Worker,
-  проверяет Docker, Worker services и Ollama health, затем запускает n8n
-  workflow через Manual Trigger;
-- Schedule Trigger не входит в текущий production process и остается disabled в
-  export только как возможная будущая опция;
-- после переключения acceptance limits на production config и успешного полного
-  manual run система считается готовой к повседневному использованию.
+  проверяет Docker, Worker services, Ollama health и выключенный VPN для HH,
+  затем запускает n8n workflow через Manual Trigger;
+- preflight health checks перед долгим Worker pipeline реализованы: Orchestrator,
+  Worker, Ollama, HH auth storage и live HH session;
+- основной n8n Worker request имеет timeout `7200000 ms` как safety margin;
+- `PRELIMINARY_FILTER_MAX_ITEMS=1000` является production safety cap, а не
+  целевым размером batch;
+- controlled partial errors и per-vacancy isolation являются частью production
+  behavior;
+- Schedule Trigger не входит в текущий production process и не является
+  незавершенной частью MVP;
+- текущий следующий шаг: portfolio packaging / public project presentation.
 
 HH search collection decisions:
 

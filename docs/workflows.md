@@ -78,13 +78,13 @@ workflows/n8n/vacancy-first-slice.json
 Актуальный export:
 
 ``` text
-workflows/n8n/ai-job-daily-search.json
+workflows/n8n/AI Job Automation — Daily Search CRM Digest v2.json
 ```
 
 Workflow name:
 
 ``` text
-AI Job Automation — Daily Search CRM Digest
+AI Job Automation — Daily Search CRM Digest v2
 ```
 
 Export не содержит credentials. Workflow `active=false`. Каноничный production
@@ -148,12 +148,22 @@ Pipeline OK?
 → Gmail Send Failure
 ```
 
-Preflight branch uses short bounded checks before the long Worker pipeline:
+Preflight branch uses bounded checks before the long Worker pipeline:
 Orchestrator `GET /health`, Worker `GET /health`, Worker `GET /health/ollama`,
 Worker `GET /health/hh-auth` and read-only authenticated HH preview. Failed
 preflight stops the workflow before `HTTP Worker Pipeline` and does not send a
 failure email. The long Worker request keeps its production timeout from the
 canonical export.
+
+Timeouts:
+
+- ordinary health checks: `10000 ms`;
+- live HH session check: `45000 ms`;
+- long Worker pipeline request: `7200000 ms`.
+
+The live HH session check is intentionally longer because Playwright navigation
+and DOM stabilization can take longer than a simple health endpoint. The
+`7200000 ms` Worker timeout is a safety margin, not an expected runtime.
 
 ### Source of truth
 
@@ -274,7 +284,7 @@ Google Sheets API is enabled.
 Credentials, private keys, tokens, spreadsheet IDs and real sheet URLs are not
 stored in Git.
 
-### Acceptance Limits
+### Production Config
 
 The accepted test run used intentionally small limits:
 
@@ -287,6 +297,18 @@ max_enrich_items_override=5
 These values are not production policy. Manual Trigger is the production trigger:
 before each search the user wakes or starts the Windows Worker, checks Docker,
 Worker services and Ollama health, then starts the n8n workflow manually.
+
+Full manual production run has been completed without acceptance overrides.
+Current production workflow passes `max_pages_override`, `max_filter_items_override`
+and `max_enrich_items_override` as `null`/absent so Worker runtime config is used.
+
+Production Worker runtime:
+
+- `PRELIMINARY_FILTER_MAX_ITEMS=1000` is a safety cap, not a target batch size;
+- `PRELIMINARY_FILTER_BATCH_SIZE=1` is the current stable setting for the local
+  model;
+- production run uses the two resume recommendation profiles currently present
+  in the workflow config.
 
 ## HH collection flow
 
@@ -349,7 +371,7 @@ Worker /hh/collect-search
 → Orchestrator POST /pipeline-results
 ```
 
-Планируемая роль двухступенчатой обработки:
+Роль двухступенчатой обработки:
 
 -   `POST /hh/collect-search` получает batch кратких карточек из нескольких
     profiles/pages/variants/transports, сохраняет provenance и убирает точные
@@ -370,7 +392,6 @@ Worker /hh/collect-search
 
 Ограничения текущего состояния:
 
--   acceptance limits еще нужно заменить production config;
 -   scoring calibration предварительная;
 -   нет ProxyAPI fallback;
 -   нет автоматической отправки откликов.

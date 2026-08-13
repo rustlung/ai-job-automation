@@ -1,6 +1,6 @@
 # Current State
 
-2026-08-11
+2026-08-13
 
 Работает:
 ✅ Ubuntu server
@@ -115,6 +115,10 @@
 ✅ User-managed CRM fields protection
 ✅ Gmail email digest
 ✅ n8n preflight health checks before Worker pipeline
+✅ Full manual production run без acceptance overrides
+✅ Production Worker timeout 7200000 ms в n8n
+✅ Production preliminary safety cap 1000
+✅ Controlled partial failure semantics
 ✅ Public HTTPS n8n via Nginx
 ✅ Let's Encrypt certificate for n8n
 ✅ Google OAuth callback via public n8n domain
@@ -136,6 +140,7 @@ Phase 5.7 — Preliminary local AI vacancy filter завершена и прин
 Phase 5.8 — Full vacancy enrichment and deterministic scoring завершена и принята на целевом Worker.
 Phase 5.9 — Persistence Bridge: Worker → Orchestrator DB завершена и принята на целевых узлах.
 Phase 5.10 — n8n orchestration + Google Sheets CRM sync + email digest + public HTTPS n8n завершена и принята на целевой инфраструктуре.
+Production MVP pipeline работает в ручном режиме через Manual Trigger.
 
 Создан и развернут на homeserver базовый backend оркестрационного слоя на FastAPI.
 Работает endpoint `GET /health`.
@@ -412,7 +417,7 @@ version, которая будет уточняться по реальным е
 - salary parsing не является универсальным;
 - некоторые признаки могут оставаться `unknown`;
 - `P1/P2` thresholds ещё не откалиброваны на большой реальной выборке;
-- n8n HH collector workflow, email delivery и cloud deep analysis отсутствуют.
+- cloud deep analysis отсутствует.
 
 Phase 5.9 реализовала persistence bridge между Worker и Orchestrator DB.
 
@@ -475,10 +480,10 @@ Analysis history подтверждена на примере `vacancy_id=15`: r
 Processing history создается append-only. Для принятого run было сохранено
 `17 × 7 = 119` processing events со стадиями `discovered`, `deduplicated`,
 `preliminary_analyzed`, `details_fetched`, `normalized`, `fully_analyzed`,
-`saved`; все acceptance events имели `status = succeeded`. Стадия `notified`
-отсутствует, потому что уведомления еще не реализованы. Endpoint processing
-events использует pagination: при `total = 119` default `limit = 100` не означает
-потерю данных.
+`saved`; все Phase 5.9 acceptance events имели `status = succeeded`. Endpoint
+processing events использует pagination: при `total = 119` default `limit = 100`
+не означает потерю данных. Gmail digest реализован в n8n и не требует отдельной
+стадии `notified` в Orchestrator processing history.
 
 AI metadata в events и analysis фиксирует используемые версии:
 
@@ -536,6 +541,11 @@ preflight n8n запускает Worker pipeline, создает `pipeline_run_i
 отправляет email digest. n8n не выполняет HH parsing, AI inference, semantic
 scoring, final priority calculation или canonical persistence.
 
+Live HH session preflight использует более длинный bounded timeout, чем обычные
+health checks: фактическая acceptance показала, что `10000 ms` недостаточно для
+Playwright navigation и DOM stabilization. Это не смешивается с основным
+Worker timeout.
+
 Orchestrator DB остается source of truth для автоматических данных vacancy
 pipeline. Google Sheets является пользовательской CRM-витриной. Направление
 синхронизации: Orchestrator DB → n8n → Google Sheets. Ошибка Google Sheets не
@@ -589,12 +599,39 @@ Git.
 Acceptance workflow был проверен на малых лимитах:
 `max_pages_override=1`, `max_filter_items_override=10`,
 `max_enrich_items_override=5`. Эти значения являются безопасной приемочной
-конфигурацией, а не production policy. Production workflow запускается вручную:
-пользователь включает или будит Windows Worker, проверяет Docker, Worker services
-и Ollama health, затем запускает n8n workflow через Manual Trigger. Следующий
-операционный шаг: переключить workflow с acceptance limits на production config
-и выполнить полноценный Manual Trigger run. После успешного полного manual run
-система считается готовой к повседневному использованию.
+конфигурацией, а не production policy.
+
+Full manual production run выполнен без acceptance overrides: n8n передает
+`max_pages_override`, `max_filter_items_override` и `max_enrich_items_override`
+как `null`/absent, чтобы Worker использовал runtime config. Реальный production
+run использовал два resume recommendation profile, обработал большой реальный
+batch, сохранил результаты в Orchestrator, обновил production CRM sheet
+`Вакансии` и отправил Gmail digest. Один полный run занимал порядка 40 минут;
+это фактический пример, а не SLA.
+
+Основной n8n `HTTP Worker Pipeline` имеет timeout `7200000 ms` как safety
+margin. Старый `1800000 ms` оказался недостаточным: Worker продолжил обработку и
+сохранил результаты в Orchestrator даже после n8n timeout, затем workflow был
+исправлен. `PRELIMINARY_FILTER_MAX_ITEMS=1000` является production safety cap,
+а не целевым размером batch. `PRELIMINARY_FILTER_BATCH_SIZE=1` остается текущим
+стабильным production-решением для локальной модели.
+
+Production workflow запускается вручную: пользователь включает или будит Windows
+Worker, проверяет Docker Desktop, Worker services, Ollama health и выключенный
+VPN для HH, затем запускает n8n workflow через Manual Trigger. Preflight
+подтверждает инфраструктуру перед долгим pipeline. Schedule Trigger не является
+production process и не является незавершенной частью MVP.
+
+Controlled partial failure semantics приняты как production behavior: отдельные
+HH fetch failures, invalid extracted data или semantic fallbacks могут привести к
+`completed_with_errors`, но валидные вакансии сохраняются. Production-blocking
+edge case с календарным годом в experience extraction исправлен: годы вроде
+`2015` не считаются required experience, out-of-range experience становится
+`unknown`/`None`, а одна проблемная vacancy не роняет весь batch.
+
+Current MVP готов к practical/manual use. Следующий этап — portfolio packaging /
+public project presentation. Calibration и дальнейшие AI improvements остаются
+backlog, а не blockers завершенного MVP.
 
 Не реализовано:
 ⬜ production calibration

@@ -1,9 +1,147 @@
 # API
 
+Документ описывает основные публичные HTTP endpoints текущего MVP. Это не
+автоматический OpenAPI dump: здесь зафиксировано назначение рабочих routes и их
+место в pipeline.
+
 ## Worker API
 
-Worker API работает на Windows 11 worker через Docker Compose и публикуется
-наружу на порт `8001`.
+Worker API работает на Windows 11 Worker через Docker Compose и публикуется
+наружу в локальной сети на порт `8001`. Worker не владеет основной БД
+Orchestrator и не имеет прямого доступа к SQLite-файлу Orchestrator.
+
+### Health
+
+``` text
+GET /health
+GET /health/ollama
+GET /health/hh-auth
+```
+
+`GET /health` проверяет доступность Worker API и возвращает
+`{"status":"ok","component":"worker"}`.
+
+`GET /health/ollama` проверяет доступность Ollama и выбранной локальной модели.
+Production preflight считает endpoint healthy только если модель доступна.
+
+`GET /health/hh-auth` проверяет наличие и валидность Playwright storage state.
+Этот endpoint не подтверждает live HH resume context, поэтому production
+preflight дополнительно выполняет authenticated preview.
+
+### Local AI
+
+``` text
+POST /local-ai/analyze
+```
+
+Технический endpoint для structured local AI analysis через Ollama. Основной
+production pipeline использует более специализированные preliminary/full
+analysis services, а не этот диагностический endpoint как бизнес-API.
+
+### HH Diagnostics
+
+``` text
+POST /hh/search-preview
+POST /hh/vacancy-details
+POST /hh/authenticated-search-preview
+```
+
+`POST /hh/search-preview` получает и разбирает одну страницу поисковой выдачи
+HH по переданному URL. Endpoint возвращает краткие карточки с `source`,
+`external_id`, `url`, `title`, `company`, `location`, `salary_text`,
+`is_remote`, `responsibility_snippet` и `requirement_snippet`. Для snippets в
+публичном URL нужен `enable_snippets=true`.
+
+`POST /hh/vacancy-details` получает и разбирает одну полную страницу вакансии
+HH: title, company, salary, normalized description, skills, schedule, working
+hours, address и publication date при наличии.
+
+`POST /hh/authenticated-search-preview` выполняет read-only проверку
+authenticated HH resume profile через Playwright. Endpoint используется в n8n
+preflight для live session verification: важны признаки `authenticated=true` и
+`resume_context_confirmed=true`.
+
+### HH Collection
+
+``` text
+POST /hh/collect-search
+```
+
+Собирает вакансии по заранее настроенным HH profiles:
+
+- `ai_resume_recommendations`;
+- `python_resume_recommendations`;
+- `ai_expanded_search`;
+- `python_expanded_search`;
+- `alt_opportunities`.
+
+Resume profiles используют `authenticated_browser`, Playwright, Chromium,
+storage state, auth/resume verification и DOM stabilization. Public expanded/ALT
+profiles используют `httpx`. Все transports передают HTML в общий
+`HHSearchParser`.
+
+Endpoint выполняет sequential page collection, provenance aggregation и exact
+deduplication внутри response. Результат не сохраняется в Orchestrator.
+
+### Preliminary Filter
+
+``` text
+POST /vacancies/preliminary-filter
+POST /hh/collect-and-preliminary-filter
+```
+
+`POST /vacancies/preliminary-filter` применяет local Ollama preliminary filter к
+уже собранным search-card данным. Цель фильтра - high recall: false negative
+опаснее false positive.
+
+`POST /hh/collect-and-preliminary-filter` объединяет HH collection и
+preliminary filtering без full vacancy fetch и без записи в Orchestrator.
+
+Preliminary filter использует compact structured output с локальными `item_id`,
+Pydantic validation, deterministic guardrails и fail-open `uncertain` fallback
+для спорных или частично поврежденных AI responses.
+
+### Full Enrichment And Persistence
+
+``` text
+POST /hh/collect-filter-and-enrich
+POST /hh/collect-filter-enrich-and-persist
+```
+
+`POST /hh/collect-filter-and-enrich` выполняет полный stateless Worker pipeline:
+HH collection, preliminary filter, full vacancy fetch, normalization,
+deterministic feature extraction, compact semantic analysis, final scoring и
+priority assignment `P1/P2/P3/ALT`. Endpoint не сохраняет данные в Orchestrator.
+
+`POST /hh/collect-filter-enrich-and-persist` выполняет тот же pipeline и затем
+передает результат в Orchestrator через persistence bridge. Это основной
+endpoint production n8n workflow.
+
+Pipeline поддерживает controlled partial failure semantics. Отдельные ошибки
+fetch, normalization, deterministic feature extraction или semantic analysis по
+одной vacancy не должны ронять весь batch; результат может завершиться как
+`completed_with_errors`.
+
+### Vacancy Diagnostics
+
+``` text
+POST /vacancies/normalize
+POST /vacancies/deduplicate/search
+POST /vacancies/deduplicate/normalized
+```
+
+`POST /vacancies/normalize` объединяет `HHSearchVacancy` и `HHVacancyDetails` в
+`NormalizedVacancy`, не выполняет сетевые запросы, не обращается к Orchestrator
+и не использует AI.
+
+Deduplication endpoints выполняют exact batch deduplication по identity key
+`source + external_id`. Они не хранят состояние между вызовами и не выполняют
+fuzzy matching.
+
+## Orchestrator API
+
+Orchestrator API работает на homeserver, хранит состояние системы и является
+source of truth для автоматических vacancy pipeline данных.
 
 ### Health
 
@@ -11,205 +149,34 @@ Worker API работает на Windows 11 worker через Docker Compose и 
 GET /health
 ```
 
-Назначение: проверка доступности Worker API.
+Техническая проверка доступности Orchestrator API. Ожидаемый ответ:
+`{"status":"ok"}`.
 
-Ответ:
-
-``` json
-{
-  "status": "ok",
-  "component": "worker"
-}
-```
-
-### Local AI health
-
-``` text
-GET /health/ollama
-```
-
-Назначение: техническая проверка доступности Ollama и выбранной локальной
-модели.
-
-### Local AI analyze
-
-``` text
-POST /local-ai/analyze
-```
-
-Назначение: технический endpoint для structured local AI analysis через
-Ollama.
-
-Текущий endpoint используется в первом n8n workflow slice. Это ещё не
-production-анализ реальных HH вакансий.
-
-### HH search preview
-
-``` text
-POST /hh/search-preview
-```
-
-Назначение: диагностический endpoint для получения и разбора одной страницы
-поисковой выдачи HH.
-
-Request:
-
-``` json
-{
-  "url": "https://hh.ru/search/vacancy?text=Python&enable_snippets=true"
-}
-```
-
-Response:
-
-``` json
-{
-  "count": 1,
-  "vacancies": [
-    {
-      "source": "hh",
-      "external_id": "123456789",
-      "url": "https://hh.ru/vacancy/123456789",
-      "title": "Python разработчик",
-      "company": "Компания",
-      "location": "Москва",
-      "salary_text": "от 150 000 ₽",
-      "is_remote": true,
-      "responsibility_snippet": "Краткие обязанности из поисковой выдачи",
-      "requirement_snippet": "Краткие требования из поисковой выдачи"
-    }
-  ]
-}
-```
-
-Ограничения:
-
--   разбирается только одна страница выдачи;
--   пагинация не выполняется;
--   полные карточки вакансий не открываются;
--   данные не сохраняются в orchestrator;
--   AI-анализ не запускается.
-
-Для получения snippets нужен параметр `enable_snippets=true`.
-
-### HH vacancy details
-
-``` text
-POST /hh/vacancy-details
-```
-
-Назначение: диагностический endpoint для получения и разбора одной полной
-страницы вакансии HH.
-
-Request:
-
-``` json
-{
-  "url": "https://hh.ru/vacancy/123456789"
-}
-```
-
-Response:
-
-``` json
-{
-  "source": "hh",
-  "external_id": "123456789",
-  "url": "https://hh.ru/vacancy/123456789",
-  "title": "Python разработчик",
-  "company": "Компания",
-  "salary_text": "от 150 000 ₽",
-  "description": "Полный нормализованный текст вакансии...",
-  "skills": [
-    "Python",
-    "SQL",
-    "PostgreSQL"
-  ],
-  "schedule_text": "5/2",
-  "working_hours_text": "8",
-  "address": "Город, улица",
-  "published_at": "2026-07-20"
-}
-```
-
-Ограничения:
-
--   обрабатывается только одна вакансия;
--   внешний домен отклоняется валидацией;
--   данные не сохраняются в orchestrator;
--   AI-анализ не запускается;
--   browser automation, авторизация HH, cookies, proxy и CAPTCHA handling не
-    используются.
-
-### Vacancy normalization
-
-``` text
-POST /vacancies/normalize
-```
-
-Назначение: диагностический endpoint для объединения `HHSearchVacancy` и
-`HHVacancyDetails` в `NormalizedVacancy`.
-
-Нормализация:
-
--   не выполняет сетевые запросы;
--   не обращается к Orchestrator;
--   не использует AI;
--   не сохраняет данные;
--   проверяет согласованность `source`, `external_id`, `title` и `company`;
--   приводит `collected_at` к UTC.
-
-HTTP 409 возвращается для конфликтующих валидных объектов.
-
-### Vacancy batch deduplication
-
-``` text
-POST /vacancies/deduplicate/search
-POST /vacancies/deduplicate/normalized
-```
-
-Назначение: диагностические endpoints для точной дедупликации внутри одного
-batch по identity key `source + external_id`.
-
-Результат содержит:
-
--   input_count;
--   unique_count;
--   duplicate_count;
--   vacancies;
--   duplicate_keys;
--   optional_conflicts.
-
-Дедупликация не хранит состояние между вызовами, не обращается к БД и не
-выполняет fuzzy matching.
-
-## Orchestrator API
-
-Orchestrator API работает на homeserver и отвечает за хранение состояния и
-данных.
-
-### Vacancy upsert
+### Vacancy Persistence
 
 ``` text
 POST /vacancies
+GET /vacancies/{vacancy_id}
+GET /vacancies/by-source/{source}/{external_id}
 ```
 
-Назначение: идемпотентное сохранение вакансии по `source + external_id`.
+`POST /vacancies` выполняет идемпотентный upsert по `source + external_id`.
+Первое сохранение создает запись, повторное обновляет текущую запись и discovery
+counters. Клиент может передать `seen_at`, но не управляет напрямую
+`first_seen_at`, `last_seen_at` и `seen_count`.
 
-`VacancyCreate` принимает необязательный `seen_at`. Клиент не может управлять
-напрямую `first_seen_at`, `last_seen_at` и `seen_count`.
+### Vacancy Analysis History
 
-Поведение:
+``` text
+POST /vacancies/{vacancy_id}/analyses
+GET /vacancies/{vacancy_id}/analyses
+GET /vacancy-analyses/{analysis_id}
+```
 
--   первый POST создает запись, `created=true`, `seen_count=1`;
--   повторный POST возвращает тот же `id`, `created=false`, увеличивает
-    `seen_count`;
--   `last_seen_at` не уменьшается при старом `seen_at`;
--   `POST /vacancies` не создает processing event автоматически.
+Analysis records хранят историю результатов по vacancy и `run_id`. Same-run
+retry не создает duplicate analysis, новый run создает новую revision.
 
-`VacancyRead` возвращает `first_seen_at`, `last_seen_at` и `seen_count`.
-
-### Vacancy processing events
+### Processing Events
 
 ``` text
 POST /vacancies/{vacancy_id}/processing-events
@@ -218,10 +185,25 @@ GET /processing-events/{event_id}
 GET /processing-runs/{run_id}/events
 ```
 
-Назначение: append-only история обработки вакансии.
+Append-only история обработки вакансий. List endpoints поддерживают pagination
+и фильтры по stage/status/run. Полные HTML, descriptions, raw prompts, raw AI
+responses и secrets не должны помещаться в event metadata.
 
-List endpoints поддерживают `limit`, `offset`, `stage`, `status`; история
-конкретной вакансии дополнительно поддерживает `run_id`.
+### Pipeline Results
 
-Processing events создаются только явными API-вызовами.
-Полные HTML, description и AI responses не должны помещаться в metadata.
+``` text
+POST /pipeline-results
+GET /pipeline-results/runs/{run_id}
+GET /pipeline-results/analyses/latest
+```
+
+`POST /pipeline-results` принимает batch результатов Worker, сохраняет
+Vacancy, VacancyAnalysis, provenance, processing history, `run_id`, final score
+и priority snapshots.
+
+`GET /pipeline-results/runs/{run_id}` возвращает current run для n8n CRM/email
+sync. Именно этот endpoint используется production workflow для синхронизации
+конкретного run.
+
+`GET /pipeline-results/analyses/latest` предоставляет обзорный read API с
+фильтром по priority и pagination; он не заменяет current-run sync.
