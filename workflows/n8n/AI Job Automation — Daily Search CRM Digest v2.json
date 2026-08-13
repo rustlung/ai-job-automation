@@ -43,7 +43,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $json.config.worker_api_url }}/hh/collect-filter-enrich-and-persist",
+        "url": "={{ $json.config.config.worker_api_url }}/hh/collect-filter-enrich-and-persist",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ $json.worker_request }}",
@@ -109,7 +109,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $json.config.orchestrator_api_url }}/pipeline-results/runs/{{ $json.run_id }}",
+        "url": "={{ $json.config.config.orchestrator_api_url }}/pipeline-results/runs/{{ $json.run_id }}",
         "options": {
           "timeout": 120000
         }
@@ -128,15 +128,16 @@
         "authentication": "serviceAccount",
         "documentId": {
           "__rl": true,
-          "value": "={{ $('Check Worker Result').first().json.config.spreadsheet_id }}",
+          "value": "={{ $('Config').first().json.spreadsheet_id }}",
           "mode": "id"
         },
         "sheetName": {
           "__rl": true,
-          "value": "={{ $('Check Worker Result').first().json.config.sheet_name }}",
-          "mode": "name"
-        },
-        "options": {}
+          "value": "",
+          "mode": "name",
+          "cachedResultName": "",
+          "cachedResultUrl": ""
+        }
       },
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.6,
@@ -205,12 +206,12 @@
         "operation": "appendOrUpdate",
         "documentId": {
           "__rl": true,
-          "value": "={{ $('Check Worker Result').first().json.config.spreadsheet_id }}",
+          "value": "={{ $('Config').first().json.spreadsheet_id }}",
           "mode": "id"
         },
         "sheetName": {
           "__rl": true,
-          "value": "={{ $('Check Worker Result').first().json.config.sheet_name }}",
+          "value": "={{ $('Config').first().json.sheet_name }}",
           "mode": "name"
         },
         "columns": {
@@ -469,12 +470,12 @@
         "operation": "appendOrUpdate",
         "documentId": {
           "__rl": true,
-          "value": "={{ $('Check Worker Result').first().json.config.spreadsheet_id }}",
+          "value": "={{ $('Config').first().json.spreadsheet_id }}",
           "mode": "id"
         },
         "sheetName": {
           "__rl": true,
-          "value": "={{ $('Check Worker Result').first().json.config.sheet_name }}",
+          "value": "={{ $('Config').first().json.sheet_name }}",
           "mode": "name"
         },
         "columns": {
@@ -538,7 +539,7 @@
     },
     {
       "parameters": {
-        "sendTo": "={{ $json.to }}",
+        "sendTo": "={{ $('Config').first().json.email_to }}",
         "subject": "={{ $json.subject }}",
         "message": "={{ $json.html }}",
         "options": {}
@@ -574,7 +575,7 @@
     },
     {
       "parameters": {
-        "sendTo": "={{ $json.to }}",
+        "sendTo": "={{ $('Config').first().json.email_to }}",
         "subject": "={{ $json.subject }}",
         "message": "={{ $json.html }}",
         "options": {}
@@ -1005,7 +1006,7 @@
     "binaryMode": "separate",
     "availableInMCP": false
   },
-  "versionId": "0635b68f-1a7f-4d02-b85a-194b87acbba8",
+  "versionId": "787bca39-9ce8-492c-a091-e990447df4da",
   "meta": {
     "instanceId": "0db81f0753baa06bf8dd01a6aa413440970bcc829c805aa818d17d0924efde58"
   },
