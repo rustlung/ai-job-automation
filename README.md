@@ -1,42 +1,413 @@
 # AI Job Automation
 
-Self-hosted AI-система для автоматизации поиска и анализа вакансий.
+Self-hosted AI automation system для поиска, фильтрации, анализа и
+приоритизации вакансий.
 
-## Описание проекта
+Система собирает вакансии с HH, предварительно фильтрует их локальной LLM,
+загружает полные карточки перспективных вакансий, рассчитывает объяснимый score,
+сохраняет историю в Orchestrator DB, обновляет Google Sheets CRM и отправляет
+email digest.
 
-Проект предназначен для автоматизации рутинных этапов поиска работы:
+``` text
+HH → Local AI → Scoring → Orchestrator DB → CRM → Email Digest
+```
 
-- сбор вакансий из внешних источников;
-- хранение истории обработки;
-- исключение дубликатов;
-- анализ вакансий с помощью AI;
-- ранжирование релевантности;
-- формирование уведомлений.
+Ключевые факты:
+
+- self-hosted архитектура;
+- local-first AI через Ollama и `qwen3:4b-instruct`;
+- Python 3.12, FastAPI, Pydantic, SQLAlchemy, Alembic;
+- n8n orchestration;
+- Google Sheets CRM и Gmail digest;
+- ручной production workflow для on-demand Worker laptop;
+- Orchestrator DB как source of truth.
+
+![AI Job Automation overview](assets/ai-job-automation-hero.png)
+
+## Зачем нужен проект
+
+При ручном поиске работы приходится просматривать сотни вакансий, большая часть
+которых нерелевантна. Это занимает часы, плохо масштабируется, быстро утомляет и
+повышает риск пропустить хорошую вакансию.
+
+AI Job Automation автоматизирует discovery, filtering и analysis, но оставляет
+ответственное решение об отклике человеку. Автоматическая отправка откликов
+намеренно не реализована.
+
+## Что умеет система
+
+- HH search collection;
+- authenticated resume recommendations;
+- public expanded search;
+- pagination;
+- exact deduplication;
+- preliminary local AI filter;
+- deterministic guardrails;
+- full vacancy enrichment;
+- semantic local AI analysis;
+- deterministic scoring;
+- priority `P1 / P2 / P3 / ALT`;
+- persistent analysis history;
+- run history и processing events;
+- Google Sheets CRM sync;
+- Gmail digest;
+- preflight health checks;
+- partial failure tolerance.
+
+## Реальный production run
+
+Проект дошел до рабочего MVP и прошел full manual production run без acceptance
+overrides.
+
+Пример одного production run:
+
+- использовались два resume recommendation profile;
+- Worker обработал большой реальный batch;
+- preliminary filter прошел полный batch в рамках production safety cap;
+- перспективные вакансии дошли до full enrichment, semantic analysis и scoring;
+- результаты сохранены в Orchestrator DB;
+- production CRM sheet обновлен;
+- Gmail digest отправлен;
+- полный run занял порядка 40 минут.
+
+Это пример фактического production run, а не benchmark и не SLA. Время зависит
+от размера batch, состояния HH, локальной модели и ресурсов Worker laptop.
+
+## Почему LLM не принимает всё решение
+
+Ключевая инженерная идея проекта: LLM используется не как единственный судья, а
+как часть гибридного pipeline.
+
+``` text
+Normalized Vacancy
+↓
+Deterministic Python extraction
+↓
+Compact facts
+↓
+Local Qwen semantic assessment
+↓
+Deterministic Python scoring
+↓
+P1 / P2 / P3 / ALT
+```
+
+Python отвечает за проверяемые признаки:
+
+- salary;
+- geography;
+- office / relocation;
+- experience;
+- seniority;
+- technical signals;
+- hard blockers;
+- final score и priority.
+
+LLM отвечает за смысловую оценку:
+
+- semantic task fit;
+- role nature;
+- target track;
+- responsibility level;
+- short reason.
+
+Такой подход повышает explainability, стабильность, reproducibility и
+устойчивость небольшой локальной модели.
 
 ## Архитектура
 
-Основные компоненты:
+![AI Job Automation architecture](assets/ai-job-automation-architecture.png)
 
-- **n8n** — слой оркестрации процессов;
-- **Worker** — вычислительный слой для обработки данных;
-- **Local AI** — локальные AI-модели для массового анализа;
-- **External AI API** — точечное использование внешних моделей;
-- **SQLite** — текущее хранилище с возможностью миграции PostgreSQL.
+``` text
+HH
+↓
+Worker
+├── collection
+├── preliminary AI
+├── full enrichment
+├── deterministic extraction
+├── semantic analysis
+└── scoring
+↓
+Orchestrator API
+↓
+SQLite
+↓
+n8n
+├── Google Sheets CRM
+└── Gmail Digest
+```
 
-Подробнее:
+Worker — compute layer. Он собирает данные, парсит HH, запускает локальный AI,
+делает enrichment/scoring и отправляет результат в Orchestrator.
 
-- `docs/architecture.md` — архитектура системы;
-- `docs/current-state.md` — текущее состояние проекта;
-- `docs/project-roadmap-v1.1.md` — план развития;
-- `docs/project-context.md` — правила работы с проектом.
+Orchestrator — persistence layer и source of truth. Он хранит вакансии, историю
+анализа, processing events и результаты pipeline runs.
 
-## Статус проекта
+n8n — orchestration и external integrations. Он запускает production workflow,
+выполняет preflight, вызывает Worker, читает current run из Orchestrator,
+синхронизирует CRM и отправляет digest.
 
-Проект дошёл до рабочего MVP: production workflow запускается вручную через
-n8n, Worker собирает и анализирует HH-вакансии на Windows 11, Orchestrator
-хранит результаты на homeserver, Google Sheets используется как CRM-витрина, а
-Gmail отправляет digest.
+Worker и Orchestrator остаются LAN-only. Наружу опубликован только n8n через
+HTTPS.
 
-Текущий рабочий статус:
+## Компоненты
 
-см. `docs/current-state.md`.
+### Worker
+
+Windows 11, Docker, FastAPI, Playwright, httpx, Ollama,
+`qwen3:4b-instruct`.
+
+Responsibilities:
+
+- HH collection;
+- parsing;
+- deduplication;
+- normalization;
+- AI filtering;
+- full vacancy enrichment;
+- scoring;
+- persistence bridge.
+
+### Orchestrator
+
+FastAPI, SQLAlchemy, Alembic, SQLite.
+
+Responsibilities:
+
+- Vacancy persistence;
+- VacancyAnalysis history;
+- processing events;
+- run history;
+- read API;
+- source of truth для автоматических pipeline data.
+
+### n8n
+
+Responsibilities:
+
+- Manual Trigger;
+- preflight;
+- Worker pipeline call;
+- current run retrieval;
+- Google Sheets CRM sync;
+- Gmail digest.
+
+## n8n workflow
+
+![n8n workflow](assets/N8n_workflow.png)
+
+``` text
+Manual Trigger
+→ Preflight
+→ Worker Pipeline
+→ Orchestrator
+→ CRM
+→ Email
+```
+
+Workflow запускается вручную, потому что Worker laptop является on-demand
+compute node и не работает постоянно. Schedule Trigger намеренно не используется
+в production process.
+
+## CRM
+
+![CRM sheet](assets/CRM_sheet.png)
+
+Google Sheets — пользовательская CRM-витрина, а не source of truth. Источник
+автоматических данных остается в Orchestrator DB.
+
+В CRM синхронизируются `P1`, `P2` и `ALT`. `P3` остается DB-only, чтобы таблица
+не превращалась в архив слабых вакансий.
+
+User-managed fields сохраняются:
+
+- `Отклик`;
+- `Ответ`;
+- `Интервью`;
+- `Итог`;
+- `Комментарий`.
+
+CRM Key имеет формат:
+
+``` text
+source:external_id
+```
+
+Legacy URL matching поддерживает старые строки CRM без CRM Key: workflow
+извлекает HH external id из URL, обновляет существующую строку и добавляет CRM
+Key без дубля.
+
+## Email digest
+
+![Email digest](assets/Email_report.png)
+
+После run пользователь получает summary:
+
+- run status;
+- collection/filter/enrichment/persistence counts;
+- `P1/P2/ALT/P3`;
+- CRM stats;
+- top vacancies;
+- short reasons;
+- risks;
+- links.
+
+Preflight failure не отправляет Gmail failure email: пользователь запускает
+workflow вручную и сразу видит ошибку в n8n UI.
+
+## Реализация
+
+![Project IDE](assets/Project_ide.png)
+
+Кодовая база разделена по компонентам:
+
+``` text
+ai-job-automation/
+├── worker/
+├── orchestrator/
+├── workflows/
+└── docs/
+```
+
+## Reliability and observability
+
+![Project logs](assets/Project_logs.png)
+
+Перед долгим run preflight проверяет:
+
+- Orchestrator;
+- Worker API;
+- Ollama;
+- HH auth storage;
+- live HH session.
+
+Это важно из-за реального production edge case: при включенном VPN HH browser
+мог попадать на `/vpncheeck`, и resume context не подтверждался. Preflight
+обнаруживает такую проблему до запуска длинного pipeline.
+
+Одна проблемная vacancy не должна ронять весь batch. Pipeline поддерживает
+`completed_with_errors`, per-vacancy isolation и controlled fallbacks:
+
+``` text
+AI failure
+↓
+uncertain / fallback
+↓
+vacancy не теряется
+```
+
+## Стек
+
+Backend:
+
+- Python 3.12;
+- FastAPI;
+- Pydantic;
+- SQLAlchemy;
+- Alembic.
+
+AI:
+
+- Ollama;
+- `qwen3:4b-instruct`;
+- structured output;
+- deterministic + semantic hybrid analysis.
+
+Automation:
+
+- n8n.
+
+Data:
+
+- SQLite;
+- Google Sheets.
+
+Integration:
+
+- Gmail OAuth;
+- Google Service Account.
+
+Collection:
+
+- httpx;
+- Playwright;
+- Chromium.
+
+Infrastructure:
+
+- Docker;
+- Nginx;
+- Let's Encrypt;
+- Ubuntu Server;
+- Windows 11 Worker.
+
+## Как запускается
+
+README не заменяет deployment manual. В рабочем процессе:
+
+1. Поднимается Orchestrator.
+2. Запускается Worker.
+3. Проверяется доступность Ollama.
+4. При необходимости обновляется HH auth state.
+5. n8n workflow запускается вручную через Manual Trigger.
+6. Preflight подтверждает инфраструктуру.
+7. Worker выполняет длинный pipeline.
+8. Orchestrator сохраняет результаты.
+9. CRM обновляется.
+10. Gmail отправляет digest.
+
+Подробности: [docs/deployment.md](docs/deployment.md).
+
+## Безопасность
+
+- `.env` не хранится в Git;
+- HH storage state находится вне Git;
+- OAuth tokens не попадают в workflow export;
+- Google credentials не экспортируются в repository;
+- Worker и Orchestrator остаются LAN-only;
+- n8n доступен через HTTPS;
+- secrets, raw prompts, raw AI responses и storage state не должны логироваться.
+
+## Ограничения текущей версии
+
+- scoring требует дальнейшей calibration;
+- локальная модель небольшая;
+- HTML HH может измениться;
+- HH auth state периодически нужно обновлять вручную;
+- cross-source deduplication отсутствует;
+- automatic applications intentionally not implemented;
+- cloud AI fallback пока не является частью MVP;
+- Telegram notification пока отсутствует.
+
+## Возможное развитие
+
+Это optional future improvements, а не blockers текущего MVP:
+
+- scoring calibration;
+- larger/local model evaluation;
+- LoRA / QLoRA / PEFT experiments;
+- expanded search;
+- Telegram;
+- web UI;
+- cloud fallback;
+- PostgreSQL;
+- cross-source collectors.
+
+## История проекта
+
+Если интересна история развития от первых n8n экспериментов до распределенной
+Worker/Orchestrator architecture:
+
+- [docs/project-history.md](docs/project-history.md)
+
+## Документация
+
+- [Architecture](docs/architecture.md)
+- [Current State](docs/current-state.md)
+- [API](docs/api.md)
+- [Deployment](docs/deployment.md)
+- [Workflows](docs/workflows.md)
+- [Roadmap](docs/project-roadmap-v1.1.md)
+- [Project Context](docs/project-context.md)
+- [Project History](docs/project-history.md)
