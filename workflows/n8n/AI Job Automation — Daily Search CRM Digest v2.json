@@ -15,7 +15,7 @@
     {
       "parameters": {
         "mode": "raw",
-        "jsonOutput": "={{\n  {\n    worker_api_url: $env.WORKER_API_URL,\n    orchestrator_api_url: $env.ORCHESTRATOR_API_URL,\n    spreadsheet_id: $env.GOOGLE_SHEETS_CRM_DOCUMENT_ID,\n    spreadsheet_url: $env.GOOGLE_SHEETS_CRM_URL || \"\",\n    sheet_name: $env.GOOGLE_SHEETS_CRM_SHEET_NAME || \"Вакансии_TEST\",\n    email_to: $env.JOB_DIGEST_EMAIL_TO,\n    profile_ids: [\n    \"ai_resume_recommendations\",\n    \"python_resume_recommendations\"\n],\n    max_pages_override: null,\n    max_filter_items_override: null,\n    max_enrich_items_override: null,\n    crm_sync_priorities: [\"P1\", \"P2\", \"ALT\"],\n    top_vacancy_limit: 10\n  }\n}}",
+        "jsonOutput": "={{\n  {\n    worker_api_url: $env.WORKER_API_URL,\n    orchestrator_api_url: $env.ORCHESTRATOR_API_URL,\n    spreadsheet_id: $env.GOOGLE_SHEETS_CRM_DOCUMENT_ID,\n    spreadsheet_url: $env.GOOGLE_SHEETS_CRM_URL || \"\",\n    sheet_name: $env.GOOGLE_SHEETS_CRM_SHEET_NAME || \"Вакансии_TEST\",\n    email_to: $env.JOB_DIGEST_EMAIL_TO,\n    existing_run_id: \"\",\n    profile_ids: [\n    \"ai_resume_recommendations\",\n    \"python_resume_recommendations\"\n],\n    max_pages_override: null,\n    max_filter_items_override: null,\n    max_enrich_items_override: null,\n    crm_sync_priorities: [\"P1\", \"P2\", \"ALT\"],\n    top_vacancy_limit: 10\n  }\n}}",
         "options": {}
       },
       "type": "n8n-nodes-base.set",
@@ -29,13 +29,13 @@
     },
     {
       "parameters": {
-        "jsCode": "const config = $input.first().json;\nconst now = new Date();\nconst stamp = now.toISOString().replace(/[-:]/g, '').replace(/\\.\\d{3}Z$/, 'Z').replace('T', '-');\nconst random = Math.random().toString(36).slice(2, 8);\nconst runId = `n8n-${stamp}-${random}`;\nreturn [{\n  json: {\n    config,\n    run_id: runId,\n    worker_request: {\n      profile_ids: config.profile_ids,\n      max_pages_override: config.max_pages_override,\n      max_filter_items_override: config.max_filter_items_override,\n      max_enrich_items_override: config.max_enrich_items_override,\n      pipeline_run_id: runId\n    }\n  }\n}];"
+        "jsCode": "const input = $input.first().json;\nconst config = input.config || input;\nconst now = new Date();\nconst stamp = now.toISOString().replace(/[-:]/g, '').replace(/.d{3}Z$/, 'Z').replace('T', '-');\nconst random = Math.random().toString(36).slice(2, 8);\nconst runId = `n8n-${stamp}-${random}`;\nreturn [{\n  json: {\n    config,\n    run_id: runId,\n    worker_request: {\n      profile_ids: config.profile_ids,\n      max_pages_override: config.max_pages_override,\n      max_filter_items_override: config.max_filter_items_override,\n      max_enrich_items_override: config.max_enrich_items_override,\n      pipeline_run_id: runId\n    }\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2176,
-        848
+        2288,
+        960
       ],
       "id": "4a0facbd-d79f-46f8-871c-7410bedb5522",
       "name": "Generate Run ID"
@@ -43,7 +43,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $json.config.config.worker_api_url }}/hh/collect-filter-enrich-and-persist",
+        "url": "={{ $json.config.worker_api_url }}/hh/collect-filter-enrich-and-persist",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ $json.worker_request }}",
@@ -54,8 +54,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        2416,
-        848
+        2528,
+        960
       ],
       "id": "08ce22d6-d289-464c-a1c6-9c2c34a2250a",
       "name": "HTTP Worker Pipeline",
@@ -68,8 +68,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2640,
-        848
+        2768,
+        960
       ],
       "id": "6922a101-1aca-4449-a27f-c008945ea132",
       "name": "Check Worker Result"
@@ -101,15 +101,15 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        2880,
-        848
+        3008,
+        960
       ],
       "id": "8e1816e0-3bad-4d92-8eec-3b0fcf2c7ddf",
       "name": "Pipeline OK?"
     },
     {
       "parameters": {
-        "url": "={{ $json.config.config.orchestrator_api_url }}/pipeline-results/runs/{{ $json.run_id }}",
+        "url": "={{ $json.config.orchestrator_api_url }}/pipeline-results/runs/{{ $json.run_id }}",
         "options": {
           "timeout": 120000
         }
@@ -117,7 +117,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        3136,
+        3488,
         736
       ],
       "id": "cfe1ee43-6928-4bf1-8cc2-02d3a524acad",
@@ -141,7 +141,7 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.6,
       "position": [
-        3392,
+        3744,
         736
       ],
       "id": "11a01b59-c976-4f77-8ea8-7f06aeea0c2c",
@@ -155,12 +155,12 @@
     },
     {
       "parameters": {
-        "jsCode": "function nodeItems(name) {\n  try { return $(name).all().map(item => item.json); } catch (error) {}\n  try { return $items(name).map(item => item.json); } catch (error) {}\n  return [];\n}\nfunction firstNode(name) { return nodeItems(name)[0] || {}; }\nfunction compact(values, limit = 8) {\n  return [...new Set((values || []).filter(Boolean).map(String))].slice(0, limit);\n}\nfunction join(values, limit = 8) { return compact(values, limit).join(', '); }\nfunction formatDate(value) {\n  if (!value) return '';\n  const date = new Date(value);\n  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);\n  return date.toLocaleDateString('ru-RU', { timeZone: 'Europe/Samara' });\n}\nfunction externalIdFromUrl(url) {\n  const match = String(url || '').match(/\\/vacancy\\/(\\d+)/);\n  return match ? match[1] : null;\n}\nfunction riskLabel(code) {\n  const map = {\n    salary_low_strong: 'Низкая зарплата',\n    salary_low_moderate: 'Зарплата ниже желаемой',\n    responsibility_stretch: 'Повышенный уровень ответственности',\n    english_required: 'Требуется английский',\n    office_outside_samara: 'Обязательный офис вне Самары',\n    relocation_required: 'Требуется релокация',\n    travel_required: 'Командировки'\n  };\n  return map[code] || code;\n}\nfunction typeLabel(analysis) {\n  const semantic = analysis.semantic_snapshot || {};\n  const features = analysis.deterministic_features || {};\n  const track = semantic.target_track || '';\n  const nature = semantic.role_nature || '';\n  if (track === 'ai') return 'AI';\n  if (track === 'python') return 'Python';\n  if (track === 'alt_qa' || nature === 'qa') return 'QA';\n  if (track === 'alt_analytics' || nature === 'analytics') return 'Analytics';\n  if (features.automation_signal || nature === 'automation') return 'Automation';\n  if (track === 'alt_technical' || nature === 'technical_support') return 'Technical';\n  return analysis.priority || '';\n}\nfunction workFormat(features) {\n  if (!features) return 'Не указано';\n  if (features.work_format === 'remote') return 'Удалённо';\n  if (features.work_format === 'hybrid') return 'Гибрид';\n  if (features.work_format === 'office') return 'Офис';\n  return 'Не указано';\n}\nfunction stackText(analysis) {\n  const features = analysis.deterministic_features || {};\n  const skills = compact([...(features.matching_skills || []), ...(features.detected_skills || [])], 8);\n  return skills.join(', ').slice(0, 180);\n}\nconst run = firstNode('Get Current Run');\nconst check = firstNode('Check Worker Result');\nconst sheetRows = $input.all().map(item => item.json || {});\nconst syncPriorities = new Set(check.config?.crm_sync_priorities || ['P1', 'P2', 'ALT']);\nconst existingByKey = new Map();\nconst existingByUrlExternalId = new Map();\nlet maxNumber = 0;\nfor (const row of sheetRows) {\n  const number = Number(row['№'] || row['No'] || 0);\n  if (Number.isFinite(number) && number > maxNumber) maxNumber = number;\n  const key = String(row['CRM Key'] || '').trim();\n  if (key) existingByKey.set(key, row);\n  const urlExternalId = externalIdFromUrl(row['Ссылка']);\n  if (urlExternalId) existingByUrlExternalId.set(`hh:${urlExternalId}`, row);\n}\nlet nextNumber = maxNumber + 1;\nconst rows = [];\nfor (const analysis of run.analyses || []) {\n  if (!syncPriorities.has(analysis.priority)) continue;\n  const vacancy = analysis.vacancy_snapshot || {};\n  const key = `${vacancy.source || 'hh'}:${vacancy.external_id || ''}`;\n  const existingByCrmKey = existingByKey.get(key);\n  const existingByUrl = existingByUrlExternalId.get(key);\n  const existing = existingByCrmKey || existingByUrl || null;\n  const semantic = analysis.semantic_snapshot || {};\n  const features = analysis.deterministic_features || {};\n  const risks = (analysis.risks || []).map(riskLabel);\n  const blockers = (analysis.hard_blockers || []).map(riskLabel);\n  const rowNumber = existing ? (existing['№'] || existing['No'] || '') : nextNumber++;\n  const date = existing && existing['Дата'] ? existing['Дата'] : formatDate(vacancy.collected_at || analysis.created_at);\n  const crmRow = {\n    '№': rowNumber,\n    'Компания': vacancy.company || '',\n    'Должность': vacancy.title || '',\n    'Тип': typeLabel(analysis),\n    'Приоритет': analysis.priority || '',\n    'ЗП': vacancy.salary_text || '',\n    'Формат': workFormat(features),\n    'Стек': stackText(analysis),\n    'Дата': date,\n    'Ссылка': vacancy.url || '',\n    'Score': analysis.final_score ?? '',\n    'AI причина': semantic.short_reason || analysis.summary || '',\n    'Риски': join(risks, 6),\n    'Hard blockers': join(blockers, 6),\n    'CRM Key': key,\n    'Run ID': analysis.run_id || run.run_id,\n    'Анализ обновлён': analysis.created_at || '',\n    crm_key: key,\n    match_strategy: existingByCrmKey ? 'crm_key' : (existingByUrl ? 'legacy_url' : 'new'),\n    crm_action: existing ? 'updated' : 'new'\n  };\n  rows.push(crmRow);\n}\nreturn rows.map(row => ({ json: row }));"
+        "jsCode": "function nodeItems(name) {\n  try { return $(name).all().map(item => item.json); } catch (error) {}\n  try { return $items(name).map(item => item.json); } catch (error) {}\n  return [];\n}\nfunction firstNode(name) { return nodeItems(name)[0] || {}; }\nfunction compact(values, limit = 8) {\n  return [...new Set((values || []).filter(Boolean).map(String))].slice(0, limit);\n}\nfunction join(values, limit = 8) { return compact(values, limit).join(', '); }\nfunction formatDate(value) {\n  if (!value) return '';\n  const date = new Date(value);\n  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);\n  return date.toLocaleDateString('ru-RU', { timeZone: 'Europe/Samara' });\n}\nfunction externalIdFromUrl(url) {\n  const match = String(url || '').match(/\\/vacancy\\/(\\d+)/);\n  return match ? match[1] : null;\n}\nfunction riskLabel(code) {\n  const map = {\n    salary_low_strong: 'Низкая зарплата',\n    salary_low_moderate: 'Зарплата ниже желаемой',\n    responsibility_stretch: 'Повышенный уровень ответственности',\n    english_required: 'Требуется английский',\n    office_outside_samara: 'Обязательный офис вне Самары',\n    relocation_required: 'Требуется релокация',\n    travel_required: 'Командировки'\n  };\n  return map[code] || code;\n}\nfunction typeLabel(analysis) {\n  const semantic = analysis.semantic_snapshot || {};\n  const features = analysis.deterministic_features || {};\n  const track = semantic.target_track || '';\n  const nature = semantic.role_nature || '';\n  if (track === 'ai') return 'AI';\n  if (track === 'python') return 'Python';\n  if (track === 'alt_qa' || nature === 'qa') return 'QA';\n  if (track === 'alt_analytics' || nature === 'analytics') return 'Analytics';\n  if (features.automation_signal || nature === 'automation') return 'Automation';\n  if (track === 'alt_technical' || nature === 'technical_support') return 'Technical';\n  return analysis.priority || '';\n}\nfunction workFormat(features) {\n  if (!features) return 'Не указано';\n  if (features.work_format === 'remote') return 'Удалённо';\n  if (features.work_format === 'hybrid') return 'Гибрид';\n  if (features.work_format === 'office') return 'Офис';\n  return 'Не указано';\n}\nfunction stackText(analysis) {\n  const features = analysis.deterministic_features || {};\n  const skills = compact([...(features.matching_skills || []), ...(features.detected_skills || [])], 8);\n  return skills.join(', ').slice(0, 180);\n}\nconst run = firstNode('Get Current Run');\nconst check = firstNode('Build Run Context');\nconst sheetRows = $input.all().map(item => item.json || {});\nconst syncPriorities = new Set(check.config?.crm_sync_priorities || ['P1', 'P2', 'ALT']);\nconst existingByKey = new Map();\nconst existingByUrlExternalId = new Map();\nlet maxNumber = 0;\nfor (const row of sheetRows) {\n  const number = Number(row['№'] || row['No'] || 0);\n  if (Number.isFinite(number) && number > maxNumber) maxNumber = number;\n  const key = String(row['CRM Key'] || '').trim();\n  if (key) existingByKey.set(key, row);\n  const urlExternalId = externalIdFromUrl(row['Ссылка']);\n  if (urlExternalId) existingByUrlExternalId.set(`hh:${urlExternalId}`, row);\n}\nlet nextNumber = maxNumber + 1;\nconst rows = [];\nfor (const analysis of run.analyses || []) {\n  if (!syncPriorities.has(analysis.priority)) continue;\n  const vacancy = analysis.vacancy_snapshot || {};\n  const key = `${vacancy.source || 'hh'}:${vacancy.external_id || ''}`;\n  const existingByCrmKey = existingByKey.get(key);\n  const existingByUrl = existingByUrlExternalId.get(key);\n  const existing = existingByCrmKey || existingByUrl || null;\n  const semantic = analysis.semantic_snapshot || {};\n  const features = analysis.deterministic_features || {};\n  const risks = (analysis.risks || []).map(riskLabel);\n  const blockers = (analysis.hard_blockers || []).map(riskLabel);\n  const rowNumber = existing ? (existing['№'] || existing['No'] || '') : nextNumber++;\n  const date = existing && existing['Дата'] ? existing['Дата'] : formatDate(vacancy.collected_at || analysis.created_at);\n  const crmRow = {\n    '№': rowNumber,\n    'Компания': vacancy.company || '',\n    'Должность': vacancy.title || '',\n    'Тип': typeLabel(analysis),\n    'Приоритет': analysis.priority || '',\n    'ЗП': vacancy.salary_text || '',\n    'Формат': workFormat(features),\n    'Стек': stackText(analysis),\n    'Дата': date,\n    'Ссылка': vacancy.url || '',\n    'Score': analysis.final_score ?? '',\n    'AI причина': semantic.short_reason || analysis.summary || '',\n    'Риски': join(risks, 6),\n    'Hard blockers': join(blockers, 6),\n    'CRM Key': key,\n    'Run ID': analysis.run_id || run.run_id,\n    'Анализ обновлён': analysis.created_at || '',\n    crm_key: key,\n    match_strategy: existingByCrmKey ? 'crm_key' : (existingByUrl ? 'legacy_url' : 'new'),\n    crm_action: existing ? 'updated' : 'new'\n  };\n  rows.push(crmRow);\n}\nreturn rows.map(row => ({ json: row }));"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3648,
+        4000,
         736
       ],
       "id": "ef6a4cb6-a775-4f61-b7c1-8dfe94ed37b7",
@@ -193,7 +193,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        3888,
+        4240,
         736
       ],
       "id": "e29f0964-c69f-4e88-b43a-81cff7aa3edf",
@@ -450,7 +450,7 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.6,
       "position": [
-        4144,
+        4496,
         832
       ],
       "id": "b354b28d-0974-4cd8-bc51-9b99f82f424f",
@@ -510,7 +510,7 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.6,
       "position": [
-        4144,
+        4496,
         608
       ],
       "id": "2925619a-969b-41c6-8eb7-1f619846721c",
@@ -525,12 +525,12 @@
     },
     {
       "parameters": {
-        "jsCode": "function nodeItems(name) {\n  try { return $(name).all().map(item => item.json); } catch (error) {}\n  try { return $items(name).map(item => item.json); } catch (error) {}\n  return [];\n}\nfunction firstNode(name) { return nodeItems(name)[0] || {}; }\nfunction escapeHtml(value) {\n  return String(value || '').replace(/[&<>\"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[char]));\n}\nconst check = firstNode('Check Worker Result');\nconst run = firstNode('Get Current Run');\nconst worker = check.worker || {};\nconst crmRows = nodeItems('Prepare CRM Rows');\nconst priorityCounts = { P1: 0, P2: 0, P3: 0, ALT: 0 };\nfor (const analysis of run.analyses || []) {\n  if (analysis.priority in priorityCounts) priorityCounts[analysis.priority] += 1;\n}\nconst crmStats = {\n  crm_new_count: crmRows.filter(row => row.crm_action === 'new').length,\n  crm_updated_count: crmRows.filter(row => row.crm_action === 'updated').length,\n  crm_failed_count: 0,\n  crm_skipped_count: (run.analyses || []).filter(a => a.priority === 'P3').length\n};\nconst warnings = [...(check.warnings || [])];\nconst subject = warnings.length\n  ? `AI Job Automation — поиск завершён с предупреждениями — ${new Date().toLocaleDateString('ru-RU')}`\n  : `AI Job Automation — поиск завершён — ${new Date().toLocaleDateString('ru-RU')}`;\nconst sortedTop = crmRows\n  .filter(row => ['P1', 'P2', 'ALT'].includes(row['Приоритет']))\n  .sort((a, b) => {\n    const order = { P1: 0, P2: 1, ALT: 2 };\n    return (order[a['Приоритет']] - order[b['Приоритет']]) || (Number(b.Score || 0) - Number(a.Score || 0));\n  })\n  .slice(0, check.config?.top_vacancy_limit || 10);\nconst topHtml = sortedTop.map(row => `\n  <li>\n    <b>[${escapeHtml(row['Приоритет'])}] ${escapeHtml(row.Score)} — ${escapeHtml(row['Должность'])}</b><br>\n    ${escapeHtml(row['Компания'])}<br>\n    Причина: ${escapeHtml(row['AI причина'])}<br>\n    Риски: ${escapeHtml(row['Риски'] || 'нет')}<br>\n    <a href=\"${escapeHtml(row['Ссылка'])}\">Ссылка</a>\n  </li>`).join('');\nconst stats = worker.persistence_stats || check.persistence_stats || {};\nconst html = `\n<p>Поиск вакансий завершён.</p>\n<p><b>Run:</b> ${escapeHtml(check.run_id)}</p>\n${warnings.length ? `<p><b>Warnings:</b> ${escapeHtml(warnings.join('; '))}</p>` : ''}\n<ul>\n  <li>Найдено collection: ${escapeHtml(worker.collection_stats?.unique_vacancy_count ?? worker.collection_stats?.raw_vacancy_count ?? '')}</li>\n  <li>После preliminary filter: ${escapeHtml(worker.filter_stats?.processed_count ?? '')}</li>\n  <li>Полностью проанализировано: ${escapeHtml(worker.enrichment_stats?.enriched_count ?? '')}</li>\n  <li>Сохранено в DB: ${escapeHtml(stats.persisted_count ?? '')}</li>\n  <li>P1: ${priorityCounts.P1}, P2: ${priorityCounts.P2}, ALT: ${priorityCounts.ALT}, P3: ${priorityCounts.P3}</li>\n  <li>CRM новых строк: ${crmStats.crm_new_count}, обновлено: ${crmStats.crm_updated_count}, ошибок: ${crmStats.crm_failed_count}</li>\n  <li>Время выполнения Worker: ${escapeHtml(worker.duration_ms ?? '')} ms</li>\n</ul>\n${check.config?.spreadsheet_url ? `<p><a href=\"${escapeHtml(check.config.spreadsheet_url)}\">Открыть CRM</a></p>` : ''}\n<h3>Top vacancies</h3>\n<ol>${topHtml}</ol>`;\nreturn [{ json: { to: check.config?.email_to, subject, html, text: html.replace(/<[^>]*>/g, ' '), run_id: check.run_id, crm_stats: crmStats } }];"
+        "jsCode": "function nodeItems(name) {\n  try { return $(name).all().map(item => item.json); } catch (error) {}\n  try { return $items(name).map(item => item.json); } catch (error) {}\n  return [];\n}\nfunction firstNode(name) { return nodeItems(name)[0] || {}; }\nfunction escapeHtml(value) {\n  return String(value || '').replace(/[&<>\"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[char]));\n}\nconst check = firstNode('Build Run Context');\nconst run = firstNode('Get Current Run');\nconst worker = check.worker || {};\nconst crmRows = nodeItems('Prepare CRM Rows');\nconst priorityCounts = { P1: 0, P2: 0, P3: 0, ALT: 0 };\nfor (const analysis of run.analyses || []) {\n  if (analysis.priority in priorityCounts) priorityCounts[analysis.priority] += 1;\n}\nconst crmStats = {\n  crm_new_count: crmRows.filter(row => row.crm_action === 'new').length,\n  crm_updated_count: crmRows.filter(row => row.crm_action === 'updated').length,\n  crm_failed_count: 0,\n  crm_skipped_count: (run.analyses || []).filter(a => a.priority === 'P3').length\n};\nconst warnings = [...(check.warnings || [])];\nconst subjectPrefix = check.mode === 'existing_run_replay' ? 'AI Job Automation — повторная CRM/email синхронизация' : 'AI Job Automation — поиск завершён';\nconst subject = warnings.length\n  ? `${subjectPrefix} с предупреждениями — ${new Date().toLocaleDateString('ru-RU')}`\n  : `${subjectPrefix} — ${new Date().toLocaleDateString('ru-RU')}`;\nconst sortedTop = crmRows\n  .filter(row => ['P1', 'P2', 'ALT'].includes(row['Приоритет']))\n  .sort((a, b) => {\n    const order = { P1: 0, P2: 1, ALT: 2 };\n    return (order[a['Приоритет']] - order[b['Приоритет']]) || (Number(b.Score || 0) - Number(a.Score || 0));\n  })\n  .slice(0, check.config?.top_vacancy_limit || 10);\nconst topHtml = sortedTop.map(row => `\n  <li>\n    <b>[${escapeHtml(row['Приоритет'])}] ${escapeHtml(row.Score)} — ${escapeHtml(row['Должность'])}</b><br>\n    ${escapeHtml(row['Компания'])}<br>\n    Причина: ${escapeHtml(row['AI причина'])}<br>\n    Риски: ${escapeHtml(row['Риски'] || 'нет')}<br>\n    <a href=\"${escapeHtml(row['Ссылка'])}\">Ссылка</a>\n  </li>`).join('');\nconst stats = worker.persistence_stats || check.persistence_stats || {};\nconst html = `\n<p>Поиск вакансий завершён.</p>\n<p><b>Run:</b> ${escapeHtml(check.run_id)}</p>\n${check.mode === 'existing_run_replay' ? '<p><b>Mode:</b> повторная CRM/email синхронизация по существующему run_id</p>' : ''}\n${warnings.length ? `<p><b>Warnings:</b> ${escapeHtml(warnings.join('; '))}</p>` : ''}\n<ul>\n  <li>Найдено collection: ${escapeHtml(worker.collection_stats?.unique_vacancy_count ?? worker.collection_stats?.raw_vacancy_count ?? '')}</li>\n  <li>После preliminary filter: ${escapeHtml(worker.filter_stats?.processed_count ?? '')}</li>\n  <li>Полностью проанализировано: ${escapeHtml(worker.enrichment_stats?.enriched_count ?? '')}</li>\n  <li>Сохранено в DB: ${escapeHtml(stats.persisted_count ?? '')}</li>\n  <li>P1: ${priorityCounts.P1}, P2: ${priorityCounts.P2}, ALT: ${priorityCounts.ALT}, P3: ${priorityCounts.P3}</li>\n  <li>CRM новых строк: ${crmStats.crm_new_count}, обновлено: ${crmStats.crm_updated_count}, ошибок: ${crmStats.crm_failed_count}</li>\n  <li>Время выполнения Worker: ${escapeHtml(worker.duration_ms ?? '')} ms</li>\n</ul>\n${check.config?.spreadsheet_url ? `<p><a href=\"${escapeHtml(check.config.spreadsheet_url)}\">Открыть CRM</a></p>` : ''}\n<h3>Top vacancies</h3>\n<ol>${topHtml}</ol>`;\nreturn [{ json: { to: check.config?.email_to, subject, html, text: html.replace(/<[^>]*>/g, ' '), run_id: check.run_id, crm_stats: crmStats } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4416,
+        4768,
         736
       ],
       "id": "51b6f3b9-f78f-4f87-a3ef-6f900bca9f4e",
@@ -538,7 +538,7 @@
     },
     {
       "parameters": {
-        "sendTo": "={{ $('Config').first().json.email_to }}",
+        "sendTo": "={{ $json.to }}",
         "subject": "={{ $json.subject }}",
         "message": "={{ $json.html }}",
         "options": {}
@@ -546,7 +546,7 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
       "position": [
-        4656,
+        5024,
         736
       ],
       "id": "d2a8d27b-f6d6-4812-a1ea-4afd342c77c1",
@@ -566,15 +566,15 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3136,
-        992
+        3248,
+        1088
       ],
       "id": "0e59da62-99cf-442e-b58f-9d5ab1a6fd34",
       "name": "Prepare Failure Email"
     },
     {
       "parameters": {
-        "sendTo": "={{ $('Config').first().json.email_to }}",
+        "sendTo": "={{ $json.to }}",
         "subject": "={{ $json.subject }}",
         "message": "={{ $json.html }}",
         "options": {}
@@ -582,8 +582,8 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
       "position": [
-        3392,
-        992
+        3504,
+        1088
       ],
       "id": "bb526c6c-0fe7-4d9c-b5ff-033a0978bcc4",
       "name": "Gmail Send Failure",
@@ -605,8 +605,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        368,
-        864
+        608,
+        960
       ],
       "id": "49619273-c869-45b3-9878-a79f32395b3c",
       "name": "Preflight Orchestrator",
@@ -622,8 +622,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        608,
-        864
+        848,
+        960
       ],
       "id": "1de92ead-dcc1-4c1b-85f5-a27f2875aced",
       "name": "Preflight Worker",
@@ -639,8 +639,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        848,
-        864
+        1088,
+        960
       ],
       "id": "5f3ada76-8701-4500-b8cd-728cdea6bdc1",
       "name": "Preflight Ollama",
@@ -656,8 +656,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        1088,
-        864
+        1328,
+        960
       ],
       "id": "b3d90561-5ce2-47f4-b881-5147c59fd44b",
       "name": "Preflight HH Auth",
@@ -677,8 +677,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        1328,
-        864
+        1568,
+        960
       ],
       "id": "7e98e6b2-57f1-4e94-8d74-da5f1d1d3a65",
       "name": "Preflight HH Session",
@@ -691,8 +691,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1568,
-        864
+        1808,
+        960
       ],
       "id": "f73c3eda-132d-4bdb-9ecd-bce055ee2eee",
       "name": "Validate Preflight"
@@ -724,8 +724,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1808,
-        864
+        2048,
+        960
       ],
       "id": "11356039-c308-4f53-8ec4-f7d402185907",
       "name": "Preflight OK?"
@@ -737,11 +737,57 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2176,
-        1152
+        2288,
+        1248
       ],
       "id": "2a18b12c-7b71-4cce-9c3e-9fa4f7997aba",
       "name": "Stop Preflight Failed"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "31f40c84-a23b-44e9-a2f2-4f351d44b3c2",
+              "leftValue": "={{ String($json.existing_run_id || \"\").trim() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        352,
+        864
+      ],
+      "id": "a3fb5c73-33a0-42da-b2e9-1f6d353e06a4",
+      "name": "Use Existing Run?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst config = input.config || input;\nconst existingRunId = String(input.existing_run_id || config.existing_run_id || '').trim();\nconst runId = String(input.run_id || existingRunId || '').trim();\nif (!runId) {\n  throw new Error('run_id is required for CRM/email sync');\n}\nconst replayMode = Boolean(existingRunId) && !input.worker;\nconst warnings = [...(input.warnings || [])];\nreturn [{\n  json: {\n    ok: input.ok !== false,\n    run_id: runId,\n    config,\n    worker: input.worker || { status: 'existing_run_replay' },\n    persistence_stats: input.persistence_stats || {},\n    warnings,\n    failure_stage: input.failure_stage || null,\n    safe_error: input.safe_error || null,\n    mode: replayMode ? 'existing_run_replay' : 'worker_pipeline'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3248,
+        736
+      ],
+      "id": "b70ee284-382e-41c4-8df8-d52f75b41a21",
+      "name": "Build Run Context"
     }
   ],
   "pinData": {},
@@ -761,7 +807,7 @@
       "main": [
         [
           {
-            "node": "Preflight Orchestrator",
+            "node": "Use Existing Run?",
             "type": "main",
             "index": 0
           }
@@ -805,7 +851,7 @@
       "main": [
         [
           {
-            "node": "Get Current Run",
+            "node": "Build Run Context",
             "type": "main",
             "index": 0
           }
@@ -992,6 +1038,35 @@
         [
           {
             "node": "Stop Preflight Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Use Existing Run?": {
+      "main": [
+        [
+          {
+            "node": "Build Run Context",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preflight Orchestrator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Run Context": {
+      "main": [
+        [
+          {
+            "node": "Get Current Run",
             "type": "main",
             "index": 0
           }
