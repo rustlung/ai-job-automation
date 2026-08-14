@@ -133,11 +133,10 @@
         },
         "sheetName": {
           "__rl": true,
-          "value": "",
-          "mode": "name",
-          "cachedResultName": "",
-          "cachedResultUrl": ""
-        }
+          "value": "={{ $('Config').first().json.sheet_name  }}",
+          "mode": "name"
+        },
+        "options": {}
       },
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.6,
@@ -1006,7 +1005,7 @@
     "binaryMode": "separate",
     "availableInMCP": false
   },
-  "versionId": "787bca39-9ce8-492c-a091-e990447df4da",
+  "versionId": "9304f326-d620-4eea-8f4a-3a85c8d36244",
   "meta": {
     "instanceId": "0db81f0753baa06bf8dd01a6aa413440970bcc829c805aa818d17d0924efde58"
   },
