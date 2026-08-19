@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 
 from app.clients.hh_browser import HHBrowserPage
@@ -102,6 +104,39 @@ async def test_authenticated_search_preview_rejects_unconfirmed_auth(monkeypatch
         await service.preview("ai_resume_recommendations", 0)
 
     assert exc_info.value.error_code == "hh_authenticated_profile_not_confirmed"
+
+
+@pytest.mark.anyio
+async def test_authenticated_search_warning_logs_safe_verification_diagnostics(monkeypatch, caplog) -> None:
+    html = """
+    <html>
+      <body>
+        <div class="vacancy-info--synthetic">
+          <a data-qa="serp-item__title" href="/vacancy/123456">Python Developer</a>
+        </div>
+      </body>
+    </html>
+    """
+    browser_client = FakeBrowserClient(html)
+    service = make_service(monkeypatch, browser_client)
+
+    with caplog.at_level(logging.WARNING, logger="app.services.hh_authenticated_search"):
+        with pytest.raises(HHAuthenticatedProfileNotConfirmedError):
+            await service.preview("ai_resume_recommendations", 0)
+
+    assert "hh_browser_auth_failed" in caplog.text
+    assert "profile_id=ai_resume_recommendations" in caplog.text
+    assert "page=0" in caplog.text
+    assert "storage_state_loaded=True" in caplog.text
+    assert "login_form_detected=False" in caplog.text
+    assert "authenticated_marker_detected=False" in caplog.text
+    assert "resume_context_marker_detected=True" in caplog.text
+    assert "authenticated=False" in caplog.text
+    assert "resume_context_confirmed=False" in caplog.text
+    assert "resume=placeholder" not in caplog.text
+    assert "https://hh.ru" not in caplog.text
+    assert "Python Developer" not in caplog.text
+    assert "123456" not in caplog.text
 
 
 @pytest.mark.anyio

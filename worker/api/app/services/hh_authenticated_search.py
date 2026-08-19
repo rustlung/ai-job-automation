@@ -170,9 +170,15 @@ class HHAuthenticatedSearchPreviewService:
         )
         if not verification.resume_context_confirmed:
             logger.warning(
-                "hh_browser_auth_failed profile_id=%s page=%s authenticated=%s resume_context_confirmed=%s",
+                "hh_browser_auth_failed profile_id=%s page=%s storage_state_loaded=%s login_form_detected=%s "
+                "authenticated_marker_detected=%s resume_context_marker_detected=%s authenticated=%s "
+                "resume_context_confirmed=%s",
                 profile_id,
                 page,
+                verification.storage_state_loaded,
+                verification.login_form_detected,
+                verification.authenticated_marker_detected,
+                verification.resume_context_marker_detected,
                 verification.authenticated,
                 verification.resume_context_confirmed,
             )
