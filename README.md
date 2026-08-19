@@ -357,6 +357,32 @@ README не заменяет deployment manual. В рабочем процесс
 9. CRM обновляется.
 10. Gmail отправляет digest.
 
+### Обновление HH-сессии
+
+Authenticated resume recommendations используют Playwright storage state. Этот
+файл хранится локально вне Git и периодически перестает быть валидным: само
+наличие storage state файла не означает, что HH-сессия еще рабочая.
+
+На Windows Worker сессия обновляется вручную:
+
+```powershell
+cd worker
+.\api\.venv\Scripts\python.exe .\tools\hh_auth_setup.py
+```
+
+После ручной авторизации в открывшемся Chromium storage state обновляется
+локально. Затем Worker нужно перезапустить:
+
+```powershell
+docker compose restart api
+```
+
+Перед production run n8n выполняет live preflight: проверяет фактическую
+авторизацию HH и resume context. Если HH session invalid, основной pipeline не
+запускается. Failed HH preflight нельзя обходить без понимания причины:
+истекшая HH-сессия может привести к неперсонализированной или нерелевантной
+выдаче.
+
 Подробности: [docs/deployment.md](docs/deployment.md).
 
 ## Безопасность
