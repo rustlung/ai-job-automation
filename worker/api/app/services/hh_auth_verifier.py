@@ -10,8 +10,9 @@ LOGIN_SELECTORS = (
     'form[action*="account"]',
     'input[type="tel"]',
     'input[name="login"]',
-    '[data-qa*="login"]',
-    '[data-qa*="account-login"]',
+    '[data-qa="login"]',
+    '[data-qa="login-form"]',
+    '[data-qa="account-login"]',
 )
 AUTHENTICATED_MARKER_SELECTORS = (
     '[data-qa="mainmenu_applicantProfile"]',
@@ -43,7 +44,14 @@ class HHAuthenticationVerificationResult:
 
     @property
     def authenticated(self) -> bool:
-        return self.storage_state_loaded and self.authenticated_marker_detected and not self.login_form_detected
+        return (
+            self.storage_state_loaded
+            and not self.login_form_detected
+            and (
+                self.authenticated_marker_detected
+                or (self.resume_context_marker_detected and self.vacancy_count > 0)
+            )
+        )
 
     @property
     def resume_context_confirmed(self) -> bool:
