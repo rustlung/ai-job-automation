@@ -105,13 +105,37 @@ def test_verifier_confirms_authenticated_resume_search_from_current_resume_conte
     assert result.resume_context_confirmed is True
 
 
-def test_verifier_ignores_broad_login_data_qa_on_normal_page() -> None:
+def test_verifier_accepts_authenticated_resume_page_with_generic_login_data_qa() -> None:
     html = """
     <html>
       <body>
+        <div data-qa="login"></div>
         <div data-qa="account-login-banner"></div>
         <div data-qa="resume-search-context"></div>
         <a data-qa="serp-item__title" href="/vacancy/123">Python Developer</a>
+      </body>
+    </html>
+    """
+
+    result = HHAuthenticationVerifier().verify(
+        html=html,
+        final_url="https://hh.ru/search/vacancy",
+        vacancy_count=100,
+        storage_state_loaded=True,
+    )
+
+    assert result.login_form_detected is False
+    assert result.matched_login_selectors == []
+    assert result.authenticated is True
+    assert result.resume_context_confirmed is True
+
+
+def test_verifier_does_not_treat_standalone_login_input_as_login_page() -> None:
+    html = """
+    <html>
+      <body>
+        <input name="login" />
+        <div data-qa="resume-search-context"></div>
       </body>
     </html>
     """

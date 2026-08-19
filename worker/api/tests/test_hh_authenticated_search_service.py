@@ -111,7 +111,9 @@ async def test_authenticated_search_warning_logs_safe_verification_diagnostics(m
     html = """
     <html>
       <body>
-        <div data-qa="login">Login</div>
+        <form action="/account/login">
+          <input name="login" />
+        </form>
         <a href="/resume/diagnostic-placeholder">Resume context</a>
         <div class="vacancy-info--synthetic">
           <a data-qa="serp-item__title" href="/vacancy/123456">Python Developer</a>
@@ -135,7 +137,7 @@ async def test_authenticated_search_warning_logs_safe_verification_diagnostics(m
     assert "resume_context_marker_detected=True" in caplog.text
     assert "authenticated=False" in caplog.text
     assert "resume_context_confirmed=False" in caplog.text
-    assert """matched_login_selectors=['[data-qa="login"]']""" in caplog.text
+    assert """matched_login_selectors=['form[action*="login"]', 'form[action*="account"]', 'input[name="login"]']""" in caplog.text
     assert "matched_authenticated_selectors=[]" in caplog.text
     assert """matched_resume_context_selectors=['a[href*="/resume/"]']""" in caplog.text
     assert "resume=placeholder" not in caplog.text
