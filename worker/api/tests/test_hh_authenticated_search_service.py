@@ -111,6 +111,8 @@ async def test_authenticated_search_warning_logs_safe_verification_diagnostics(m
     html = """
     <html>
       <body>
+        <div data-qa="account-login-banner">Login</div>
+        <a href="/resume/diagnostic-placeholder">Resume context</a>
         <div class="vacancy-info--synthetic">
           <a data-qa="serp-item__title" href="/vacancy/123456">Python Developer</a>
         </div>
@@ -128,12 +130,16 @@ async def test_authenticated_search_warning_logs_safe_verification_diagnostics(m
     assert "profile_id=ai_resume_recommendations" in caplog.text
     assert "page=0" in caplog.text
     assert "storage_state_loaded=True" in caplog.text
-    assert "login_form_detected=False" in caplog.text
+    assert "login_form_detected=True" in caplog.text
     assert "authenticated_marker_detected=False" in caplog.text
     assert "resume_context_marker_detected=True" in caplog.text
     assert "authenticated=False" in caplog.text
     assert "resume_context_confirmed=False" in caplog.text
+    assert """matched_login_selectors=['[data-qa*="login"]', '[data-qa*="account-login"]']""" in caplog.text
+    assert "matched_authenticated_selectors=[]" in caplog.text
+    assert """matched_resume_context_selectors=['a[href*="/resume/"]']""" in caplog.text
     assert "resume=placeholder" not in caplog.text
+    assert "diagnostic-placeholder" not in caplog.text
     assert "https://hh.ru" not in caplog.text
     assert "Python Developer" not in caplog.text
     assert "123456" not in caplog.text

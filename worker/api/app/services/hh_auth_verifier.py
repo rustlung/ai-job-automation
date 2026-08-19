@@ -35,6 +35,9 @@ class HHAuthenticationVerificationResult:
     login_form_detected: bool
     authenticated_marker_detected: bool
     resume_context_marker_detected: bool
+    matched_login_selectors: list[str]
+    matched_authenticated_selectors: list[str]
+    matched_resume_context_selectors: list[str]
     expected_profile_type: str
     vacancy_count: int
 
@@ -61,6 +64,9 @@ class HHAuthenticationVerifier:
             login_form_detected=self._login_form_detected(soup, final_url),
             authenticated_marker_detected=self._authenticated_marker_detected(soup),
             resume_context_marker_detected=self._resume_context_marker_detected(soup, final_url),
+            matched_login_selectors=self._matched_selectors(soup, LOGIN_SELECTORS),
+            matched_authenticated_selectors=self._matched_selectors(soup, AUTHENTICATED_MARKER_SELECTORS),
+            matched_resume_context_selectors=self._matched_selectors(soup, RESUME_CONTEXT_SELECTORS),
             expected_profile_type="resume_recommendations",
             vacancy_count=vacancy_count,
         )
@@ -82,3 +88,7 @@ class HHAuthenticationVerifier:
         if "resume" in query:
             return True
         return any(soup.select_one(selector) is not None for selector in RESUME_CONTEXT_SELECTORS)
+
+    @staticmethod
+    def _matched_selectors(soup: BeautifulSoup, selectors: tuple[str, ...]) -> list[str]:
+        return [selector for selector in selectors if soup.select_one(selector) is not None]

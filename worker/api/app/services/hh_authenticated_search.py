@@ -172,7 +172,8 @@ class HHAuthenticatedSearchPreviewService:
             logger.warning(
                 "hh_browser_auth_failed profile_id=%s page=%s storage_state_loaded=%s login_form_detected=%s "
                 "authenticated_marker_detected=%s resume_context_marker_detected=%s authenticated=%s "
-                "resume_context_confirmed=%s",
+                "resume_context_confirmed=%s matched_login_selectors=%s matched_authenticated_selectors=%s "
+                "matched_resume_context_selectors=%s",
                 profile_id,
                 page,
                 verification.storage_state_loaded,
@@ -181,6 +182,9 @@ class HHAuthenticatedSearchPreviewService:
                 verification.resume_context_marker_detected,
                 verification.authenticated,
                 verification.resume_context_confirmed,
+                verification.matched_login_selectors,
+                verification.matched_authenticated_selectors,
+                verification.matched_resume_context_selectors,
             )
             raise HHAuthenticatedProfileNotConfirmedError("HH authenticated profile was not confirmed")
 
