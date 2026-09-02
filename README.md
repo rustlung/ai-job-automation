@@ -306,12 +306,19 @@ ai-job-automation/
 - Orchestrator;
 - Worker API;
 - Ollama;
+- фактический compute backend загруженной Ollama-модели: production допускает
+  только GPU;
 - HH auth storage и live HH session, только если выбран resume profile.
 
-Workflow v4 содержит ноду `Search Profiles — EDIT BEFORE RUN` с boolean
+Workflow v5 содержит ноду `Search Profiles — EDIT BEFORE RUN` с boolean
 selection resume и keyword profiles. Keyword-only run использует public
 `expanded_search`/`httpx` path и не требует HH storage state; при выборе resume
 profile сохраняется strict live HH preflight.
+
+Compute preflight выполняется отдельным `POST /health/ollama/compute`: при
+выгруженной модели он делает минимальный warm-up и проверяет её allocation через
+Ollama API. Состояния CPU, mixed и unknown останавливают workflow до долгого
+Worker pipeline.
 
 Это важно из-за реального production edge case: при включенном VPN HH browser
 мог попадать на `/vpncheeck`, и resume context не подтверждался. Preflight

@@ -24,6 +24,14 @@ class OllamaResponseError(OllamaError):
     pass
 
 
+class OllamaProcessResponseError(OllamaResponseError):
+    pass
+
+
+class OllamaWarmupError(OllamaResponseError):
+    pass
+
+
 class OllamaClient:
     def __init__(
         self,
@@ -136,6 +144,97 @@ class OllamaClient:
                 names.append(model["name"])
         logger.info("Ollama tags request succeeded configured_model=%s model_available=%s", self.model, self.model in names)
         return names
+
+    async def list_running_models(self) -> list[dict[str, object]]:
+        started_at = time.perf_counter()
+        logger.info("Starting Ollama ps request model=%s", self.model)
+
+        try:
+            async with httpx.AsyncClient(
+                base_url=self.base_url,
+                timeout=self.timeout_seconds,
+                transport=self.transport,
+            ) as client:
+                response = await client.get("/api/ps")
+                response.raise_for_status()
+        except httpx.TimeoutException as exc:
+            duration_ms = self._duration_ms(started_at)
+            logger.warning("Ollama ps request timed out duration_ms=%s", duration_ms)
+            raise OllamaTimeoutError("Ollama ps request timed out") from exc
+        except httpx.ConnectError as exc:
+            duration_ms = self._duration_ms(started_at)
+            logger.warning("Ollama ps endpoint unavailable duration_ms=%s", duration_ms)
+            raise OllamaConnectionError("Ollama is unavailable") from exc
+        except httpx.HTTPStatusError as exc:
+            duration_ms = self._duration_ms(started_at)
+            logger.warning("Ollama ps HTTP error status_code=%s duration_ms=%s", exc.response.status_code, duration_ms)
+            raise OllamaResponseError("Ollama ps endpoint returned an HTTP error") from exc
+        except httpx.RequestError as exc:
+            duration_ms = self._duration_ms(started_at)
+            logger.warning("Ollama ps request failed duration_ms=%s", duration_ms)
+            raise OllamaConnectionError("Ollama ps request failed") from exc
+
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise OllamaProcessResponseError("Ollama ps endpoint returned invalid JSON") from exc
+
+        if not isinstance(data, dict):
+            raise OllamaProcessResponseError("Ollama ps response is incompatible")
+
+        models = data.get("models")
+        if not isinstance(models, list) or not all(isinstance(model, dict) for model in models):
+            raise OllamaProcessResponseError("Ollama ps response is incompatible")
+
+        logger.info("Ollama ps request succeeded configured_model=%s", self.model)
+        return models
+
+    async def warm_up_model(self) -> None:
+        payload = {
+            "model": self.model,
+            "prompt": "",
+            "stream": False,
+            "keep_alive": self.keep_alive,
+        }
+        started_at = time.perf_counter()
+
+        try:
+            async with httpx.AsyncClient(
+                base_url=self.base_url,
+                timeout=self.timeout_seconds,
+                transport=self.transport,
+            ) as client:
+                response = await client.post("/api/generate", json=payload)
+                response.raise_for_status()
+        except httpx.TimeoutException as exc:
+            duration_ms = self._duration_ms(started_at)
+            logger.warning("Ollama warm-up request timed out model=%s duration_ms=%s", self.model, duration_ms)
+            raise OllamaTimeoutError("Ollama warm-up request timed out") from exc
+        except httpx.ConnectError as exc:
+            duration_ms = self._duration_ms(started_at)
+            logger.warning("Ollama warm-up unavailable model=%s duration_ms=%s", self.model, duration_ms)
+            raise OllamaConnectionError("Ollama is unavailable") from exc
+        except httpx.HTTPStatusError as exc:
+            duration_ms = self._duration_ms(started_at)
+            logger.warning(
+                "Ollama warm-up HTTP error model=%s status_code=%s duration_ms=%s",
+                self.model,
+                exc.response.status_code,
+                duration_ms,
+            )
+            raise OllamaResponseError("Ollama warm-up returned an HTTP error") from exc
+        except httpx.RequestError as exc:
+            duration_ms = self._duration_ms(started_at)
+            logger.warning("Ollama warm-up request failed model=%s duration_ms=%s", self.model, duration_ms)
+            raise OllamaConnectionError("Ollama warm-up request failed") from exc
+
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise OllamaWarmupError("Ollama warm-up returned invalid JSON") from exc
+
+        if not isinstance(data, dict) or data.get("done") is not True:
+            raise OllamaWarmupError("Ollama warm-up response is incompatible")
 
     def _extract_content(self, response: httpx.Response) -> str:
         try:

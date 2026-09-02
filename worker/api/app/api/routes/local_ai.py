@@ -9,6 +9,7 @@ from app.core.config import get_settings
 from app.schemas.local_ai import (
     LocalAIAnalyzeRequest,
     LocalAIAnalyzeResponse,
+    OllamaComputePreflightResponse,
     OllamaHealthResponse,
 )
 from app.services.local_ai import LocalAIService
@@ -40,6 +41,19 @@ async def ollama_health() -> OllamaHealthResponse:
         return await service.check_ollama_health()
     except OllamaTimeoutError as exc:
         raise HTTPException(status_code=504, detail="Ollama health check timed out") from exc
+    except OllamaConnectionError as exc:
+        raise HTTPException(status_code=503, detail="Ollama is unavailable") from exc
+    except OllamaResponseError as exc:
+        raise HTTPException(status_code=502, detail="Ollama returned an invalid response") from exc
+
+
+@router.post("/health/ollama/compute", response_model=OllamaComputePreflightResponse)
+async def ollama_compute_preflight() -> OllamaComputePreflightResponse:
+    service = get_local_ai_service()
+    try:
+        return await service.check_ollama_compute()
+    except OllamaTimeoutError as exc:
+        raise HTTPException(status_code=504, detail="Ollama compute preflight timed out") from exc
     except OllamaConnectionError as exc:
         raise HTTPException(status_code=503, detail="Ollama is unavailable") from exc
     except OllamaResponseError as exc:

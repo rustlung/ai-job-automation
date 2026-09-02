@@ -23,6 +23,8 @@
 ✅ POST /local-ai/analyze
 ✅ Structured local AI output
 ✅ GET /health/ollama
+✅ POST /health/ollama/compute
+✅ GPU-required Local LLM compute preflight
 ✅ Обработка ошибок интеграции Ollama
 ✅ Реальный локальный AI-запрос с русскоязычным текстом
 ✅ Доступ к Local AI endpoint с homeserver
@@ -144,6 +146,7 @@ Phase 5.7 — Preliminary local AI vacancy filter завершена и прин
 Phase 5.8 — Full vacancy enrichment and deterministic scoring завершена и принята на целевом Worker.
 Phase 5.9 — Persistence Bridge: Worker → Orchestrator DB завершена и принята на целевых узлах.
 Phase 5.10 — n8n orchestration + Google Sheets CRM sync + email digest + public HTTPS n8n завершена и принята на целевой инфраструктуре.
+Compute/GPU preflight реализован; target acceptance GPU/CPU режимов ожидается отдельно.
 Production MVP pipeline работает в ручном режиме через Manual Trigger.
 
 Создан и развернут на homeserver базовый backend оркестрационного слоя на FastAPI.

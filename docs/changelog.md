@@ -4,6 +4,11 @@
 
 ### Added
 
+- Local LLM Compute/GPU preflight endpoint with Ollama `/api/ps` inspection and
+  minimal model warm-up when the configured model is unloaded;
+- n8n v5 workflow export with GPU-required preflight before the long Worker
+  pipeline;
+- project-wide n8n workflow versioning and canvas-layout conventions.
 - Four configurable public HH keyword profiles with shared remote, experience
   and three-day freshness policy;
 - n8n v4 workflow export with boolean profile selection and controlled empty

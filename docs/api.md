@@ -15,6 +15,7 @@ Orchestrator и не имеет прямого доступа к SQLite-файл
 ``` text
 GET /health
 GET /health/ollama
+POST /health/ollama/compute
 GET /health/hh-auth
 ```
 
@@ -23,6 +24,13 @@ GET /health/hh-auth
 
 `GET /health/ollama` проверяет доступность Ollama и выбранной локальной модели.
 Production preflight считает endpoint healthy только если модель доступна.
+Он остается lightweight endpoint и не загружает модель.
+
+`POST /health/ollama/compute` выполняет отдельный compute preflight для
+configured model. Если модель выгружена, endpoint выполняет минимальный warm-up
+через Ollama API и затем проверяет `/api/ps`. Production policy требует
+`compute_backend="gpu"`; CPU, mixed и unknown возвращаются как typed
+`status="degraded"` и должны остановить pipeline до Worker request.
 
 `GET /health/hh-auth` проверяет наличие и валидность Playwright storage state.
 Этот endpoint не подтверждает live HH resume context, поэтому production

@@ -1,5 +1,15 @@
 # Workflows
 
+## Workflow Export Conventions
+
+Каждый функционально измененный n8n workflow получает новый versioned export:
+номер должен совпадать в filename и workflow name, а предыдущий production
+export остается в Git без перезаписи. Новый export должен быть готов к импорту
+без ручной раскладки canvas: main flow идет слева направо, success path остается
+читаемым, error branches располагаются ниже, а nodes и connections не должны
+накладываться или хаотично пересекаться. При вставке этапа в существующую цепочку
+последующие nodes сдвигаются, чтобы сохранить эту структуру.
+
 ## AI Job Automation — First Slice
 
 ### Назначение
@@ -79,16 +89,16 @@ keyword profiles и configurable selection также приняты.
 Актуальный export:
 
 ``` text
-workflows/n8n/AI Job Automation — Daily Search CRM Digest v4.json
+workflows/n8n/AI Job Automation — Daily Search CRM Digest v5.json
 ```
 
 Workflow name:
 
 ``` text
-AI Job Automation — Daily Search CRM Digest v4
+AI Job Automation — Daily Search CRM Digest v5
 ```
 
-Export не содержит credentials. Workflow `active=false`. v3 сохраняется как
+Export не содержит credentials. Workflow `active=false`. v4 сохраняется как
 historical production baseline и не перезаписывается. Каноничный production
 trigger — `Manual Trigger`; Schedule Trigger в текущем export отсутствует и не
 является частью production process.
@@ -125,6 +135,7 @@ Manual Trigger
 → Preflight Orchestrator
 → Preflight Worker
 → Preflight Ollama
+→ Preflight Compute
 → Resume Profiles Selected?
 → Preflight HH Auth / Skip HH Auth Preflight (keyword-only)
 → Preflight HH Session (resume only)
@@ -163,7 +174,10 @@ When all values are `false`, it stops with `No search profiles selected` before
 the Worker pipeline.
 
 The preflight branch always checks Orchestrator `GET /health`, Worker
-`GET /health` and Worker `GET /health/ollama`. `GET /health/hh-auth` and the
+`GET /health`, Worker `GET /health/ollama` and Worker
+`POST /health/ollama/compute`. Compute preflight may warm an unloaded model and
+requires `compute_backend=gpu`; CPU, mixed and unknown stop the workflow.
+`GET /health/hh-auth` and the
 read-only authenticated HH preview run only when at least one resume profile is
 selected. Keyword-only public search therefore does not depend on Playwright
 storage state. Failed required preflight stops the workflow before
@@ -172,6 +186,7 @@ storage state. Failed required preflight stops the workflow before
 Timeouts:
 
 - ordinary health checks: `10000 ms`;
+- compute preflight: `130000 ms`;
 - live HH session check: `45000 ms`;
 - long Worker pipeline request: `7200000 ms`.
 

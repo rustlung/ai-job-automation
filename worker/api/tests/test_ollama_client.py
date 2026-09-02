@@ -1,9 +1,11 @@
-import pytest
 import httpx
+import json
+import pytest
 
 from app.clients.ollama import (
     OllamaClient,
     OllamaConnectionError,
+    OllamaProcessResponseError,
     OllamaResponseError,
     OllamaTimeoutError,
 )
@@ -98,3 +100,41 @@ async def test_list_models_success() -> None:
     models = await make_client(httpx.MockTransport(handler)).list_models()
 
     assert models == ["qwen3:4b-instruct"]
+
+
+@pytest.mark.anyio
+async def test_list_running_models_success() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/ps"
+        return httpx.Response(
+            200,
+            json={"models": [{"name": "qwen3:4b-instruct", "size": 10, "size_vram": 10}]},
+        )
+
+    models = await make_client(httpx.MockTransport(handler)).list_running_models()
+
+    assert models == [{"name": "qwen3:4b-instruct", "size": 10, "size_vram": 10}]
+
+
+@pytest.mark.anyio
+async def test_list_running_models_rejects_malformed_response() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"models": {}})
+
+    with pytest.raises(OllamaProcessResponseError):
+        await make_client(httpx.MockTransport(handler)).list_running_models()
+
+
+@pytest.mark.anyio
+async def test_warm_up_model_uses_minimal_generate_request() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/generate"
+        assert json.loads(request.content) == {
+            "model": "qwen3:4b-instruct",
+            "prompt": "",
+            "stream": False,
+            "keep_alive": "5m",
+        }
+        return httpx.Response(200, json={"done": True})
+
+    await make_client(httpx.MockTransport(handler)).warm_up_model()

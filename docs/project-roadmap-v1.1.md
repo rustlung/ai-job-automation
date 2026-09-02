@@ -1250,7 +1250,7 @@ Email digest
 
 Результат:
 
-- workflow `AI Job Automation — Daily Search CRM Digest v4` запускает Worker
+- workflow `AI Job Automation — Daily Search CRM Digest v5` запускает Worker
   vertical endpoint из n8n;
 - workflow создает `pipeline_run_id`, проверяет Worker response и читает
   текущий run через `GET /pipeline-results/runs/{run_id}`;
@@ -1272,12 +1272,13 @@ Email digest
   `Nginx Full`;
 - Worker и Orchestrator остаются LAN-only;
 - workflow export хранится в
-  `workflows/n8n/AI Job Automation — Daily Search CRM Digest v4.json` без
-  credentials; v3 сохраняется как historical production baseline;
+  `workflows/n8n/AI Job Automation — Daily Search CRM Digest v5.json` без
+  credentials; v4 сохраняется как historical production baseline;
 - n8n boolean selector преобразует выбранные profiles в Worker `profile_ids` и
   останавливает пустой выбор до Worker pipeline;
-- production preflight health checks всегда проверяют Orchestrator, Worker и
-  Ollama; HH auth storage и live HH session проверяются только для выбранных
+- production preflight health checks всегда проверяют Orchestrator, Worker,
+  Ollama и GPU compute backend модели; CPU, mixed и unknown блокируют pipeline.
+  HH auth storage и live HH session проверяются только для выбранных
   resume profiles;
 - основной Worker request в n8n имеет timeout `7200000 ms` как safety margin;
 - Manual Trigger является production trigger, потому что Windows Worker
@@ -1309,7 +1310,8 @@ Phase 5 имеет рабочий accepted MVP pipeline. Production запуск
 
 Следующие приоритеты:
 
-1. Compute/GPU preflight.
+1. Compute/GPU preflight — реализован, target acceptance GPU/CPU режимов
+   ожидается.
 2. Async Worker pipeline.
 
 Filter calibration для keyword search, regional/business near-duplicate

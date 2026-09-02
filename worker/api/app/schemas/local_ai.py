@@ -30,3 +30,24 @@ class OllamaHealthResponse(BaseModel):
     component: Literal["ollama"]
     model: str
     model_available: bool
+
+
+class OllamaComputePreflightResponse(BaseModel):
+    status: Literal["ok", "degraded"]
+    component: Literal["ollama_compute"]
+    model: str
+    model_available: bool
+    model_loaded: bool
+    warmup_status: Literal["not_needed", "succeeded", "failed"]
+    compute_backend: Literal["gpu", "cpu", "mixed", "unknown"]
+    gpu_required: Literal[True] = True
+    gpu_acceptable: bool
+    reason: Literal[
+        "model_missing",
+        "warmup_failed",
+        "model_not_loaded_after_warmup",
+        "compute_cpu",
+        "compute_mixed",
+        "compute_unknown",
+        "incompatible_ps_response",
+    ] | None
