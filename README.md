@@ -213,6 +213,30 @@ Workflow запускается вручную, потому что Worker lapto
 compute node и не работает постоянно. Schedule Trigger намеренно не используется
 в production process.
 
+### Выбор профилей перед запуском
+
+Перед `Manual Trigger` откройте ноду `Search Profiles — EDIT BEFORE RUN` и
+установите `true` только для нужных направлений поиска. Не редактируйте массив
+`profile_ids` вручную: следующая техническая нода формирует его из отмеченных
+значений.
+
+```json
+{
+  "ai_resume_recommendations": true,
+  "python_resume_recommendations": true,
+  "ai_automation_keywords": true,
+  "vibecoding_keywords": false,
+  "python_backend_keywords": false,
+  "python_automation_keywords": false
+}
+```
+
+Если все профили имеют значение `false`, workflow завершится до вызова Worker с
+ошибкой `No search profiles selected`. Только keyword profiles используют public
+HH search и пропускают HH auth/session preflight. Выбор хотя бы одного resume
+profile включает существующий строгий live preflight авторизации HH и resume
+context.
+
 ## CRM
 
 ![CRM sheet](assets/CRM_sheet.png)
