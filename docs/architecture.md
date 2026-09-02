@@ -54,7 +54,9 @@ Manual Trigger
 ↓
 Preflight
 ↓
-Long Worker pipeline
+Async Worker start
+↓
+Worker status polling
 ```
 
 Public exposure:

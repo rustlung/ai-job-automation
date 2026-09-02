@@ -89,13 +89,13 @@ keyword profiles и configurable selection также приняты.
 Актуальный export:
 
 ``` text
-workflows/n8n/AI Job Automation — Daily Search CRM Digest v5.json
+workflows/n8n/AI Job Automation — Daily Search CRM Digest v6.json
 ```
 
 Workflow name:
 
 ``` text
-AI Job Automation — Daily Search CRM Digest v5
+AI Job Automation — Daily Search CRM Digest v6
 ```
 
 Export не содержит credentials. Workflow `active=false`. v4 сохраняется как
@@ -112,7 +112,8 @@ n8n оркестрирует уже реализованный Worker persistenc
 Manual Trigger
 → n8n
 → preflight health checks
-→ Worker POST /hh/collect-filter-enrich-and-persist
+→ Worker POST /hh/pipeline-runs
+→ Worker GET /hh/pipeline-runs/{run_id}
 → Orchestrator DB
 → Orchestrator GET /pipeline-results/runs/{run_id}
 → Google Sheets CRM sync

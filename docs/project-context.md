@@ -469,6 +469,12 @@ Search direction decisions:
 
 # 11. Приоритет проекта
 
+Async Worker pipeline execution реализован: n8n v6 запускает Worker коротким
+`POST /hh/pipeline-runs`, затем poll'ит status. Один Worker допускает один
+heavy run; lifecycle state intentionally in-memory, поэтому после restart нужно
+проверить Orchestrator и использовать existing-run recovery только для
+persisted results.
+
 Главная цель:
 
 Создать работающую систему.

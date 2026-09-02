@@ -4,6 +4,14 @@
 
 ### Added
 
+- asynchronous Worker pipeline start/status API with bounded in-memory history;
+- single-heavy-run protection and safe terminal run status;
+- n8n workflow v6 with polling, retry handling and recovery-aware routing.
+
+## 2026-09-02
+
+### Added
+
 - Local LLM Compute/GPU preflight endpoint with Ollama `/api/ps` inspection and
   minimal model warm-up when the configured model is unloaded;
 - n8n v5 workflow export with GPU-required preflight before the long Worker

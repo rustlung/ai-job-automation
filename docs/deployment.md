@@ -131,6 +131,14 @@ Worker; не считать INFO application events обязательным к�
 
 ## Worker
 
+### Async Pipeline Recovery
+
+Production workflow v6 starts Worker through `POST /hh/pipeline-runs` and polls
+`GET /hh/pipeline-runs/{run_id}`. The Worker accepts one heavy run at a time.
+Its lifecycle registry is in-memory: after a Worker restart the old run returns
+`404 run_not_found`; check Orchestrator by `run_id` before using existing-run
+CRM/email recovery. Worker cancellation is not implemented.
+
 Worker разворачивается на целевом узле Windows 11 через Docker Desktop.
 Для деплоя используется sparse checkout только каталога `worker`.
 

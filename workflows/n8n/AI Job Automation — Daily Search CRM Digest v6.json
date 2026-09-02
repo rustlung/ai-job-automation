@@ -1,5 +1,5 @@
 {
-  "name": "AI Job Automation — Daily Search CRM Digest v5",
+  "name": "AI Job Automation — Daily Search CRM Digest v6",
   "nodes": [
     {
       "parameters": {},
@@ -29,7 +29,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const input = $input.first().json;\nconst config = input.config || input;\nconst now = new Date();\nconst stamp = now.toISOString().replace(/[-:]/g, '').replace(/.d{3}Z$/, 'Z').replace('T', '-');\nconst random = Math.random().toString(36).slice(2, 8);\nconst runId = `n8n-${stamp}-${random}`;\nreturn [{\n  json: {\n    config,\n    run_id: runId,\n    worker_request: {\n      profile_ids: config.profile_ids,\n      max_pages_override: config.max_pages_override,\n      max_filter_items_override: config.max_filter_items_override,\n      max_enrich_items_override: config.max_enrich_items_override,\n      pipeline_run_id: runId\n    }\n  }\n}];"
+        "jsCode": "const input = $input.first().json;\nconst config = input.config || input;\nconst now = new Date();\nconst stamp = now.toISOString().replace(/[-:]/g, '').replace(/.d{3}Z$/, 'Z').replace('T', '-');\nconst random = Math.random().toString(36).slice(2, 8);\nconst runId = `n8n-${stamp}-${random}`;\nreturn [{\n  json: {\n    config,\n    run_id: runId,`n    orchestration_started_at_ms: now.getTime(),\n    worker_request: {\n      profile_ids: config.profile_ids,\n      max_pages_override: config.max_pages_override,\n      max_filter_items_override: config.max_filter_items_override,\n      max_enrich_items_override: config.max_enrich_items_override,\n      pipeline_run_id: runId\n    }\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -43,12 +43,12 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $json.config.worker_api_url }}/hh/collect-filter-enrich-and-persist",
+        "url": "={{ $json.config.worker_api_url }}/hh/pipeline-runs",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ $json.worker_request }}",
         "options": {
-          "timeout": 7200000
+          "timeout": 15000
         }
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -57,22 +57,22 @@
         -1920,
         128
       ],
-      "id": "10b6a7e7-eccb-4142-9c77-3319eecfa9de",
-      "name": "HTTP Worker Pipeline",
+      "id": "f89d5e3a-e742-4254-ba28-24d17d4badb2",
+      "name": "Start Worker Pipeline",
       "continueOnFail": true
     },
     {
       "parameters": {
-        "jsCode": "const worker = $input.first().json;\nconst context = $('Generate Run ID').first().json;\nconst stats = worker.persistence_stats || {};\nconst workerFailed = Boolean(worker.error) || worker.status === 'failed';\nconst persistenceFailed = !worker.persistence_stats || stats.status === 'failed' || stats.failed_count > 0 && stats.persisted_count === 0;\nconst ok = !workerFailed && !persistenceFailed;\nconst warnings = [];\nif (worker.status === 'completed_with_errors') warnings.push('Worker completed with errors');\nif (stats.status === 'completed_with_errors' || (stats.failed_count || 0) > 0) warnings.push('Persistence completed with errors');\nreturn [{\n  json: {\n    ok,\n    run_id: worker.pipeline_run_id || context.run_id,\n    config: context.config,\n    worker,\n    persistence_stats: stats,\n    warnings,\n    failure_stage: workerFailed ? 'worker_pipeline' : (persistenceFailed ? 'orchestrator_persistence' : null),\n    safe_error: worker.error?.message || worker.errors?.[0]?.message || null\n  }\n}];"
+        "jsCode": "const worker = $input.first().json || {};\nconst context = $('Generate Run ID').first().json;\nlet previous = {};\ntry { previous = $('Wait 20s for Worker Run').item.json || {}; } catch (error) {}\nconst elapsedMs = Date.now() - Number(context.orchestration_started_at_ms || Date.now());\nconst priorErrors = Number(previous.consecutive_polling_errors || 0);\nconst valid = new Set(['running', 'completed', 'completed_with_errors', 'failed']);\nconst status = String(worker.status || '');\nconst statusCode = Number(worker.statusCode || worker.error?.httpCode || worker.error?.statusCode || 0);\nconst summary = worker.summary || {};\nconst output = { run_id: worker.run_id || context.run_id, config: context.config, worker: { status: status || 'unknown', collection_stats: { unique_vacancy_count: summary.collection_unique_vacancy_count }, filter_stats: { processed_count: summary.filter_processed_count }, enrichment_stats: { enriched_count: summary.enriched_count }, duration_ms: summary.duration_ms }, persistence_stats: { persisted_count: summary.persisted_count, status: summary.persistence_status, failed_count: 0 }, warnings: [], terminal: false, result_available: false, consecutive_polling_errors: 0, orchestration_elapsed_ms: elapsedMs, failure_stage: null, safe_error: null };\nif (valid.has(status)) { if (status === 'running') { output.consecutive_polling_errors = 0; } else { output.terminal = true; output.result_available = worker.result_available === true; if (status === 'completed_with_errors') output.warnings.push('Worker completed with errors'); if (status === 'failed') { output.failure_stage = 'worker_pipeline'; output.safe_error = worker.error_code || 'worker_pipeline_failed'; } else if (!output.result_available) { output.failure_stage = 'orchestrator_persistence'; output.safe_error = worker.error_code || 'worker_result_unavailable'; } } } else if (statusCode === 404) { output.terminal = true; output.failure_stage = 'worker_run_recovery'; output.safe_error = 'worker_run_not_found; check Orchestrator before existing-run recovery'; } else if (elapsedMs >= 7200000) { output.terminal = true; output.failure_stage = 'worker_polling_deadline'; output.safe_error = 'worker run polling deadline exceeded; use existing-run recovery after checking Orchestrator'; } else { output.consecutive_polling_errors = priorErrors + 1; if (output.consecutive_polling_errors >= 3) { output.terminal = true; output.failure_stage = 'worker_polling'; output.safe_error = 'worker status polling failed repeatedly; use existing-run recovery after checking Orchestrator'; } }\nreturn [{ json: output }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -1680,
-        128
+        -1200,
+        400
       ],
-      "id": "b10a2b0e-7cbd-47b9-8d62-1fd68370fa34",
-      "name": "Check Worker Result"
+      "id": "714d10c9-9007-4623-ac66-367681b46927",
+      "name": "Evaluate Worker Run"
     },
     {
       "parameters": {
@@ -86,7 +86,7 @@
           "conditions": [
             {
               "id": "a2ce3e65-90d8-4557-9c59-71b7b3f14b3a",
-              "leftValue": "={{ $json.ok }}",
+              "leftValue": "={{ $json.terminal }}",
               "rightValue": true,
               "operator": {
                 "type": "boolean",
@@ -101,11 +101,11 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -1440,
-        128
+        -960,
+        400
       ],
-      "id": "cf1d4b4b-b38b-4ffa-97f7-09937ede71a3",
-      "name": "Pipeline OK?"
+      "id": "4b5ba483-7702-4740-9af5-2e1bed1c98f2",
+      "name": "Worker Run Terminal?"
     },
     {
       "parameters": {
@@ -117,10 +117,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        -960,
+        -240,
         128
       ],
-      "id": "c301f262-8171-4066-b501-183db262b554",
+      "id": "0ca9bf84-2ccb-42b2-9eb6-c524fe156ad0",
       "name": "Get Current Run"
     },
     {
@@ -141,10 +141,10 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.6,
       "position": [
-        -720,
+        0,
         128
       ],
-      "id": "f8f46c59-504e-45bf-aea5-a82ac02f4d0d",
+      "id": "84ef191d-6fbc-4635-a385-affaeb43938b",
       "name": "Read CRM Rows",
       "credentials": {
         "googleApi": {
@@ -160,10 +160,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -480,
+        240,
         128
       ],
-      "id": "5eabccf2-4fc2-46cc-96a2-674b114e7297",
+      "id": "048d4a6c-38c9-42e9-bff8-0d93d2abd82f",
       "name": "Prepare CRM Rows"
     },
     {
@@ -193,10 +193,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -240,
+        480,
         128
       ],
-      "id": "d1204dd5-24d4-4d95-ab41-b825707b1aa0",
+      "id": "d12ec00b-ce51-4639-b52c-12fa64dc7eda",
       "name": "Legacy URL Match?"
     },
     {
@@ -450,10 +450,10 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.6,
       "position": [
-        0,
+        720,
         240
       ],
-      "id": "47111e88-7ee3-4cbf-a9bb-d27255f92e44",
+      "id": "31f60b62-0969-4bd3-89da-7f1ec274bab4",
       "name": "CRM Upsert by CRM Key",
       "credentials": {
         "googleApi": {
@@ -510,10 +510,10 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.6,
       "position": [
-        0,
+        720,
         0
       ],
-      "id": "d8cf9dfb-10f7-4d87-ba36-c51f5ae47f9c",
+      "id": "08fcb874-d930-465e-a1cd-b4bcec32a8f7",
       "name": "CRM Upsert Legacy by URL",
       "credentials": {
         "googleApi": {
@@ -530,10 +530,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        240,
+        960,
         128
       ],
-      "id": "2225d333-6a43-42e4-bfa0-fa5d1b2c8f7e",
+      "id": "055e5a3e-02d7-477a-be70-aefc6ef49864",
       "name": "Prepare Success Email"
     },
     {
@@ -546,10 +546,10 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
       "position": [
-        480,
+        1200,
         128
       ],
-      "id": "df2ecbfc-f917-4bf4-b6cd-c43f68dca6b0",
+      "id": "fcdfab11-2799-47d7-9b7a-082eca2689eb",
       "name": "Gmail Send Digest",
       "webhookId": "cc45853e-aca4-4bcd-85b0-026cb7046828",
       "credentials": {
@@ -566,10 +566,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -1200,
-        368
+        -720,
+        640
       ],
-      "id": "4e4c8d98-cc5a-40f4-a774-515c5dad5b6c",
+      "id": "f76eddbd-bdfc-482b-9a22-f8f5cd0bda29",
       "name": "Prepare Failure Email"
     },
     {
@@ -582,10 +582,10 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
       "position": [
-        -960,
-        368
+        -480,
+        640
       ],
-      "id": "204422df-fd61-4775-8a55-2c7a2dbcd82a",
+      "id": "c78eefb9-30a5-41f6-9bf0-2f085441c39d",
       "name": "Gmail Send Failure",
       "webhookId": "0a89ddf7-4a8c-4874-be54-703d159eae2e",
       "credentials": {
@@ -875,11 +875,76 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -1200,
+        -480,
         128
       ],
-      "id": "7126a657-eeed-4d1a-8ebb-628e8cdd8e95",
+      "id": "ef816e79-cd8b-41ec-add3-88bb71a6fe95",
       "name": "Build Run Context"
+    },
+    {
+      "parameters": {
+        "amount": 20,
+        "unit": "seconds"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -1680,
+        400
+      ],
+      "id": "8d3aa49a-4cdf-4575-ad18-9c84f9ddbbb7",
+      "name": "Wait 20s for Worker Run"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Generate Run ID').first().json.config.worker_api_url }}/hh/pipeline-runs/{{ $('Generate Run ID').first().json.run_id }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1440,
+        400
+      ],
+      "id": "87bdd14d-b3d8-402a-857a-c25a723e7d8a",
+      "name": "Get Worker Run Status",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "145bc651-8702-4d85-9c4c-c93f95bf3322",
+              "leftValue": "={{ $json.result_available }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -720,
+        128
+      ],
+      "id": "3d0d77b5-0771-4bb8-aed4-cde016c82098",
+      "name": "Worker Result Available?"
     }
   ],
   "pinData": {},
@@ -900,57 +965,6 @@
         [
           {
             "node": "Use Existing Run?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Generate Run ID": {
-      "main": [
-        [
-          {
-            "node": "HTTP Worker Pipeline",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "HTTP Worker Pipeline": {
-      "main": [
-        [
-          {
-            "node": "Check Worker Result",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Check Worker Result": {
-      "main": [
-        [
-          {
-            "node": "Pipeline OK?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Pipeline OK?": {
-      "main": [
-        [
-          {
-            "node": "Build Run Context",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Prepare Failure Email",
             "type": "main",
             "index": 0
           }
@@ -1226,6 +1240,97 @@
           }
         ]
       ]
+    },
+    "Generate Run ID": {
+      "main": [
+        [
+          {
+            "node": "Start Worker Pipeline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start Worker Pipeline": {
+      "main": [
+        [
+          {
+            "node": "Wait 20s for Worker Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 20s for Worker Run": {
+      "main": [
+        [
+          {
+            "node": "Get Worker Run Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Worker Run Status": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Worker Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Worker Run": {
+      "main": [
+        [
+          {
+            "node": "Worker Run Terminal?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Worker Run Terminal?": {
+      "main": [
+        [
+          {
+            "node": "Worker Result Available?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait 20s for Worker Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Worker Result Available?": {
+      "main": [
+        [
+          {
+            "node": "Build Run Context",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Failure Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
@@ -1233,11 +1338,11 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "d941ec34-a121-4bda-a51c-09ec9d5bd20b",
+  "versionId": "19907b79-c422-4f09-8555-734847fab820",
   "meta": {
     "instanceId": "0db81f0753baa06bf8dd01a6aa413440970bcc829c805aa818d17d0924efde58"
   },
   "nodeGroups": [],
-  "id": "AC0ZgoGvvREJVEXl",
+  "id": "792d48d7-c01f-443c-9989-765609093778",
   "tags": []
 }

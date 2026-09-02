@@ -25,6 +25,9 @@
 ✅ GET /health/ollama
 ✅ POST /health/ollama/compute
 ✅ GPU-required Local LLM compute preflight
+✅ Async Worker pipeline start/status API
+✅ Single-heavy-run protection and bounded in-memory run history
+✅ n8n polling Worker pipeline workflow v6
 ✅ Обработка ошибок интеграции Ollama
 ✅ Реальный локальный AI-запрос с русскоязычным текстом
 ✅ Доступ к Local AI endpoint с homeserver
