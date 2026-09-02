@@ -413,7 +413,9 @@ CRM and external integration decisions:
   behavior;
 - Schedule Trigger не входит в текущий production process и не является
   незавершенной частью MVP;
-- текущий следующий шаг: portfolio packaging / public project presentation.
+- следующие reliability priorities: Compute/GPU preflight, затем Async Worker
+  pipeline; filter calibration и near-duplicate suppression остаются follow-up
+  backlog и не блокируют принятый milestone.
 
 HH search collection decisions:
 
@@ -440,6 +442,13 @@ HH search collection decisions:
 - parser не должен знать о transport;
 - deduplication identity остается `source + external_id`;
 - transport не входит в identity вакансии.
+
+Custom keyword profiles и n8n selector приняты на целевой инфраструктуре:
+keyword-only run пропускает authenticated HH preflight, а mixed run сохраняет
+strict auth/session preflight для resume profile. Exact deduplication намеренно
+не объединяет разные HH external_id; business/regional near-duplicates остаются
+отдельным follow-up для CRM/Web UI. Filter calibration для keyword search также
+является quality follow-up, не blocker принятого pipeline.
 
 Search direction decisions:
 

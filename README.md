@@ -39,6 +39,8 @@ AI Job Automation автоматизирует discovery, filtering и analysis,
 - HH search collection;
 - authenticated resume recommendations;
 - public expanded search;
+- custom keyword search profiles;
+- configurable n8n profile selection;
 - pagination;
 - exact deduplication;
 - preliminary local AI filter;
@@ -199,7 +201,8 @@ Responsibilities:
 
 ```text
 Manual Trigger
-→ Preflight
+→ Search Profiles
+→ Conditional Preflight
 → Worker Pipeline
 → Orchestrator
 → CRM
@@ -279,8 +282,12 @@ ai-job-automation/
 - Orchestrator;
 - Worker API;
 - Ollama;
-- HH auth storage;
-- live HH session.
+- HH auth storage и live HH session, только если выбран resume profile.
+
+Workflow v4 содержит ноду `Search Profiles — EDIT BEFORE RUN` с boolean
+selection resume и keyword profiles. Keyword-only run использует public
+`expanded_search`/`httpx` path и не требует HH storage state; при выборе resume
+profile сохраняется strict live HH preflight.
 
 Это важно из-за реального production edge case: при включенном VPN HH browser
 мог попадать на `/vpncheeck`, и resume context не подтверждался. Preflight
@@ -398,6 +405,10 @@ docker compose restart api
 ## Ограничения текущей версии
 
 - scoring требует дальнейшей calibration;
+- keyword search требует filter calibration для нерелевантных ролей с
+  поверхностным упоминанием AI;
+- regional/business near-duplicate suppression для разных HH external id пока
+  отсутствует;
 - локальная модель небольшая;
 - HTML HH может измениться;
 - HH auth state периодически нужно обновлять вручную;
@@ -411,6 +422,9 @@ docker compose restart api
 Это optional future improvements, а не blockers текущего MVP:
 
 - scoring calibration;
+- filter calibration для keyword search;
+- near-duplicate grouping для CRM/Web UI;
+- безопасный `GET /hh/search-profiles` для будущего Web UI;
 - larger/local model evaluation;
 - LoRA / QLoRA / PEFT experiments;
 - expanded search;

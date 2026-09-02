@@ -72,6 +72,9 @@
 ✅ POST /hh/collect-search
 ✅ Authenticated HH resume search
 ✅ Public HH expanded search
+✅ Custom HH keyword search profiles
+✅ Configurable n8n search profile selection
+✅ Conditional HH resume auth preflight
 ✅ Mixed HH search transports
 ✅ HH authenticated browser DOM stabilization
 ✅ HH collection pagination
@@ -136,6 +139,7 @@ Phase 5.5.1 — Vacancy discovery counters завершена и принята.
 Phase 5.6 — HH search collection profiles завершена и принята на Worker.
 Phase 5.6.1 — Authenticated HH browser spike завершена и принята.
 Phase 5.6.2 — Authenticated resume profiles integrated into collector завершена и принята.
+Custom HH keyword profiles + configurable profile selection завершены и приняты.
 Phase 5.7 — Preliminary local AI vacancy filter завершена и принята на целевом Worker.
 Phase 5.8 — Full vacancy enrichment and deterministic scoring завершена и принята на целевом Worker.
 Phase 5.9 — Persistence Bridge: Worker → Orchestrator DB завершена и принята на целевых узлах.
@@ -538,9 +542,10 @@ Manual Trigger
 ```
 
 n8n является orchestration и external integration layer. Перед долгим Worker
-pipeline он выполняет preflight checks Orchestrator, Worker, Ollama, HH auth
-storage и live HH session. Если preflight не проходит, workflow останавливается
-до production pipeline и не отправляет Gmail failure digest. После успешного
+pipeline он всегда выполняет preflight checks Orchestrator, Worker и Ollama.
+HH auth storage и live HH session проверяются только при выбранном resume
+profile. Если требуемый preflight не проходит, workflow останавливается до
+production pipeline и не отправляет Gmail failure digest. После успешного
 preflight n8n запускает Worker pipeline, создает `pipeline_run_id`, проверяет
 результат Worker, читает текущий run из Orchestrator, синхронизирует CRM и
 отправляет email digest. n8n не выполняет HH parsing, AI inference, semantic
@@ -634,9 +639,24 @@ Workflow export v4 предоставляет отдельную ноду `Searc
 resume session проверяются только когда выбран хотя бы один resume profile;
 keyword-only public search не зависит от storage state.
 
-Custom keyword profiles и workflow v4 реализованы в repository и покрыты
-локальными contract/static tests. Целевая Stage A acceptance с
-`vibecoding_keywords` и `max_pages_override=1` ещё не выполнялась.
+Milestone custom keyword profiles + configurable profile selection принят на
+целевой инфраструктуре. Current workflow export:
+`workflows/n8n/AI Job Automation — Daily Search CRM Digest v4.json`; v3
+сохраняется historical baseline.
+
+Stage A: keyword-only run с `vibecoding_keywords` и
+`max_pages_override=1` успешно завершился примерно за 1.5 минуты, добавил 10
+вакансий в CRM и подтвердил public pipeline без HH authenticated preflight.
+
+Stage B: все четыре keyword profiles без resume profiles и без page limit
+успешно прошли collection, downstream persistence и CRM sync. Наблюдаемые false
+positive и business/regional duplicates являются quality backlog, а не дефектом
+profile selection или pipeline.
+
+Stage C: mixed run с одним resume и одним keyword profile при
+`max_pages_override=1` подтвердил совместную работу `authenticated_browser` и
+public `httpx`, strict resume preflight, collection/merge/dedup, persistence и
+CRM.
 
 Controlled partial failure semantics приняты как production behavior: отдельные
 HH fetch failures, invalid extracted data или semantic fallbacks могут привести к
@@ -651,6 +671,9 @@ backlog, а не blockers завершенного MVP.
 
 Не реализовано:
 ⬜ production calibration
+⬜ filter calibration для keyword search
+⬜ near-duplicate suppression для CRM/Web UI при разных HH external_id
+⬜ GET /hh/search-profiles для будущего Web UI
 ⬜ персональный профиль пользователя
 ⬜ внешняя LLM
 ⬜ Telegram workflow

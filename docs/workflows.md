@@ -73,21 +73,23 @@ workflows/n8n/vacancy-first-slice.json
 
 ## Daily Search CRM Digest
 
-Статус: Phase 5.10 implemented и принят на целевой инфраструктуре.
+Статус: Phase 5.10 implemented и принят на целевой инфраструктуре; custom
+keyword profiles и configurable selection также приняты.
 
 Актуальный export:
 
 ``` text
-workflows/n8n/AI Job Automation — Daily Search CRM Digest v2.json
+workflows/n8n/AI Job Automation — Daily Search CRM Digest v4.json
 ```
 
 Workflow name:
 
 ``` text
-AI Job Automation — Daily Search CRM Digest v2
+AI Job Automation — Daily Search CRM Digest v4
 ```
 
-Export не содержит credentials. Workflow `active=false`. Каноничный production
+Export не содержит credentials. Workflow `active=false`. v3 сохраняется как
+historical production baseline и не перезаписывается. Каноничный production
 trigger — `Manual Trigger`; Schedule Trigger в текущем export отсутствует и не
 является частью production process.
 
@@ -117,11 +119,15 @@ Success branch:
 ``` text
 Manual Trigger
 → Config
+→ Use Existing Run?
+→ Search Profiles — EDIT BEFORE RUN
+→ Build Selected Profile IDs
 → Preflight Orchestrator
 → Preflight Worker
 → Preflight Ollama
-→ Preflight HH Auth
-→ Preflight HH Session
+→ Resume Profiles Selected?
+→ Preflight HH Auth / Skip HH Auth Preflight (keyword-only)
+→ Preflight HH Session (resume only)
 → Validate Preflight
 → Preflight OK?
 → Generate Run ID
@@ -148,12 +154,20 @@ Pipeline OK?
 → Gmail Send Failure
 ```
 
-Preflight branch uses bounded checks before the long Worker pipeline:
-Orchestrator `GET /health`, Worker `GET /health`, Worker `GET /health/ollama`,
-Worker `GET /health/hh-auth` and read-only authenticated HH preview. Failed
-preflight stops the workflow before `HTTP Worker Pipeline` and does not send a
-failure email. The long Worker request keeps its production timeout from the
-canonical export.
+### Profile Selection And Preflight
+
+`Search Profiles — EDIT BEFORE RUN` contains an explicit boolean map for the
+two resume profiles and four custom keyword profiles. `Build Selected Profile
+IDs` converts only `true` values to the existing Worker `profile_ids` contract.
+When all values are `false`, it stops with `No search profiles selected` before
+the Worker pipeline.
+
+The preflight branch always checks Orchestrator `GET /health`, Worker
+`GET /health` and Worker `GET /health/ollama`. `GET /health/hh-auth` and the
+read-only authenticated HH preview run only when at least one resume profile is
+selected. Keyword-only public search therefore does not depend on Playwright
+storage state. Failed required preflight stops the workflow before
+`HTTP Worker Pipeline` and does not send a failure email.
 
 Timeouts:
 
@@ -164,6 +178,24 @@ Timeouts:
 The live HH session check is intentionally longer because Playwright navigation
 and DOM stabilization can take longer than a simple health endpoint. The
 `7200000 ms` Worker timeout is a safety margin, not an expected runtime.
+
+### Custom Keyword Profile Acceptance
+
+All custom profiles use the existing public `expanded_search`/`httpx` pipeline
+with remote, `noExperience`/`between1And3` and `search_period=3` policy.
+
+- Stage A passed: `vibecoding_keywords` alone with
+  `max_pages_override=1` completed in about 1.5 minutes and added 10 vacancies
+  to CRM.
+- Stage B passed: all four keyword profiles completed together without resume
+  profiles or a page override; persistence and CRM sync completed.
+- Stage C passed: one resume and one keyword profile completed with
+  `max_pages_override=1`, confirming mixed `authenticated_browser` and `httpx`
+  collection plus strict resume preflight.
+
+False positives and business/regional vacancies with different HH external IDs
+are quality follow-ups. They do not invalidate profile selection, transport
+routing or the accepted downstream pipeline.
 
 ### Source of truth
 

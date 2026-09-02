@@ -717,6 +717,24 @@ Processing history показывает подробную последоват�
 - `request.max_pages_override` может только уменьшать configured limit;
 - `count < items_on_page` не используется как универсальный stop condition.
 
+## Phase 5.6.3. Custom keyword profiles and configurable selection
+
+Статус: завершена и принята на целевой инфраструктуре.
+
+## Результат
+
+- добавлены `ai_automation_keywords`, `vibecoding_keywords`,
+  `python_backend_keywords` и `python_automation_keywords` поверх existing
+  `expanded_search`/`httpx` path;
+- public policy включает remote, `noExperience`/`between1And3` и
+  `search_period=3`;
+- workflow v4 предоставляет boolean selector и формирует существующий Worker
+  contract `profile_ids`; all-false selection останавливается controlled error;
+- keyword-only run не требует HH storage state или authenticated preflight;
+- selected resume profile сохраняет strict HH auth и live session preflight;
+- Stage A, Stage B и mixed-transport Stage C target acceptance пройдены;
+- v3 сохранен как historical workflow baseline, измененный export — v4.
+
 ## Ограничения Phase 5.6 на момент приемки
 
 - storage state обновляется вручную;
@@ -1287,13 +1305,20 @@ Phase 5 имеет рабочий accepted MVP pipeline. Production запуск
 вручную через Manual Trigger. Full manual production run без acceptance limits
 выполнен. Calibration остается отдельным операционным улучшением.
 
-Остаются:
+## Current Reliability Priorities
 
-- production calibration.
+Следующие приоритеты:
 
-Следующий milestone: portfolio packaging / release / public project
-presentation. Phase 6+ являются future improvements, а не обязательными частями
-текущего MVP.
+1. Compute/GPU preflight.
+2. Async Worker pipeline.
+
+Filter calibration для keyword search, regional/business near-duplicate
+suppression для CRM/Web UI и безопасный `GET /hh/search-profiles` остаются
+follow-up backlog после этих reliability tasks. Exact deduplication по
+`source + external_id` сохраняется: разные HH external_id остаются отдельными
+source records, пока не появится отдельный grouping/representative layer.
+
+Phase 6+ являются future improvements, а не обязательными частями текущего MVP.
 
 ---
 

@@ -11,6 +11,15 @@
 - conditional HH resume-session preflight so keyword-only public runs do not
   require Playwright storage state.
 
+### Verified
+
+- Stage A keyword-only acceptance: `vibecoding_keywords` with
+  `max_pages_override=1` completed through persistence and CRM sync;
+- Stage B acceptance: all four keyword profiles completed together through the
+  downstream pipeline and CRM sync;
+- Stage C acceptance: one resume and one keyword profile completed in a mixed
+  `authenticated_browser` + `httpx` run with strict resume preflight.
+
 ## 2026-08-13
 
 ### Changed
