@@ -6,38 +6,38 @@
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
       "position": [
-        -5520,
+        -6240,
         128
       ],
-      "id": "89b8b491-ab66-401f-aeaf-85e1bdaf43ed",
+      "id": "a50af403-2097-4670-a243-117dcb12511b",
       "name": "Manual Trigger"
     },
     {
       "parameters": {
         "mode": "raw",
-        "jsonOutput": "={{\n  {\n    worker_api_url: $env.WORKER_API_URL,\n    orchestrator_api_url: $env.ORCHESTRATOR_API_URL,\n    spreadsheet_id: $env.GOOGLE_SHEETS_CRM_DOCUMENT_ID,\n    spreadsheet_url: $env.GOOGLE_SHEETS_CRM_URL || \"\",\n    sheet_name: $env.GOOGLE_SHEETS_CRM_SHEET_NAME || \"Вакансии_TEST\",\n    email_to: $env.JOB_DIGEST_EMAIL_TO,\n    existing_run_id: \"\",\n    max_pages_override: null,\n    max_filter_items_override: null,\n    max_enrich_items_override: null,\n    crm_sync_priorities: [\"P1\", \"P2\", \"ALT\"],\n    top_vacancy_limit: 10\n  }\n}}",
+        "jsonOutput": "={{\n  {\n    worker_api_url: $env.WORKER_API_URL,\n    orchestrator_api_url: $env.ORCHESTRATOR_API_URL,\n    spreadsheet_id: $env.GOOGLE_SHEETS_CRM_DOCUMENT_ID,\n    spreadsheet_url: $env.GOOGLE_SHEETS_CRM_URL || \"\",\n    sheet_name: $env.GOOGLE_SHEETS_CRM_SHEET_NAME || \"Вакансии_TEST\",\n    email_to: $env.JOB_DIGEST_EMAIL_TO,\n    existing_run_id: \"\",\n    max_pages_override: 1,\n    max_filter_items_override: null,\n    max_enrich_items_override: null,\n    crm_sync_priorities: [\"P1\", \"P2\", \"ALT\"],\n    top_vacancy_limit: 10\n  }\n}}",
         "options": {}
       },
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        -5280,
+        -6000,
         128
       ],
-      "id": "505b0102-5a12-4f67-a1bb-9ad98658dcdc",
+      "id": "fbfb5fd7-fd89-48b4-8440-f1d3444f7a70",
       "name": "Config"
     },
     {
       "parameters": {
-        "jsCode": "const input = $input.first().json;\nconst config = input.config || input;\nconst now = new Date();\nconst stamp = now.toISOString().replace(/[-:]/g, '').replace(/.d{3}Z$/, 'Z').replace('T', '-');\nconst random = Math.random().toString(36).slice(2, 8);\nconst runId = `n8n-${stamp}-${random}`;\nreturn [{\n  json: {\n    config,\n    run_id: runId,`n    orchestration_started_at_ms: now.getTime(),\n    worker_request: {\n      profile_ids: config.profile_ids,\n      max_pages_override: config.max_pages_override,\n      max_filter_items_override: config.max_filter_items_override,\n      max_enrich_items_override: config.max_enrich_items_override,\n      pipeline_run_id: runId\n    }\n  }\n}];"
+        "jsCode": "const input = $input.first().json;\nconst config = input.config || input;\nconst now = new Date();\nconst stamp = now.toISOString().replace(/[-:]/g, '').replace(/.d{3}Z$/, 'Z').replace('T', '-');\nconst random = Math.random().toString(36).slice(2, 8);\nconst runId = `n8n-${stamp}-${random}`;\nreturn [{\n  json: {\n    config,\n    run_id: runId,\n    orchestration_started_at_ms: now.getTime(),\n    worker_request: {\n      profile_ids: config.profile_ids,\n      max_pages_override: config.max_pages_override,\n      max_filter_items_override: config.max_filter_items_override,\n      max_enrich_items_override: config.max_enrich_items_override,\n      pipeline_run_id: runId\n    }\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -2160,
+        -2880,
         128
       ],
-      "id": "16205b73-d9e8-4193-9b41-c3e9400c0d1a",
+      "id": "d2611e41-3070-46dd-8a55-c8b4a2ba7b52",
       "name": "Generate Run ID"
     },
     {
@@ -54,10 +54,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        -1920,
+        -2640,
         128
       ],
-      "id": "f89d5e3a-e742-4254-ba28-24d17d4badb2",
+      "id": "d4fdfaea-6ce9-45ff-bb95-3046f182bfca",
       "name": "Start Worker Pipeline",
       "continueOnFail": true
     },
@@ -68,10 +68,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -1200,
+        -1920,
         400
       ],
-      "id": "714d10c9-9007-4623-ac66-367681b46927",
+      "id": "82e730f0-c8c6-46ff-800d-a5116bd25e0e",
       "name": "Evaluate Worker Run"
     },
     {
@@ -101,10 +101,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -960,
+        -1680,
         400
       ],
-      "id": "4b5ba483-7702-4740-9af5-2e1bed1c98f2",
+      "id": "aeb04b88-4d69-47ee-bf7b-4fa029e4bcdd",
       "name": "Worker Run Terminal?"
     },
     {
@@ -117,10 +117,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        -240,
+        -960,
         128
       ],
-      "id": "0ca9bf84-2ccb-42b2-9eb6-c524fe156ad0",
+      "id": "02f7543e-0be2-4476-a6d6-f43702d2ab1a",
       "name": "Get Current Run"
     },
     {
@@ -141,10 +141,10 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.6,
       "position": [
-        0,
+        -720,
         128
       ],
-      "id": "84ef191d-6fbc-4635-a385-affaeb43938b",
+      "id": "193108cf-890a-4027-8179-4c1ec642df4d",
       "name": "Read CRM Rows",
       "credentials": {
         "googleApi": {
@@ -160,10 +160,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        240,
+        -480,
         128
       ],
-      "id": "048d4a6c-38c9-42e9-bff8-0d93d2abd82f",
+      "id": "ca1a24a4-beca-4fea-9372-1edb83dd3b90",
       "name": "Prepare CRM Rows"
     },
     {
@@ -193,10 +193,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        480,
+        -240,
         128
       ],
-      "id": "d12ec00b-ce51-4639-b52c-12fa64dc7eda",
+      "id": "d872ad45-3523-4d08-907c-a4f16cca8245",
       "name": "Legacy URL Match?"
     },
     {
@@ -450,10 +450,10 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.6,
       "position": [
-        720,
+        0,
         240
       ],
-      "id": "31f60b62-0969-4bd3-89da-7f1ec274bab4",
+      "id": "7990088a-b8d5-4e31-9f4f-72f4c02355e0",
       "name": "CRM Upsert by CRM Key",
       "credentials": {
         "googleApi": {
@@ -510,10 +510,10 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.6,
       "position": [
-        720,
+        0,
         0
       ],
-      "id": "08fcb874-d930-465e-a1cd-b4bcec32a8f7",
+      "id": "89163a82-f11d-4b0f-85b5-bf933fd25a29",
       "name": "CRM Upsert Legacy by URL",
       "credentials": {
         "googleApi": {
@@ -530,10 +530,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        960,
+        240,
         128
       ],
-      "id": "055e5a3e-02d7-477a-be70-aefc6ef49864",
+      "id": "716711e3-b07a-446a-b4fd-d3219a205194",
       "name": "Prepare Success Email"
     },
     {
@@ -546,10 +546,10 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
       "position": [
-        1200,
+        480,
         128
       ],
-      "id": "fcdfab11-2799-47d7-9b7a-082eca2689eb",
+      "id": "c8410c23-9616-47bd-9878-0d820ec600a1",
       "name": "Gmail Send Digest",
       "webhookId": "cc45853e-aca4-4bcd-85b0-026cb7046828",
       "credentials": {
@@ -557,7 +557,8 @@
           "id": "eAE53vUBjysirbsb",
           "name": "Gmail account"
         }
-      }
+      },
+      "disabled": true
     },
     {
       "parameters": {
@@ -566,10 +567,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -720,
+        -1392,
         640
       ],
-      "id": "f76eddbd-bdfc-482b-9a22-f8f5cd0bda29",
+      "id": "ddb023ef-f938-4764-a483-9976d6059be2",
       "name": "Prepare Failure Email"
     },
     {
@@ -582,10 +583,10 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
       "position": [
-        -480,
+        -1200,
         640
       ],
-      "id": "c78eefb9-30a5-41f6-9bf0-2f085441c39d",
+      "id": "69ec3ef5-9c7e-40d6-892a-dd0ffe1f0aef",
       "name": "Gmail Send Failure",
       "webhookId": "0a89ddf7-4a8c-4874-be54-703d159eae2e",
       "credentials": {
@@ -593,7 +594,8 @@
           "id": "eAE53vUBjysirbsb",
           "name": "Gmail account"
         }
-      }
+      },
+      "disabled": true
     },
     {
       "parameters": {
@@ -605,10 +607,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        -4320,
+        -5040,
         128
       ],
-      "id": "f240ee2a-36fe-4072-a223-07c1a223554b",
+      "id": "fb539655-d57c-4e1f-8467-63c620714592",
       "name": "Preflight Orchestrator",
       "continueOnFail": true
     },
@@ -622,10 +624,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        -4080,
+        -4800,
         128
       ],
-      "id": "40b1fe02-46bd-4990-ad46-8b74f31503e2",
+      "id": "230afad7-6b13-4edf-b87f-d1c5937f90fe",
       "name": "Preflight Worker",
       "continueOnFail": true
     },
@@ -639,10 +641,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        -3840,
+        -4560,
         128
       ],
-      "id": "1d76dbb7-e1a4-4499-9bf6-80bda12836d9",
+      "id": "8846314a-e072-47da-8ceb-885435753da0",
       "name": "Preflight Ollama",
       "continueOnFail": true
     },
@@ -657,10 +659,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        -3600,
+        -4320,
         128
       ],
-      "id": "3a9bc1d8-8b79-45cb-8fa0-30d1641f5501",
+      "id": "9b2155fe-968b-4067-81ac-00b7cccc7bd2",
       "name": "Preflight Compute",
       "continueOnFail": true
     },
@@ -674,10 +676,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        -3120,
+        -3840,
         128
       ],
-      "id": "49e84d36-c521-449d-b50c-9aeb135c3ff1",
+      "id": "bfb96eb5-b22a-48aa-8646-c49495f81c4a",
       "name": "Preflight HH Auth",
       "continueOnFail": true
     },
@@ -695,10 +697,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        -2880,
+        -3600,
         128
       ],
-      "id": "2314cc24-eba5-41ee-a180-77c08d56be45",
+      "id": "e57f41cb-fd9f-432c-8e7b-496bcaea11a7",
       "name": "Preflight HH Session",
       "continueOnFail": true
     },
@@ -709,10 +711,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -2640,
+        -3360,
         128
       ],
-      "id": "477d4923-10c0-4c39-b5d0-c57a617812b9",
+      "id": "437defc6-3fef-4233-9ef6-980d47e7e78c",
       "name": "Validate Preflight"
     },
     {
@@ -742,10 +744,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -2400,
+        -3120,
         128
       ],
-      "id": "10a6efd1-d974-4a56-ac1c-0048cd1ae8c0",
+      "id": "f33bf186-e683-42fb-84b7-2d8f1034d1f4",
       "name": "Preflight OK?"
     },
     {
@@ -755,10 +757,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -2160,
+        -2880,
         368
       ],
-      "id": "c506c9b4-8fae-44ee-b8f2-9c207627970d",
+      "id": "f6b2df5e-95b2-486f-b83c-0cbaed970681",
       "name": "Stop Preflight Failed"
     },
     {
@@ -788,25 +790,25 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -5040,
+        -5760,
         128
       ],
-      "id": "d0a0412b-7556-4b03-b2da-622c04c9bdd9",
+      "id": "5c23072f-444d-463f-b0dc-e62ca54ac0c1",
       "name": "Use Existing Run?"
     },
     {
       "parameters": {
         "mode": "raw",
-        "jsonOutput": "={{\n  {\n    ai_resume_recommendations: true,\n    python_resume_recommendations: true,\n    ai_automation_keywords: true,\n    vibecoding_keywords: false,\n    python_backend_keywords: false,\n    python_automation_keywords: false\n  }\n}}",
+        "jsonOutput": "={{\n  {\n    ai_resume_recommendations: false,\n    python_resume_recommendations: false,\n    ai_automation_keywords: false,\n    vibecoding_keywords: true,\n    python_backend_keywords: false,\n    python_automation_keywords: false\n  }\n}}",
         "options": {}
       },
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        -4800,
+        -5520,
         128
       ],
-      "id": "14711330-842c-4d8c-bc0d-61a7e128c44f",
+      "id": "f0d66bda-0e4e-49e8-abe0-bbfb6b989997",
       "name": "Search Profiles — EDIT BEFORE RUN"
     },
     {
@@ -816,10 +818,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -4560,
+        -5280,
         128
       ],
-      "id": "2379671f-9758-4a20-ada8-39c17c6a4974",
+      "id": "51cb7a22-5766-4ec4-8170-fe804be60473",
       "name": "Build Selected Profile IDs"
     },
     {
@@ -849,10 +851,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -3360,
+        -4080,
         128
       ],
-      "id": "3fafedf5-d9dd-47ee-b301-f63083ada156",
+      "id": "0dfbd929-e729-49a9-a24c-75e6e627ea0a",
       "name": "Resume Profiles Selected?"
     },
     {
@@ -862,10 +864,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -3120,
+        -3840,
         368
       ],
-      "id": "1108f6a3-c1fd-4e8f-a7a2-268d94b01f31",
+      "id": "a1ee1756-5cf6-40f1-b15e-9c54dc4d460e",
       "name": "Skip HH Auth Preflight (keyword-only)"
     },
     {
@@ -875,29 +877,28 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -480,
+        -1200,
         128
       ],
-      "id": "ef816e79-cd8b-41ec-add3-88bb71a6fe95",
+      "id": "e76c692d-dff2-4661-883b-37c83eefc3f5",
       "name": "Build Run Context"
     },
     {
       "parameters": {
-        "amount": 20,
-        "unit": "seconds"
+        "amount": 20
       },
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
       "position": [
-        -1680,
+        -2400,
         400
       ],
-      "id": "8d3aa49a-4cdf-4575-ad18-9c84f9ddbbb7",
-      "name": "Wait 20s for Worker Run"
+      "id": "e075b487-faa2-4e8a-9f0a-7f669729cd91",
+      "name": "Wait 20s for Worker Run",
+      "webhookId": "68ba7eeb-d2ad-4e54-9718-f695b99906eb"
     },
     {
       "parameters": {
-        "method": "GET",
         "url": "={{ $('Generate Run ID').first().json.config.worker_api_url }}/hh/pipeline-runs/{{ $('Generate Run ID').first().json.run_id }}",
         "options": {
           "timeout": 15000
@@ -906,10 +907,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        -1440,
+        -2160,
         400
       ],
-      "id": "87bdd14d-b3d8-402a-857a-c25a723e7d8a",
+      "id": "e84301cd-c241-4f79-9765-a2d98ca49c43",
       "name": "Get Worker Run Status",
       "continueOnFail": true
     },
@@ -940,10 +941,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -720,
+        -1440,
         128
       ],
-      "id": "3d0d77b5-0771-4bb8-aed4-cde016c82098",
+      "id": "c075d403-75eb-4a87-a136-937bf520be14",
       "name": "Worker Result Available?"
     }
   ],
@@ -1338,11 +1339,11 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "19907b79-c422-4f09-8555-734847fab820",
+  "versionId": "adb805ff-0742-4e77-ac92-4a0ab74b376a",
   "meta": {
     "instanceId": "0db81f0753baa06bf8dd01a6aa413440970bcc829c805aa818d17d0924efde58"
   },
   "nodeGroups": [],
-  "id": "792d48d7-c01f-443c-9989-765609093778",
+  "id": "9btjeilibSG4SZua",
   "tags": []
 }
