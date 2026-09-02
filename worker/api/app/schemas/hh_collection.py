@@ -84,6 +84,7 @@ class SearchProfile(BaseModel):
     items_on_page: int = Field(ge=1, le=100)
     remote_only: bool = True
     experience: list[str] = Field(default_factory=list)
+    search_period: int | None = Field(default=None, ge=1, le=30)
     order: int = Field(ge=0)
 
 

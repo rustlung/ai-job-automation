@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-02
+
+### Added
+
+- Four configurable public HH keyword profiles with shared remote, experience
+  and three-day freshness policy;
+- n8n v4 workflow export with boolean profile selection and controlled empty
+  selection handling;
+- conditional HH resume-session preflight so keyword-only public runs do not
+  require Playwright storage state.
+
 ## 2026-08-13
 
 ### Changed

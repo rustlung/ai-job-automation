@@ -3,6 +3,8 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from app.core.config import Settings
+from app.schemas.hh_collection import HHSearchTransport, SearchProfileSourceType
+from app.services.hh_search_collection import HHSearchCollectionService
 from app.services.hh_search_profiles import HHInvalidSearchProfileUrlError, HHSearchProfileRegistry
 
 
@@ -26,13 +28,55 @@ def test_registry_defines_expected_profiles_without_secrets_in_response(monkeypa
         "ai_expanded_search",
         "python_expanded_search",
         "alt_opportunities",
+        "ai_automation_keywords",
+        "vibecoding_keywords",
+        "python_backend_keywords",
+        "python_automation_keywords",
     ]
     assert profiles[0].enabled is True
     assert profiles[1].enabled is False
-    assert profiles[-1].track.value == "alternative"
-    alt_queries = " ".join(variant.query for variant in profiles[-1].query_variants).casefold()
+    alt_profile = registry.get_profiles(["alt_opportunities"])[0]
+    assert alt_profile.track.value == "alternative"
+    alt_queries = " ".join(variant.query for variant in alt_profile.query_variants).casefold()
     assert "support" not in alt_queries
     assert "call center" not in alt_queries
+
+
+def test_keyword_profiles_use_shared_public_policy_and_unique_ids(monkeypatch: pytest.MonkeyPatch) -> None:
+    registry = make_registry(monkeypatch)
+    profiles = registry.list_profiles()
+    keyword_profiles = registry.get_profiles(
+        [
+            "ai_automation_keywords",
+            "vibecoding_keywords",
+            "python_backend_keywords",
+            "python_automation_keywords",
+        ]
+    )
+
+    assert len({profile.id for profile in profiles}) == len(profiles)
+    assert all(profile.source_type == SearchProfileSourceType.EXPANDED_SEARCH for profile in keyword_profiles)
+    assert all(HHSearchCollectionService._transport_for_profile(profile) == HHSearchTransport.HTTPX for profile in keyword_profiles)
+    assert all(profile.remote_only is True for profile in keyword_profiles)
+    assert all(profile.experience == ["noExperience", "between1And3"] for profile in keyword_profiles)
+    assert all(profile.search_period == 3 for profile in keyword_profiles)
+    assert {profile.max_pages for profile in keyword_profiles} == {3}
+
+
+def test_keyword_profile_variants_are_specific_and_conservatively_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    registry = make_registry(monkeypatch)
+
+    expected_variants = {
+        "ai_automation_keywords": ["AI Automation", "Автоматизация с ИИ"],
+        "vibecoding_keywords": ["вайбкодер", "vibe coding", "AI Product Builder", "AI-first разработчик"],
+        "python_backend_keywords": ["Python backend", "FastAPI"],
+        "python_automation_keywords": ["Python автоматизация", "Python automation"],
+    }
+
+    for profile_id, expected_queries in expected_variants.items():
+        profile = registry.get_profiles([profile_id])[0]
+        assert [variant.query for variant in profile.query_variants] == expected_queries
+        assert {variant.max_pages for variant in profile.query_variants} == {3}
 
 
 def test_resume_search_url_preserves_resume_params_and_replaces_collection_params(
@@ -124,6 +168,22 @@ def test_expanded_profile_uses_public_page_size_for_sequential_pages(monkeypatch
         ["noExperience", "between1And3"],
     ]
     assert [query["work_format"] for query in queries] == [["REMOTE"], ["REMOTE"], ["REMOTE"]]
+    assert [query["search_period"] for query in queries] == [["3"], ["3"], ["3"]]
+
+
+def test_keyword_search_url_uses_shared_public_filters(monkeypatch: pytest.MonkeyPatch) -> None:
+    registry = make_registry(monkeypatch)
+    profile = registry.get_profiles(["vibecoding_keywords"])[0]
+    variant = profile.query_variants[1]
+
+    query = parse_qs(urlsplit(registry.build_search_url(profile, page=0, query_variant=variant)).query)
+
+    assert query["text"] == ["vibe coding"]
+    assert query["items_on_page"] == ["20"]
+    assert query["page"] == ["0"]
+    assert query["work_format"] == ["REMOTE"]
+    assert query["experience"] == ["noExperience", "between1And3"]
+    assert query["search_period"] == ["3"]
 
 
 def test_expanded_profiles_use_compact_query_variants(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -191,6 +251,8 @@ def test_public_and_resume_profiles_use_source_type_page_sizes(monkeypatch: pyte
         ("python_expanded_search", 5, 5),
         ("python_expanded_search", 10, 5),
         ("alt_opportunities", 5, 3),
+        ("vibecoding_keywords", 1, 1),
+        ("vibecoding_keywords", 10, 3),
     ],
 )
 def test_public_variant_max_pages_override_cannot_increase_config_limit(

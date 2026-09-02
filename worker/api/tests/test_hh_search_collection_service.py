@@ -598,6 +598,45 @@ async def test_mixed_transport_deduplicates_and_preserves_provenance() -> None:
 
 
 @pytest.mark.anyio
+async def test_keyword_profiles_deduplicate_across_variants_and_preserve_provenance() -> None:
+    profiles = [
+        profile(
+            "vibecoding_keywords",
+            max_pages=1,
+            query_variants=[
+                SearchQueryVariant(id="vibe_coding", query="vibe coding", max_pages=1, order=10),
+                SearchQueryVariant(id="ai_product_builder", query="AI Product Builder", max_pages=1, order=20),
+            ],
+        ),
+        profile(
+            "ai_automation_keywords",
+            order=20,
+            max_pages=1,
+            query_variants=[SearchQueryVariant(id="ai_automation_en", query="AI Automation", max_pages=1, order=10)],
+        ),
+    ]
+    fake_search = FakeSearchService(
+        {
+            ("vibecoding_keywords", "vibe_coding", 0): response(vacancy("1"), count=1),
+            ("vibecoding_keywords", "ai_product_builder", 0): response(vacancy("1"), vacancy("2"), count=2),
+            ("ai_automation_keywords", "ai_automation_en", 0): response(vacancy("2"), vacancy("3"), count=2),
+        }
+    )
+
+    result = await service(fake_search, profiles).collect(HHSearchCollectionRequest())
+
+    assert result.status == "succeeded"
+    assert result.raw_vacancy_count == 5
+    assert result.unique_vacancy_count == 3
+    assert result.duplicate_count == 2
+    assert result.vacancies[0].provenance.profile_ids == ["vibecoding_keywords"]
+    assert result.vacancies[0].provenance.query_variant_ids == ["vibe_coding", "ai_product_builder"]
+    assert result.vacancies[0].provenance.occurrence_count == 2
+    assert result.vacancies[1].provenance.profile_ids == ["vibecoding_keywords", "ai_automation_keywords"]
+    assert result.vacancies[1].provenance.query_variant_ids == ["ai_product_builder", "ai_automation_en"]
+
+
+@pytest.mark.anyio
 async def test_public_profile_451_and_resume_success_produces_completed_with_errors() -> None:
     profiles = [
         profile(

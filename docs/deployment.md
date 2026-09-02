@@ -739,15 +739,16 @@ resolver, который временно возвращал NXDOMAIN для н�
 
 ## n8n Workflow Configuration
 
-Workflow `AI Job Automation — Daily Search CRM Digest v2` запускается в n8n на
-homeserver. Актуальный export:
+Workflow export `AI Job Automation — Daily Search CRM Digest v4` подготовлен
+для импорта в n8n на homeserver. Актуальный export:
 
 ``` text
-workflows/n8n/AI Job Automation — Daily Search CRM Digest v2.json
+workflows/n8n/AI Job Automation — Daily Search CRM Digest v4.json
 ```
 
 Export хранит topology и node settings, но не хранит credentials. Workflow
-`active=false`. Каноничный production trigger — `Manual Trigger`; Schedule
+`active=false`. Export v3 сохраняется как historical production baseline и не
+перезаписывается. Каноничный production trigger — `Manual Trigger`; Schedule
 Trigger в текущем export отсутствует и не является частью production process.
 
 Принятый flow:
@@ -755,11 +756,15 @@ Trigger в текущем export отсутствует и не является
 ``` text
 Manual Trigger
 → Config
+→ Use Existing Run?
+→ Search Profiles — EDIT BEFORE RUN
+→ Build Selected Profile IDs
 → Preflight Orchestrator
 → Preflight Worker
 → Preflight Ollama
-→ Preflight HH Auth
-→ Preflight HH Session
+→ Resume Profiles Selected?
+→ Preflight HH Auth / Skip HH Auth Preflight (keyword-only)
+→ Preflight HH Session (resume only)
 → Validate Preflight
 → Preflight OK?
 → Generate Run ID
@@ -788,8 +793,14 @@ Pipeline OK?
 
 n8n responsibilities:
 
-- проверяет Orchestrator, Worker, Ollama, HH auth storage и live HH session
-  короткими preflight checks;
+- предоставляет boolean selector для `ai_resume_recommendations`,
+  `python_resume_recommendations`, `ai_automation_keywords`,
+  `vibecoding_keywords`, `python_backend_keywords` и
+  `python_automation_keywords`;
+- преобразует выбранные `true` values в Worker `profile_ids` и прекращает run с
+  `No search profiles selected`, если список пуст;
+- проверяет Orchestrator, Worker и Ollama короткими preflight checks; HH auth
+  storage и live HH session проверяются только при выбранном resume profile;
 - запускает Worker `POST /hh/collect-filter-enrich-and-persist` только после
   успешного preflight;
 - создает `pipeline_run_id`;
@@ -804,12 +815,17 @@ Manual Trigger является production trigger. Перед каждым по
 Ollama health, затем запускает workflow в n8n. Schedule Trigger не является
 частью текущего production process.
 
-Preflight checks:
+Always-on preflight checks:
 
 ``` text
 Orchestrator GET /health
 Worker GET /health
 Worker GET /health/ollama
+```
+
+Resume-only preflight checks:
+
+``` text
 Worker GET /health/hh-auth
 Worker POST /hh/authenticated-search-preview
 ```

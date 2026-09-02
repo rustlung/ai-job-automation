@@ -5,6 +5,7 @@ from app.schemas.hh_collection import SearchProfile, SearchProfileSourceType, Se
 
 HH_SEARCH_PATH = "/search/vacancy"
 HH_REMOTE_WORK_FORMAT_VALUE = "REMOTE"
+HH_PUBLIC_SEARCH_PERIOD_DAYS = 3
 HH_SEARCH_PARAMS_REPLACED_BY_COLLECTOR = {
     "enable_snippets",
     "items_on_page",
@@ -63,12 +64,10 @@ class HHSearchProfileRegistry:
                 experience=["noExperience", "between1And3"],
                 order=20,
             ),
-            SearchProfile(
+            self._public_profile(
                 id="ai_expanded_search",
                 name="AI expanded search",
                 track=SearchProfileTrack.MAIN,
-                source_type=SearchProfileSourceType.EXPANDED_SEARCH,
-                base_url=self._public_search_url(),
                 query_variants=[
                     SearchQueryVariant(id="ai_automation", query="AI automation", max_pages=5, order=10),
                     SearchQueryVariant(id="ai_integration", query="AI integration", max_pages=5, order=20),
@@ -76,33 +75,23 @@ class HHSearchProfileRegistry:
                     SearchQueryVariant(id="n8n", query="n8n", max_pages=5, order=40),
                 ],
                 max_pages=5,
-                items_on_page=20,
-                remote_only=True,
-                experience=["noExperience", "between1And3"],
                 order=30,
             ),
-            SearchProfile(
+            self._public_profile(
                 id="python_expanded_search",
                 name="Python expanded search",
                 track=SearchProfileTrack.MAIN,
-                source_type=SearchProfileSourceType.EXPANDED_SEARCH,
-                base_url=self._public_search_url(),
                 query_variants=[
                     SearchQueryVariant(id="python_backend", query="Python backend", max_pages=5, order=10),
                     SearchQueryVariant(id="fastapi", query="FastAPI", max_pages=5, order=20),
                 ],
                 max_pages=5,
-                items_on_page=20,
-                remote_only=True,
-                experience=["noExperience", "between1And3"],
                 order=40,
             ),
-            SearchProfile(
+            self._public_profile(
                 id="alt_opportunities",
                 name="Alternative opportunities",
                 track=SearchProfileTrack.ALTERNATIVE,
-                source_type=SearchProfileSourceType.EXPANDED_SEARCH,
-                base_url=self._public_search_url(),
                 query_variants=[
                     SearchQueryVariant(id="qa", query="тестировщик QA", max_pages=3, order=10),
                     SearchQueryVariant(id="data_analyst", query="аналитик данных", max_pages=3, order=20),
@@ -111,10 +100,53 @@ class HHSearchProfileRegistry:
                     SearchQueryVariant(id="ai_trainer", query="AI тренер", max_pages=3, order=50),
                 ],
                 max_pages=3,
-                items_on_page=20,
-                remote_only=True,
-                experience=["noExperience", "between1And3"],
                 order=50,
+            ),
+            self._public_profile(
+                id="ai_automation_keywords",
+                name="AI automation keywords",
+                track=SearchProfileTrack.MAIN,
+                query_variants=[
+                    SearchQueryVariant(id="ai_automation_en", query="AI Automation", max_pages=3, order=10),
+                    SearchQueryVariant(id="ai_automation_ru", query="Автоматизация с ИИ", max_pages=3, order=20),
+                ],
+                max_pages=3,
+                order=60,
+            ),
+            self._public_profile(
+                id="vibecoding_keywords",
+                name="Vibecoding keywords",
+                track=SearchProfileTrack.MAIN,
+                query_variants=[
+                    SearchQueryVariant(id="vibecoder_ru", query="вайбкодер", max_pages=3, order=10),
+                    SearchQueryVariant(id="vibe_coding", query="vibe coding", max_pages=3, order=20),
+                    SearchQueryVariant(id="ai_product_builder", query="AI Product Builder", max_pages=3, order=30),
+                    SearchQueryVariant(id="ai_first_developer_ru", query="AI-first разработчик", max_pages=3, order=40),
+                ],
+                max_pages=3,
+                order=70,
+            ),
+            self._public_profile(
+                id="python_backend_keywords",
+                name="Python backend keywords",
+                track=SearchProfileTrack.MAIN,
+                query_variants=[
+                    SearchQueryVariant(id="python_backend", query="Python backend", max_pages=3, order=10),
+                    SearchQueryVariant(id="fastapi", query="FastAPI", max_pages=3, order=20),
+                ],
+                max_pages=3,
+                order=80,
+            ),
+            self._public_profile(
+                id="python_automation_keywords",
+                name="Python automation keywords",
+                track=SearchProfileTrack.MAIN,
+                query_variants=[
+                    SearchQueryVariant(id="python_automation_ru", query="Python автоматизация", max_pages=3, order=10),
+                    SearchQueryVariant(id="python_automation_en", query="Python automation", max_pages=3, order=20),
+                ],
+                max_pages=3,
+                order=90,
             ),
         ]
         return sorted(profiles, key=lambda profile: profile.order)
@@ -147,6 +179,8 @@ class HHSearchProfileRegistry:
         self._validate_base_url(profile)
 
         replaced_keys = set(HH_SEARCH_PARAMS_REPLACED_BY_COLLECTOR)
+        if profile.search_period is not None:
+            replaced_keys.add("search_period")
         query = query_variant.query if query_variant is not None else profile.query
         if query:
             replaced_keys.add("text")
@@ -168,6 +202,8 @@ class HHSearchProfileRegistry:
             params.append(("experience", experience))
         if profile.remote_only:
             params.append(("work_format", HH_REMOTE_WORK_FORMAT_VALUE))
+        if profile.search_period is not None:
+            params.append(("search_period", str(profile.search_period)))
 
         parts = urlsplit(profile.base_url)
         return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(params), ""))
@@ -199,6 +235,31 @@ class HHSearchProfileRegistry:
 
     def _public_search_url(self) -> str:
         return f"{self.settings.hh_base_url.rstrip('/')}{HH_SEARCH_PATH}"
+
+    def _public_profile(
+        self,
+        *,
+        id: str,
+        name: str,
+        track: SearchProfileTrack,
+        query_variants: list[SearchQueryVariant],
+        max_pages: int,
+        order: int,
+    ) -> SearchProfile:
+        return SearchProfile(
+            id=id,
+            name=name,
+            track=track,
+            source_type=SearchProfileSourceType.EXPANDED_SEARCH,
+            base_url=self._public_search_url(),
+            query_variants=query_variants,
+            max_pages=max_pages,
+            items_on_page=20,
+            remote_only=True,
+            experience=["noExperience", "between1And3"],
+            search_period=HH_PUBLIC_SEARCH_PERIOD_DAYS,
+            order=order,
+        )
 
     def _validate_base_url(self, profile: SearchProfile) -> None:
         assert profile.base_url is not None

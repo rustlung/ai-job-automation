@@ -404,7 +404,8 @@ CRM and external integration decisions:
   проверяет Docker, Worker services, Ollama health и выключенный VPN для HH,
   затем запускает n8n workflow через Manual Trigger;
 - preflight health checks перед долгим Worker pipeline реализованы: Orchestrator,
-  Worker, Ollama, HH auth storage и live HH session;
+  Worker и Ollama всегда; HH auth storage и live HH session — только при
+  выбранном resume profile;
 - основной n8n Worker request имеет timeout `7200000 ms` как safety margin;
 - `PRELIMINARY_FILTER_MAX_ITEMS=1000` является production safety cap, а не
   целевым размером batch;
@@ -426,8 +427,13 @@ HH search collection decisions:
   пользовательской сессии и монтируется в контейнер read-only;
 - resume profiles используют Playwright/Chromium и `authenticated_browser`;
 - public expanded/ALT profiles используют `httpx`;
+- custom keyword profiles `ai_automation_keywords`, `vibecoding_keywords`,
+  `python_backend_keywords` и `python_automation_keywords` также используют
+  `httpx` и выбираются в n8n boolean map;
 - browser page size для resume profiles — 100;
 - public httpx page size — 20;
+- public profiles передают HH policy `work_format=REMOTE`, допустимый experience
+  и `search_period=3` (последние три дня);
 - `request.max_pages_override` может только уменьшать configured limit;
 - `count < items_on_page` не является универсальным признаком последней
   страницы;

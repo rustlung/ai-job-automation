@@ -642,6 +642,10 @@ Processing history показывает подробную последоват�
   - `ai_expanded_search`;
   - `python_expanded_search`;
   - `alt_opportunities`;
+  - `ai_automation_keywords`;
+  - `vibecoding_keywords`;
+  - `python_backend_keywords`;
+  - `python_automation_keywords`;
 - пользователь не передает arbitrary URL, query strings, cookies, storage paths
   или resume identifiers в API;
 - resume search URLs хранятся только в локальных environment variables
@@ -707,6 +711,8 @@ Processing history показывает подробную последоват�
   - Python expanded variants — до 5 страниц;
   - ALT variants — до 3 страниц;
 - для public/httpx profiles установлен фактический page size `items_on_page=20`;
+- public expanded/keyword profiles используют общий HH policy: remote,
+  `noExperience`/`between1And3` и `search_period=3`;
 - для authenticated browser resume profiles сохранен `items_on_page=100`;
 - `request.max_pages_override` может только уменьшать configured limit;
 - `count < items_on_page` не используется как универсальный stop condition.
@@ -1226,7 +1232,7 @@ Email digest
 
 Результат:
 
-- workflow `AI Job Automation — Daily Search CRM Digest v2` запускает Worker
+- workflow `AI Job Automation — Daily Search CRM Digest v4` запускает Worker
   vertical endpoint из n8n;
 - workflow создает `pipeline_run_id`, проверяет Worker response и читает
   текущий run через `GET /pipeline-results/runs/{run_id}`;
@@ -1248,10 +1254,13 @@ Email digest
   `Nginx Full`;
 - Worker и Orchestrator остаются LAN-only;
 - workflow export хранится в
-  `workflows/n8n/AI Job Automation — Daily Search CRM Digest v2.json` без
-  credentials;
-- production preflight health checks проверяют Orchestrator, Worker, Ollama, HH
-  auth storage и live HH session до запуска долгого Worker pipeline;
+  `workflows/n8n/AI Job Automation — Daily Search CRM Digest v4.json` без
+  credentials; v3 сохраняется как historical production baseline;
+- n8n boolean selector преобразует выбранные profiles в Worker `profile_ids` и
+  останавливает пустой выбор до Worker pipeline;
+- production preflight health checks всегда проверяют Orchestrator, Worker и
+  Ollama; HH auth storage и live HH session проверяются только для выбранных
+  resume profiles;
 - основной Worker request в n8n имеет timeout `7200000 ms` как safety margin;
 - Manual Trigger является production trigger, потому что Windows Worker
   включается и проверяется пользователем перед каждым поиском;

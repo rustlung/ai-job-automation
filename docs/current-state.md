@@ -1,6 +1,6 @@
 # Current State
 
-2026-08-13
+2026-09-02
 
 Работает:
 ✅ Ubuntu server
@@ -192,7 +192,7 @@ Worker реализует точную batch-дедупликацию без о�
 Дедупликация работает только внутри переданного batch и не хранит состояние между вызовами.
 
 Worker реализует общий HH search collector endpoint `POST /hh/collect-search`.
-Collector использует заранее настроенные профили: `ai_resume_recommendations`, `python_resume_recommendations`, `ai_expanded_search`, `python_expanded_search` и `alt_opportunities`.
+Collector использует заранее настроенные profiles: resume profiles, existing public expanded/ALT profiles и custom keyword profiles `ai_automation_keywords`, `vibecoding_keywords`, `python_backend_keywords`, `python_automation_keywords`.
 Пользователь не передает произвольные URL, query strings, cookies, storage paths или resume identifiers в API.
 
 Resume-based профили используют transport `authenticated_browser`: Playwright, Chromium, сохраненный storage state, проверку авторизации, проверку resume context, DOM stabilization и существующий `HHSearchParser`.
@@ -203,6 +203,11 @@ Fallback resume-профилей на анонимный `httpx` отсутст�
 
 - authenticated browser для resume-профилей: `items_on_page=100`;
 - public `httpx` для expanded/ALT профилей: `items_on_page=20`.
+
+Все public expanded/keyword profiles используют общий policy: `work_format=REMOTE`,
+`experience=noExperience`, `experience=between1And3` и `search_period=3`.
+Freshness передается непосредственно HH URL builder; post-collection фильтр по
+дате не используется.
 
 Пагинация collector не считает `count < items_on_page` универсальным признаком последней страницы.
 Остановка выполняется по effective `max_pages`, пустой странице, повтору identity set, controlled page error, auth verification failure или global raw vacancy limit.
@@ -621,6 +626,17 @@ Worker, проверяет Docker Desktop, Worker services, Ollama health и в�
 VPN для HH, затем запускает n8n workflow через Manual Trigger. Preflight
 подтверждает инфраструктуру перед долгим pipeline. Schedule Trigger не является
 production process и не является незавершенной частью MVP.
+
+Workflow export v4 предоставляет отдельную ноду `Search Profiles — EDIT BEFORE RUN`.
+Она принимает boolean map выбранных resume и custom keyword profiles, а техническая
+нода формирует существующий Worker contract `profile_ids`. Пустой выбор
+останавливает workflow с `No search profiles selected`. HH auth storage и live
+resume session проверяются только когда выбран хотя бы один resume profile;
+keyword-only public search не зависит от storage state.
+
+Custom keyword profiles и workflow v4 реализованы в repository и покрыты
+локальными contract/static tests. Целевая Stage A acceptance с
+`vibecoding_keywords` и `max_pages_override=1` ещё не выполнялась.
 
 Controlled partial failure semantics приняты как production behavior: отдельные
 HH fetch failures, invalid extracted data или semantic fallbacks могут привести к
