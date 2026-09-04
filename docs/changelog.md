@@ -4,6 +4,11 @@
 
 ### Added
 
+- React + TypeScript Web UI foundation in `web/`: Dashboard, profile-selected
+  run start, polling run detail, runs history, typed Orchestrator client and
+  static Docker deployment with SPA routing fallback.
+- explicit Orchestrator CORS allow-list through `WEB_UI_ALLOWED_ORIGINS`; only
+  configured Web UI origins may call `/api/...` from the browser.
 - Web backend foundation: persistent `PipelineRun`, typed singleton
   `OperationalSettings`, safe Worker search-profile proxy, lightweight system
   health, Web run start/list/detail APIs and internal run lifecycle endpoints.

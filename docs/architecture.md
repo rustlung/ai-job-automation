@@ -70,7 +70,7 @@ Public exposure:
 Web backend foundation:
 
 ``` text
-Future React UI
+React Web UI
 ↓ /api
 Orchestrator API
 ├── PipelineRun and OperationalSettings persistence
@@ -78,7 +78,7 @@ Orchestrator API
 └── internal n8n webhook start
 ```
 
-The Orchestrator is the only future frontend boundary. Google Sheets remains a
+The Orchestrator is the only frontend boundary. Google Sheets remains a
 reporting mirror; it is not a source of truth for user-owned application data.
 
 Production процесс осознанно ручной: Windows Worker не работает постоянно,

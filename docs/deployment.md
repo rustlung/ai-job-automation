@@ -151,6 +151,25 @@ The v9 webhook is an internal start boundary; it accepts quickly and does not
 hold a connection for Worker processing. Manual n8n full runs still register a
 `PipelineRun`, while `existing_run_id` remains a replay-only service path.
 
+### Web UI
+
+The React Web UI is a separate static Docker deployment in `web/`. It serves
+the SPA on port `3000` and the browser calls only the configured Orchestrator
+`/api/...` origin directly; it does not proxy API traffic or expose Worker and
+n8n addresses. Build the image with the LAN Orchestrator URL because
+`VITE_API_BASE_URL` is embedded at build time:
+
+```powershell
+cd web
+$env:VITE_API_BASE_URL = "http://192.168.0.129:8000"
+docker compose up -d --build
+```
+
+Set the matching browser origin in the Orchestrator environment, for example
+`WEB_UI_ALLOWED_ORIGINS=http://192.168.0.129:3000`. CORS is intentionally an
+explicit allow-list; do not use a wildcard production origin. nginx serves only
+static SPA files and falls back to `index.html` for direct React Router routes.
+
 Worker разворачивается на целевом узле Windows 11 через Docker Desktop.
 Для деплоя используется sparse checkout только каталога `worker`.
 

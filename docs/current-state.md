@@ -1,6 +1,6 @@
 # Current State
 
-2026-09-02
+2026-09-04
 
 Работает:
 ✅ Ubuntu server
@@ -30,6 +30,8 @@
 ✅ n8n polling Worker pipeline workflow v9
 ✅ persistent PipelineRun history and OperationalSettings
 ✅ safe Web API foundation for future React UI
+✅ React + TypeScript Web UI foundation: Dashboard, запуск поиска и Runs
+✅ Docker deployment Web UI со SPA fallback
 ✅ Обработка ошибок интеграции Ollama
 ✅ Реальный локальный AI-запрос с русскоязычным текстом
 ✅ Доступ к Local AI endpoint с homeserver

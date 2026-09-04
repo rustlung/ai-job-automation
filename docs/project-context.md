@@ -484,8 +484,9 @@ heavy run; lifecycle state intentionally in-memory, поэтому после re
 persisted results.
 
 Web backend foundation реализован в Orchestrator: persistent `PipelineRun` и
-singleton `OperationalSettings` поддерживают будущий Web UI, но React frontend
-ещё не создан. Web full run starts through an internal n8n webhook with an
+singleton `OperationalSettings` поддерживают React + TypeScript Web UI. Первый
+frontend milestone реализует Dashboard, запуск поиска и историю Runs; target
+LAN acceptance ещё предстоит. Web full run starts through an internal n8n webhook with an
 Orchestrator-generated `run_id`; manual n8n runs retain their own run-id
 generation and register the same persistent history. `existing_run_id` remains
 only a late-stage replay tool.

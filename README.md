@@ -21,6 +21,7 @@ HH → Local AI → Scoring → Orchestrator DB → CRM → Email Digest
 - Google Sheets CRM и Gmail digest;
 - ручной production workflow для on-demand Worker laptop;
 - Orchestrator DB как source of truth.
+- React + TypeScript Web UI для dashboard и управления запусками.
 
 ![AI Job Automation overview](assets/ai-job-automation-hero.png)
 
@@ -41,6 +42,7 @@ AI Job Automation автоматизирует discovery, filtering и analysis,
 - public expanded search;
 - custom keyword search profiles;
 - configurable n8n profile selection;
+- LAN-first Web UI: dashboard, запуск поиска и история runs;
 - pagination;
 - exact deduplication;
 - preliminary local AI filter;
