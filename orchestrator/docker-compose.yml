@@ -11,6 +11,5 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: sqlite:///./data/app.db
-      WEB_UI_ALLOWED_ORIGINS: ${WEB_UI_ALLOWED_ORIGINS:-}
     volumes:
       - ./data:/app/data
