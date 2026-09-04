@@ -71,7 +71,6 @@ async def test_filter_single_batch_success_sorts_and_counts() -> None:
                     model_item(1, "uncertain", 45),
                     model_item(2, "keep_main", 90),
                     model_item(3, "keep_alt", 70),
-                    model_item(4, "reject", 10),
                 ]
             }
         ]
@@ -109,6 +108,46 @@ async def test_filter_multiple_batches_are_sequential() -> None:
 
     assert result.processed_count == 3
     assert len(client.calls) == 2
+
+
+@pytest.mark.anyio
+async def test_clear_role_policy_reject_skips_ollama_and_preserves_contract() -> None:
+    client = FakeOllamaClient([])
+
+    result = await service(client).filter_vacancies(
+        [vacancy("1", "Менеджер по закупкам и снабжению", "Использовать AI для анализа", "AI tools")]
+    )
+
+    assert result.status == "succeeded"
+    assert result.reject_count == 1
+    assert result.items[0].assessment.decision == PreliminaryDecision.REJECT
+    assert result.items[0].assessment.recommended_track == "none"
+    assert result.items[0].assessment.risk_codes == ["unrelated_primary_stack"]
+    assert client.calls == []
+
+
+@pytest.mark.anyio
+async def test_conditional_role_with_implementation_core_calls_ollama() -> None:
+    client = FakeOllamaClient([{"items": [model_item(1)]}])
+
+    result = await service(client).filter_vacancies(
+        [vacancy("1", "BI Developer", "Строить data pipelines", "Python SQL")]
+    )
+
+    assert result.reject_count == 0
+    assert len(client.calls) == 1
+
+
+@pytest.mark.anyio
+async def test_protected_python_role_calls_ollama() -> None:
+    client = FakeOllamaClient([{"items": [model_item(1)]}])
+
+    result = await service(client).filter_vacancies(
+        [vacancy("1", "Python-разработчик интеграций с 1С", "Разрабатывать API", "Python FastAPI")]
+    )
+
+    assert result.reject_count == 0
+    assert len(client.calls) == 1
 
 
 @pytest.mark.anyio

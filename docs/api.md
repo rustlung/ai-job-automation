@@ -106,7 +106,8 @@ POST /hh/collect-and-preliminary-filter
 preliminary filtering без full vacancy fetch и без записи в Orchestrator.
 
 Preliminary filter использует compact structured output с локальными `item_id`,
-Pydantic validation, deterministic guardrails и fail-open `uncertain` fallback
+Pydantic validation, role-aware deterministic pre-filter до вызова Ollama,
+post-LLM safety invariant и fail-open `uncertain` fallback
 для спорных или частично поврежденных AI responses.
 
 ### Full Enrichment And Persistence

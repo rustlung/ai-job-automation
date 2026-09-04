@@ -705,6 +705,8 @@ deduplication
 ↓
 Preliminary local AI filter
 ↓
+role-aware deterministic pre-filter
+↓
 LLM compact classification
 ↓
 deterministic safety/positive guardrails
@@ -743,8 +745,10 @@ qwen3:4b-instruct
 v4
 ```
 
-Цель модели — high-recall preliminary routing. На этом этапе false positive
-допустимы, а false negative считаются значительно более опасными.
+Цель модели — high-recall preliminary routing. Перед вызовом модели единый
+role-aware policy по title (snippets являются только дополнительным контекстом)
+отсекает только clear role-family mismatch без сильного technical protection.
+Это уменьшает очевидные false positive, не превращая фильтр в blacklist слов.
 
 Decision taxonomy:
 
@@ -779,7 +783,8 @@ item_id
 
 После LLM применяется deterministic Python layer:
 
--   negative safety rules для очевидного мусора;
+-   тот же role-aware safety invariant, который не позволяет LLM повысить
+    clear role-family mismatch;
 -   positive guardrails для защиты от false negative;
 -   score floors для сохраненных кандидатов;
 -   `uncertain` fallback при ошибках local AI.
@@ -791,11 +796,17 @@ item_id
 3.  валидный LLM result;
 4.  uncertain fallback.
 
-Forced reject покрывает очевидно нерелевантные роли: преподавание
-программирования детям, телефонную поддержку/call-центр, холодные продажи,
-бухгалтерию, курьера, авторов студенческих работ и похожие случаи.
+Forced reject до LLM и после него покрывает clear role-family mismatch:
+marketing/content/visual AI, assistant/admin, commercial/community,
+procurement, finance без technical core, HR, education, 1C-only, support,
+system administration/operations и security tracks без реальной
+AI/Python/backend implementation. QA (включая Manual QA/AQA/SDET) остается
+допустимым ALT направлением. Strong Python/backend/integration/AI/LLM/ML/CV
+title защищает вакансию от incidental domain words, например от упоминания 1C
+или finance в integration context.
 Positive guardrails покрывают явные Python/backend/automation, AI/LLM,
-QA/API/testing и engineering-heavy technical support карточки.
+QA/API/testing карточки. Technical support как core role больше не получает
+engineering-heavy promotion: он должен быть отсеян до full enrichment.
 Positive guardrail не перекрывает очевидный forced reject.
 
 Fail-open requirement:

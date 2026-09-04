@@ -93,6 +93,7 @@
 ✅ POST /hh/collect-and-preliminary-filter
 ✅ Compact structured output with local item_id
 ✅ Deterministic preliminary filter guardrails
+✅ Role-aware preliminary pre-filter before Ollama
 ✅ Fail-open uncertain fallback
 ✅ Phase 5.7 target Worker acceptance
 ✅ Full vacancy enrichment pipeline
@@ -247,7 +248,8 @@ Worker реализует preliminary local AI filtering для кратких H
 ``` text
 HH search collection
 → deduplicated search vacancies
-→ local Ollama preliminary filter
+→ role-aware deterministic pre-filter
+→ local Ollama preliminary filter for remaining cards
 → keep_main / keep_alt / uncertain / reject
 ```
 
@@ -274,11 +276,16 @@ False positive на этом этапе допустимы; false negative сч�
 AI не является обязательным условием для всех main-вакансий.
 Python backend, FastAPI, API, integrations, SQL/PostgreSQL, Docker, bots, parsers, Python automation и internal services являются самостоятельным MAIN Python направлением.
 AI Automation, AI Integration, applied AI, LLM, AI agents, prompt engineering, n8n/Dify/Flowise, AI workflows и AI product/integration roles являются MAIN AI направлением.
-QA, API/backend testing, integration testing, data/system/business analysis, AI evaluation, technical implementation и engineering-heavy technical support могут проходить как ALT.
+QA, API/backend testing, integration testing, data/system/business analysis, AI evaluation и technical implementation могут проходить как ALT. QA, включая Manual QA/AQA/SDET, не отсекается role policy.
 
 LLM возвращает компактный structured output с локальными `item_id`.
 Реальный `external_id` не воспроизводится моделью: Python сохраняет соответствие `item_id → vacancy → external_id/provenance`.
 Это снижает нестабильность сопоставления результатов маленькой локальной модели.
+
+До LLM применяется role-aware deterministic pre-filter: явная нерелевантная
+role family в title без strong technical protection получает `reject` и не
+отправляется в Ollama. Snippets используются как дополнительный контекст, а не
+как замена профессии в title. Тот же policy применяется после LLM как invariant.
 
 После LLM применяется deterministic safety layer:
 
@@ -288,8 +295,13 @@ LLM semantic assessment
 → final preliminary decision
 ```
 
-Forced reject покрывает очевидно нерелевантные роли: преподавание программирования детям, телефонная поддержка/call-центр, холодные продажи, бухгалтерия, курьер, автор студенческих работ и похожие случаи.
-Positive guardrails защищают от false negative для явных Python/backend/automation, AI/LLM/automation, QA/API/testing и engineering-heavy technical support карточек.
+Forced reject покрывает clear marketing/content/visual AI, assistant/admin,
+commercial, procurement, finance без technical core, HR, education, 1C-only,
+support, system administration/operations и security tracks без реальной
+AI/Python/backend implementation, а также ранее известные очевидно
+нерелевантные роли. Strong technical title защищает Python/backend/integration/
+AI/LLM/ML/CV роли от incidental domain words.
+Positive guardrails защищают от false negative для явных Python/backend/automation, AI/LLM/automation и QA/API/testing карточек. Technical support как core role больше не является ALT protection.
 Forced reject имеет приоритет над positive guardrails.
 
 Если локальный AI не может корректно обработать карточку или batch, вакансия не теряется: применяется `uncertain` fallback.

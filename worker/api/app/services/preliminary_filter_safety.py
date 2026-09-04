@@ -1,3 +1,5 @@
+import logging
+
 from app.schemas.hh_collection import HHSearchCollectedVacancy
 from app.schemas.preliminary_filter import (
     PreliminaryDecision,
@@ -6,52 +8,10 @@ from app.schemas.preliminary_filter import (
     PreliminaryRiskCode,
     PreliminaryVacancyAssessment,
 )
+from app.services.preliminary_role_policy import evaluate_preliminary_role_policy
 
-FORCED_REJECT_PATTERNS = (
-    ("телефонная поддержка", PreliminaryRiskCode.PHONE_SUPPORT),
-    ("телефонной поддержки", PreliminaryRiskCode.PHONE_SUPPORT),
-    ("оператор call", PreliminaryRiskCode.PHONE_SUPPORT),
-    ("call-центр", PreliminaryRiskCode.PHONE_SUPPORT),
-    ("колл-центр", PreliminaryRiskCode.PHONE_SUPPORT),
-    ("холодные звонки", PreliminaryRiskCode.SUPPORT_ROLE),
-    ("холодные продажи", PreliminaryRiskCode.SUPPORT_ROLE),
-    ("холодным продаж", PreliminaryRiskCode.SUPPORT_ROLE),
-    ("менеджер по продажам", PreliminaryRiskCode.SUPPORT_ROLE),
-    ("бухгалтер", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
-    ("курьер", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
-    ("преподаватель дет", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
-    ("преподаватель программирования для детей", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
-    ("педагог по программированию", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
-    ("учитель программирования для детей", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
-    ("программирования для детей", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
-    ("детская онлайн-школа", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
-    ("детской онлайн-школ", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
-    ("студенческих работ", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
-    ("автор работ", PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
-)
+logger = logging.getLogger(__name__)
 
-TECHNICAL_SUPPORT_MARKERS = (
-    "linux",
-    "sql",
-    "api",
-    "http",
-    "docker",
-    "логи",
-    "logs",
-    "интеграц",
-    "скрипт",
-    "scripting",
-    "troubleshooting",
-    "infrastructure",
-    "инфраструктур",
-    "l2",
-    "l3",
-    "b2b",
-    "saas",
-)
-
-SUPPORT_MARKERS = ("support", "поддержк", "helpdesk", "саппорт")
-NONTECHNICAL_SUPPORT_MARKERS = ("l1", "телефон", "звонк", "клиентск")
 SENIOR_MARKERS = ("senior", "lead", "head", "руководител", "тимлид", "team lead")
 MANDATORY_OFFICE_MARKERS = (
     "только офис",
@@ -149,46 +109,29 @@ def apply_preliminary_safety_overrides(
     snippet_text = _snippet_text(vacancy)
     changed = False
 
+    role_policy = evaluate_preliminary_role_policy(vacancy)
+    if role_policy.should_reject:
+        logger.info(
+            "preliminary_role_policy_rejected stage=post_llm role_family=%s "
+            "technical_protection_detected=%s final_decision=reject",
+            role_policy.role_family,
+            role_policy.technical_protection_detected,
+        )
+        return _forced_reject_assessment(
+            assessment,
+            role_policy.risk_code or PreliminaryRiskCode.UNRELATED_PRIMARY_STACK,
+        ), True
+
     if assessment.fallback_used:
         return assessment, False
 
     assessment, location_changed = _remove_invalid_location_risk(assessment, snippet_text)
     changed = changed or location_changed
 
-    forced_reject = _forced_reject_risk(text)
-    if forced_reject is not None:
-        return (
-            assessment.model_copy(
-                update={
-                    "decision": PreliminaryDecision.REJECT,
-                    "recommended_track": PreliminaryRecommendedTrack.NONE,
-                    "score": min(assessment.score, 20),
-                    "confidence": max(assessment.confidence, 0.8),
-                    "risk_codes": _append_unique(assessment.risk_codes, forced_reject),
-                    "short_reason": "Очевидно нерелевантная роль для текущего трека; сработал консервативный safety-фильтр.",
-                }
-            ),
-            True,
-        )
-
     guardrail = _positive_guardrail_update(text, assessment)
     if guardrail is not None:
         assessment = assessment.model_copy(update=guardrail)
         changed = True
-
-    if _is_nontechnical_support(text) and assessment.decision == PreliminaryDecision.KEEP_MAIN:
-        return (
-            assessment.model_copy(
-                update={
-                    "decision": PreliminaryDecision.UNCERTAIN,
-                    "recommended_track": PreliminaryRecommendedTrack.UNCLEAR,
-                    "score": min(assessment.score, 55),
-                    "risk_codes": _append_unique(assessment.risk_codes, PreliminaryRiskCode.SUPPORT_ROLE),
-                    "short_reason": "Похоже на поддержку без явной инженерной составляющей; нужна полная карточка.",
-                }
-            ),
-            True,
-        )
 
     if _should_protect_from_reject(text, assessment):
         assessment = assessment.model_copy(
@@ -232,15 +175,20 @@ def _snippet_text(vacancy: HHSearchCollectedVacancy) -> str:
     ).casefold()
 
 
-def _forced_reject_risk(text: str) -> PreliminaryRiskCode | None:
-    for pattern, risk in FORCED_REJECT_PATTERNS:
-        if pattern in text:
-            return risk
-    return None
-
-
-def _is_nontechnical_support(text: str) -> bool:
-    return any(marker in text for marker in SUPPORT_MARKERS) and not any(marker in text for marker in TECHNICAL_SUPPORT_MARKERS)
+def _forced_reject_assessment(
+    assessment: PreliminaryVacancyAssessment,
+    risk: PreliminaryRiskCode,
+) -> PreliminaryVacancyAssessment:
+    return assessment.model_copy(
+        update={
+            "decision": PreliminaryDecision.REJECT,
+            "recommended_track": PreliminaryRecommendedTrack.NONE,
+            "score": min(assessment.score, 20),
+            "confidence": max(assessment.confidence, 0.8),
+            "risk_codes": _append_unique(assessment.risk_codes, risk),
+            "short_reason": "Очевидно нерелевантная роль для текущего трека; сработал консервативный safety-фильтр.",
+        }
+    )
 
 
 def _should_protect_from_reject(text: str, assessment: PreliminaryVacancyAssessment) -> bool:
@@ -300,17 +248,6 @@ def _positive_guardrail_update(text: str, assessment: PreliminaryVacancyAssessme
             "reason_codes": _append_unique_reason(assessment.reason_codes, PreliminaryReasonCode.QA_RELEVANT),
             "short_reason": "Карточка содержит сильные QA/API/testing маркеры; предварительно подходит для ALT.",
         }
-    if _is_technical_support(text):
-        if not _guardrail_needed(assessment, PreliminaryDecision.KEEP_ALT, PreliminaryRecommendedTrack.ALT_TECHNICAL, 55):
-            return None
-        return {
-            "decision": PreliminaryDecision.KEEP_ALT,
-            "recommended_track": PreliminaryRecommendedTrack.ALT_TECHNICAL,
-            "score": max(assessment.score, 55),
-            "confidence": max(assessment.confidence, 0.7),
-            "risk_codes": _append_unique(assessment.risk_codes, PreliminaryRiskCode.SUPPORT_ROLE),
-            "short_reason": "Техническая поддержка содержит инженерные маркеры; предварительно подходит для ALT.",
-        }
     if _has_ai_main_marker(text):
         if not _guardrail_needed(assessment, PreliminaryDecision.KEEP_MAIN, PreliminaryRecommendedTrack.AI, 65):
             return None
@@ -364,8 +301,6 @@ def _guardrail_needed(
 
 
 def _has_python_main_marker(text: str) -> bool:
-    if _is_nontechnical_support(text):
-        return False
     if any(marker in text for marker in PYTHON_ROLE_MARKERS):
         return True
     return "python" in text and sum(1 for marker in PYTHON_TASK_MARKERS if marker in text) >= 1
@@ -373,10 +308,6 @@ def _has_python_main_marker(text: str) -> bool:
 
 def _has_alt_marker(text: str) -> bool:
     return any(marker in text for marker in ALT_TRACK_MARKERS)
-
-
-def _is_technical_support(text: str) -> bool:
-    return any(marker in text for marker in SUPPORT_MARKERS) and sum(1 for marker in TECHNICAL_SUPPORT_MARKERS if marker in text) >= 2
 
 
 def _apply_score_floor(assessment: PreliminaryVacancyAssessment) -> tuple[PreliminaryVacancyAssessment, bool]:

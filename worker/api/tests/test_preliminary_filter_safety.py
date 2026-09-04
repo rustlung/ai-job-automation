@@ -87,24 +87,36 @@ def test_childrens_online_school_programming_teacher_is_forced_reject() -> None:
     assert result.recommended_track == PreliminaryRecommendedTrack.NONE
 
 
-def test_chat_support_without_technical_markers_does_not_become_keep_main() -> None:
+def test_chat_support_is_forced_reject() -> None:
     result, changed = apply_preliminary_safety_overrides(
         vacancy("Специалист чат-поддержки", "Отвечать клиентам в чате"),
         assessment(PreliminaryDecision.KEEP_MAIN),
     )
 
     assert changed is True
-    assert result.decision in {PreliminaryDecision.KEEP_MAIN, PreliminaryDecision.UNCERTAIN}
+    assert result.decision == PreliminaryDecision.REJECT
 
 
-def test_technical_support_with_engineering_markers_is_not_forced_reject() -> None:
+def test_technical_support_with_engineering_markers_is_forced_reject() -> None:
     result, changed = apply_preliminary_safety_overrides(
         vacancy("Technical Support Engineer", "Разбирать логи, SQL, API и Docker integrations"),
         assessment(PreliminaryDecision.KEEP_ALT),
     )
 
-    assert changed is False
-    assert result.decision == PreliminaryDecision.KEEP_ALT
+    assert changed is True
+    assert result.decision == PreliminaryDecision.REJECT
+
+
+def test_post_llm_role_policy_overrides_keep_main_for_procurement() -> None:
+    result, changed = apply_preliminary_safety_overrides(
+        vacancy("Менеджер по закупкам", "Использовать AI для анализа документов", "AI tools"),
+        assessment(PreliminaryDecision.KEEP_MAIN, score=95),
+    )
+
+    assert changed is True
+    assert result.decision == PreliminaryDecision.REJECT
+    assert result.recommended_track == PreliminaryRecommendedTrack.NONE
+    assert PreliminaryRiskCode.UNRELATED_PRIMARY_STACK in result.risk_codes
 
 
 def test_experience_gap_reject_is_protected_to_uncertain() -> None:
@@ -277,16 +289,15 @@ def test_obvious_alt_qa_cannot_keep_tiny_score() -> None:
     assert adjusted.score > 10
 
 
-def test_technical_support_engineering_markers_rescue_reject_to_uncertain() -> None:
+def test_technical_support_engineering_markers_do_not_rescue_reject() -> None:
     result, changed = apply_preliminary_safety_overrides(
         vacancy("Technical Support Engineer", "Разбирать logs и API", "Linux Docker SQL"),
         assessment(PreliminaryDecision.REJECT, [PreliminaryRiskCode.SUPPORT_ROLE], score=5),
     )
 
     assert changed is True
-    assert result.decision == PreliminaryDecision.KEEP_ALT
-    assert result.recommended_track == PreliminaryRecommendedTrack.ALT_TECHNICAL
-    assert result.score > 10
+    assert result.decision == PreliminaryDecision.REJECT
+    assert result.recommended_track == PreliminaryRecommendedTrack.NONE
 
 
 @pytest.mark.parametrize(
@@ -345,14 +356,14 @@ def test_support_l1_without_engineering_markers_is_not_promoted() -> None:
     assert result.decision == PreliminaryDecision.UNCERTAIN
 
 
-def test_random_python_mention_is_not_promoted() -> None:
+def test_content_role_with_random_python_mention_is_forced_reject() -> None:
     result, changed = apply_preliminary_safety_overrides(
         vacancy("Контент-менеджер", "Иногда встречаются материалы про Python", "Редактирование текстов"),
         assessment(PreliminaryDecision.UNCERTAIN, score=42),
     )
 
-    assert changed is False
-    assert result.decision == PreliminaryDecision.UNCERTAIN
+    assert changed is True
+    assert result.decision == PreliminaryDecision.REJECT
 
 
 def test_forced_reject_has_priority_over_positive_python_match() -> None:

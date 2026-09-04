@@ -27,6 +27,7 @@ from app.services.preliminary_filter_prompt import (
     build_preliminary_filter_messages,
 )
 from app.services.preliminary_filter_safety import apply_preliminary_safety_overrides
+from app.services.preliminary_role_policy import evaluate_preliminary_role_policy
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +122,23 @@ class PreliminaryVacancyFilterService:
         fallback_count = 0
         override_count = 0
 
-        for batch_index, batch in enumerate(self._batches(vacancies)):
+        model_candidates: list[HHSearchCollectedVacancy] = []
+        for vacancy in vacancies:
+            role_policy = evaluate_preliminary_role_policy(vacancy)
+            if not role_policy.should_reject:
+                model_candidates.append(vacancy)
+                continue
+
+            logger.info(
+                "preliminary_role_policy_rejected stage=pre_llm role_family=%s "
+                "technical_protection_detected=%s final_decision=reject",
+                role_policy.role_family,
+                role_policy.technical_protection_detected,
+            )
+            items.append(self._wrap(vacancy, self._role_policy_reject_assessment(vacancy, role_policy.risk_code)))
+            override_count += 1
+
+        for batch_index, batch in enumerate(self._batches(model_candidates)):
             logger.info(
                 "preliminary_filter_batch_started batch_index=%s batch_size=%s model=%s prompt_version=%s",
                 batch_index,
@@ -444,6 +461,25 @@ class PreliminaryVacancyFilterService:
             prompt_version=self.prompt_version,
             fallback_used=True,
             error_code=error_code,
+        )
+
+    def _role_policy_reject_assessment(
+        self,
+        vacancy: HHSearchCollectedVacancy,
+        risk_code: str | None,
+    ) -> PreliminaryVacancyAssessment:
+        return PreliminaryVacancyAssessment(
+            source=vacancy.source,
+            external_id=vacancy.external_id,
+            decision=PreliminaryDecision.REJECT,
+            recommended_track=PreliminaryRecommendedTrack.NONE,
+            score=0,
+            confidence=0.9,
+            reason_codes=[],
+            risk_codes=[risk_code or "unrelated_primary_stack"],
+            short_reason="Роль не относится к целевым техническим направлениям по краткой карточке.",
+            model=self.ollama_client.model,
+            prompt_version=self.prompt_version,
         )
 
     @staticmethod

@@ -776,6 +776,8 @@ HH search collection
 ↓
 deduplicated search vacancies
 ↓
+role-aware deterministic pre-filter
+↓
 local Ollama preliminary filter
 ↓
 keep_main / keep_alt / uncertain / reject
@@ -839,7 +841,6 @@ ALT:
 - data/system/business analysis;
 - AI evaluation;
 - technical implementation;
-- engineering-heavy technical support.
 
 Отсутствие AI не является негативным фактором для Python, QA, analytics и
 других допустимых track.
@@ -857,6 +858,10 @@ ALT:
 модели.
 
 ## Guardrails and fail-open
+
+Перед LLM role-aware deterministic policy по title отсекает clear irrelevant
+role family без strong technical protection. Snippets являются дополнительным
+контекстом; тот же policy повторяется после LLM как safety invariant.
 
 После LLM применяется deterministic Python layer:
 
@@ -885,12 +890,18 @@ Forced reject покрывает очевидно нерелевантные р�
 - автор студенческих работ;
 - другие явно нерелевантные роли.
 
+Role policy также покрывает clear marketing/content/visual AI, assistant/admin,
+commercial, procurement, finance без technical core, HR, education, 1C-only,
+support, system administration/operations и security tracks без реальной
+AI/Python/backend implementation. QA (Manual QA/AQA/SDET) остается допустимым
+ALT track; technical support как core role не получает engineering-heavy
+promotion. Prompt version остается `v4`.
+
 Positive guardrails защищают от false negative для:
 
 - явного Python/backend/automation match;
 - явного AI/LLM/automation match;
 - явного QA/API/testing match;
-- технической поддержки с существенной инженерной составляющей.
 
 Positive guardrail не перекрывает obvious forced reject.
 

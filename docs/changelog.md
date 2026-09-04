@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-04
+
+### Added
+
+- role-aware preliminary rejection policy that classifies clear irrelevant role
+  families from title-first search-card evidence before Ollama batching;
+- identical post-LLM safety invariant, so a model result cannot promote a clear
+  role-family mismatch;
+- explicit QA bypass for Manual QA/AQA/SDET and strong technical protections for
+  Python/backend/integration/AI/LLM/ML/CV roles.
+
+### Changed
+
+- technical support as the core role is rejected instead of being promoted to
+  an engineering-heavy ALT candidate; preliminary prompt version remains `v4`.
+
 ## 2026-09-02
 
 ### Added

@@ -275,6 +275,11 @@ Preliminary local AI filtering decisions:
 - LLM не должна воспроизводить business/external identifiers вакансий;
 - внутри batch используются короткие локальные `item_id`, а Python сохраняет
   соответствие `item_id → vacancy → external_id/provenance`;
+- role-aware deterministic policy по title применяется до LLM для clear
+  role-family reject и после LLM как safety invariant; snippets являются только
+  дополнительным контекстом;
+- QA (Manual QA/AQA/SDET) остается допустимым ALT track, а technical support как
+  core role отсекается даже при incidental SQL/API/Python/Docker markers;
 - deterministic Python rules используются для очевидных фактов, safety rules,
   positive guardrails и fail-open fallback;
 - AI failure не должен приводить к reject: поврежденные items и batch должны
