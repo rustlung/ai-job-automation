@@ -1,5 +1,7 @@
 services:
   api:
+    env_file:
+      - ./api/.env
     build:
       context: ./api
       dockerfile: Dockerfile
