@@ -27,7 +27,7 @@
 ✅ GPU-required Local LLM compute preflight
 ✅ Async Worker pipeline start/status API
 ✅ Single-heavy-run protection and bounded in-memory run history
-✅ n8n polling Worker pipeline workflow v6
+✅ n8n polling Worker pipeline workflow v7
 ✅ Обработка ошибок интеграции Ollama
 ✅ Реальный локальный AI-запрос с русскоязычным текстом
 ✅ Доступ к Local AI endpoint с homeserver
@@ -120,6 +120,7 @@
 ✅ Production CRM sheet подключён
 ✅ Google Sheets Service Account credential
 ✅ CRM Key idempotent upsert
+✅ CRM search profile provenance column X
 ✅ Legacy HH URL fallback for old CRM rows
 ✅ User-managed CRM fields protection
 ✅ Gmail email digest
@@ -583,8 +584,11 @@ pipeline. Google Sheets является пользовательской CRM-в
 CRM sync проверен на существующей таблице `CRM_поиска_работы_и_заказов`.
 Acceptance выполнялась на листе `Вакансии_TEST`, после приемки workflow
 переключен на основной лист `Вакансии`. Существующие пользовательские колонки
-A:O сохранены. Добавлены system-managed колонки P:V: `Score`, `AI причина`,
-`Риски`, `Hard blockers`, `CRM Key`, `Run ID`, `Анализ обновлён`. Отдельная
+A:W сохранены. System-managed колонки P:V: `Score`, `AI причина`,
+`Риски`, `Hard blockers`, `CRM Key`, `Run ID`, `Анализ обновлён` сохранены.
+Последний диагностический столбец X `Профили поиска` заполняется из canonical
+`analysis.provenance.profile_ids` и не содержит query variants, track, source
+type или run id. Отдельная
 колонка `Track` не добавлялась: существующее поле `Тип` остается
 пользовательским отображением направления.
 
@@ -599,6 +603,8 @@ Fuzzy matching по title/company не используется.
 Automation обновляет system-managed поля: `Компания`, `Должность`, `Тип`,
 `Приоритет`, `ЗП`, `Формат`, `Стек`, `Дата`, `Ссылка`, `Score`, `AI причина`,
 `Риски`, `Hard blockers`, `CRM Key`, `Run ID`, `Анализ обновлён`.
+`Профили поиска` обновляется для новых и существующих строк с CRM Key/legacy
+URL match; при отсутствии provenance ячейка остается пустой.
 Пользовательские поля `Отклик`, `Ответ`, `Интервью`, `Итог`, `Комментарий` не
 затираются. AI short reason не записывается в `Комментарий`.
 

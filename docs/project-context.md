@@ -392,6 +392,9 @@ CRM and external integration decisions:
   не должны затираться автоматической синхронизацией;
 - AI short reason пишется в system-managed `AI причина`, а не в пользовательский
   `Комментарий`;
+- последний CRM столбец X `Профили поиска` является диагностическим полем и
+  получает только canonical `analysis.provenance.profile_ids` в стабильном
+  provenance order; empty provenance оставляет его пустым;
 - в CRM синхронизируются P1, P2 и ALT; P3 остается DB-only;
 - Gmail OAuth credential и Google Sheets Service Account credential в n8n
   разделены;
@@ -474,7 +477,7 @@ Search direction decisions:
 
 # 11. Приоритет проекта
 
-Async Worker pipeline execution реализован: n8n v6 запускает Worker коротким
+Async Worker pipeline execution реализован: n8n v7 запускает Worker коротким
 `POST /hh/pipeline-runs`, затем poll'ит status. Один Worker допускает один
 heavy run; lifecycle state intentionally in-memory, поэтому после restart нужно
 проверить Orchestrator и использовать existing-run recovery только для

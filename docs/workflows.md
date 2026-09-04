@@ -89,13 +89,13 @@ keyword profiles и configurable selection также приняты.
 Актуальный export:
 
 ``` text
-workflows/n8n/AI Job Automation — Daily Search CRM Digest v6.json
+workflows/n8n/AI Job Automation — Daily Search CRM Digest v7.json
 ```
 
 Workflow name:
 
 ``` text
-AI Job Automation — Daily Search CRM Digest v6
+AI Job Automation — Daily Search CRM Digest v7
 ```
 
 Export не содержит credentials. Workflow `active=false`. v4 сохраняется как
@@ -241,7 +241,7 @@ CRM spreadsheet: `CRM_поиска_работы_и_заказов`.
 - `Вакансии_TEST` — acceptance sheet;
 - `Вакансии` — production sheet после приемки.
 
-Существующие A:O user columns сохранены. Добавлены P:V system-managed columns:
+Существующие колонки A:W не меняются. System-managed колонки P:V сохранены:
 
 ``` text
 Score
@@ -252,6 +252,14 @@ CRM Key
 Run ID
 Анализ обновлён
 ```
+
+Последний столбец X `Профили поиска` является диагностическим полем quality
+calibration. n8n заполняет его только canonical
+`analysis.provenance.profile_ids`: один profile id записывается как есть,
+несколько -- через `, ` в стабильном порядке provenance, а отсутствие provenance
+оставляет ячейку пустой. Query variants, tracks, source type и run id в X не
+пишутся. Поле обновляется и при new row, и при idempotent CRM Key/legacy URL
+update.
 
 System-managed fields:
 
@@ -272,6 +280,7 @@ Hard blockers
 CRM Key
 Run ID
 Анализ обновлён
+Профили поиска
 ```
 
 User-managed fields protected from automation:

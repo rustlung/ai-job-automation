@@ -1,0 +1,1360 @@
+{
+  "name": "AI Job Automation — Daily Search CRM Digest v7",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -6240,
+        128
+      ],
+      "id": "a50af403-2097-4670-a243-117dcb12511b",
+      "name": "Manual Trigger"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{\n  {\n    worker_api_url: $env.WORKER_API_URL,\n    orchestrator_api_url: $env.ORCHESTRATOR_API_URL,\n    spreadsheet_id: $env.GOOGLE_SHEETS_CRM_DOCUMENT_ID,\n    spreadsheet_url: $env.GOOGLE_SHEETS_CRM_URL || \"\",\n    sheet_name: $env.GOOGLE_SHEETS_CRM_SHEET_NAME || \"Вакансии_TEST\",\n    email_to: $env.JOB_DIGEST_EMAIL_TO,\n    existing_run_id: \"\",\n    max_pages_override: 1,\n    max_filter_items_override: null,\n    max_enrich_items_override: null,\n    crm_sync_priorities: [\"P1\", \"P2\", \"ALT\"],\n    top_vacancy_limit: 10\n  }\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -6000,
+        128
+      ],
+      "id": "fbfb5fd7-fd89-48b4-8440-f1d3444f7a70",
+      "name": "Config"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst config = input.config || input;\nconst now = new Date();\nconst stamp = now.toISOString().replace(/[-:]/g, '').replace(/.d{3}Z$/, 'Z').replace('T', '-');\nconst random = Math.random().toString(36).slice(2, 8);\nconst runId = `n8n-${stamp}-${random}`;\nreturn [{\n  json: {\n    config,\n    run_id: runId,\n    orchestration_started_at_ms: now.getTime(),\n    worker_request: {\n      profile_ids: config.profile_ids,\n      max_pages_override: config.max_pages_override,\n      max_filter_items_override: config.max_filter_items_override,\n      max_enrich_items_override: config.max_enrich_items_override,\n      pipeline_run_id: runId\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2880,
+        128
+      ],
+      "id": "d2611e41-3070-46dd-8a55-c8b4a2ba7b52",
+      "name": "Generate Run ID"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.config.worker_api_url }}/hh/pipeline-runs",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.worker_request }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -2640,
+        128
+      ],
+      "id": "d4fdfaea-6ce9-45ff-bb95-3046f182bfca",
+      "name": "Start Worker Pipeline",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const worker = $input.first().json || {};\nconst context = $('Generate Run ID').first().json;\nlet previous = {};\ntry { previous = $('Wait 20s for Worker Run').item.json || {}; } catch (error) {}\nconst elapsedMs = Date.now() - Number(context.orchestration_started_at_ms || Date.now());\nconst priorErrors = Number(previous.consecutive_polling_errors || 0);\nconst valid = new Set(['running', 'completed', 'completed_with_errors', 'failed']);\nconst status = String(worker.status || '');\nconst statusCode = Number(worker.statusCode || worker.error?.httpCode || worker.error?.statusCode || 0);\nconst summary = worker.summary || {};\nconst output = { run_id: worker.run_id || context.run_id, config: context.config, worker: { status: status || 'unknown', collection_stats: { unique_vacancy_count: summary.collection_unique_vacancy_count }, filter_stats: { processed_count: summary.filter_processed_count }, enrichment_stats: { enriched_count: summary.enriched_count }, duration_ms: summary.duration_ms }, persistence_stats: { persisted_count: summary.persisted_count, status: summary.persistence_status, failed_count: 0 }, warnings: [], terminal: false, result_available: false, consecutive_polling_errors: 0, orchestration_elapsed_ms: elapsedMs, failure_stage: null, safe_error: null };\nif (valid.has(status)) { if (status === 'running') { output.consecutive_polling_errors = 0; } else { output.terminal = true; output.result_available = worker.result_available === true; if (status === 'completed_with_errors') output.warnings.push('Worker completed with errors'); if (status === 'failed') { output.failure_stage = 'worker_pipeline'; output.safe_error = worker.error_code || 'worker_pipeline_failed'; } else if (!output.result_available) { output.failure_stage = 'orchestrator_persistence'; output.safe_error = worker.error_code || 'worker_result_unavailable'; } } } else if (statusCode === 404) { output.terminal = true; output.failure_stage = 'worker_run_recovery'; output.safe_error = 'worker_run_not_found; check Orchestrator before existing-run recovery'; } else if (elapsedMs >= 7200000) { output.terminal = true; output.failure_stage = 'worker_polling_deadline'; output.safe_error = 'worker run polling deadline exceeded; use existing-run recovery after checking Orchestrator'; } else { output.consecutive_polling_errors = priorErrors + 1; if (output.consecutive_polling_errors >= 3) { output.terminal = true; output.failure_stage = 'worker_polling'; output.safe_error = 'worker status polling failed repeatedly; use existing-run recovery after checking Orchestrator'; } }\nreturn [{ json: output }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1920,
+        400
+      ],
+      "id": "82e730f0-c8c6-46ff-800d-a5116bd25e0e",
+      "name": "Evaluate Worker Run"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a2ce3e65-90d8-4557-9c59-71b7b3f14b3a",
+              "leftValue": "={{ $json.terminal }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1680,
+        400
+      ],
+      "id": "aeb04b88-4d69-47ee-bf7b-4fa029e4bcdd",
+      "name": "Worker Run Terminal?"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.config.orchestrator_api_url }}/pipeline-results/runs/{{ $json.run_id }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -960,
+        128
+      ],
+      "id": "02f7543e-0be2-4476-a6d6-f43702d2ab1a",
+      "name": "Get Current Run"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.spreadsheet_id }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheet_name  }}",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        -720,
+        128
+      ],
+      "id": "193108cf-890a-4027-8179-4c1ec642df4d",
+      "name": "Read CRM Rows",
+      "credentials": {
+        "googleApi": {
+          "id": "2hE6eQR8uxrgmuJB",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function nodeItems(name) {\n  try { return $(name).all().map(item => item.json); } catch (error) {}\n  try { return $items(name).map(item => item.json); } catch (error) {}\n  return [];\n}\nfunction firstNode(name) { return nodeItems(name)[0] || {}; }\nfunction compact(values, limit = 8) {\n  return [...new Set((values || []).filter(Boolean).map(String))].slice(0, limit);\n}\nfunction join(values, limit = 8) { return compact(values, limit).join(', '); }\nfunction formatDate(value) {\n  if (!value) return '';\n  const date = new Date(value);\n  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);\n  return date.toLocaleDateString('ru-RU', { timeZone: 'Europe/Samara' });\n}\nfunction externalIdFromUrl(url) {\n  const match = String(url || '').match(/\\/vacancy\\/(\\d+)/);\n  return match ? match[1] : null;\n}\nfunction riskLabel(code) {\n  const map = {\n    salary_low_strong: 'Низкая зарплата',\n    salary_low_moderate: 'Зарплата ниже желаемой',\n    responsibility_stretch: 'Повышенный уровень ответственности',\n    english_required: 'Требуется английский',\n    office_outside_samara: 'Обязательный офис вне Самары',\n    relocation_required: 'Требуется релокация',\n    travel_required: 'Командировки'\n  };\n  return map[code] || code;\n}\nfunction typeLabel(analysis) {\n  const semantic = analysis.semantic_snapshot || {};\n  const features = analysis.deterministic_features || {};\n  const track = semantic.target_track || '';\n  const nature = semantic.role_nature || '';\n  if (track === 'ai') return 'AI';\n  if (track === 'python') return 'Python';\n  if (track === 'alt_qa' || nature === 'qa') return 'QA';\n  if (track === 'alt_analytics' || nature === 'analytics') return 'Analytics';\n  if (features.automation_signal || nature === 'automation') return 'Automation';\n  if (track === 'alt_technical' || nature === 'technical_support') return 'Technical';\n  return analysis.priority || '';\n}\nfunction workFormat(features) {\n  if (!features) return 'Не указано';\n  if (features.work_format === 'remote') return 'Удалённо';\n  if (features.work_format === 'hybrid') return 'Гибрид';\n  if (features.work_format === 'office') return 'Офис';\n  return 'Не указано';\n}\nfunction profileText(profileIds) {\n  if (!Array.isArray(profileIds)) return '';\n  const values = [];\n  for (const profileId of profileIds) {\n    const value = String(profileId || '').trim();\n    if (value && !values.includes(value)) values.push(value);\n  }\n  return values.join(', ');\n}\nfunction stackText(analysis) {\n  const features = analysis.deterministic_features || {};\n  const skills = compact([...(features.matching_skills || []), ...(features.detected_skills || [])], 8);\n  return skills.join(', ').slice(0, 180);\n}\nconst run = firstNode('Get Current Run');\nconst check = firstNode('Build Run Context');\nconst sheetRows = $input.all().map(item => item.json || {});\nconst syncPriorities = new Set(check.config?.crm_sync_priorities || ['P1', 'P2', 'ALT']);\nconst existingByKey = new Map();\nconst existingByUrlExternalId = new Map();\nlet maxNumber = 0;\nfor (const row of sheetRows) {\n  const number = Number(row['№'] || row['No'] || 0);\n  if (Number.isFinite(number) && number > maxNumber) maxNumber = number;\n  const key = String(row['CRM Key'] || '').trim();\n  if (key) existingByKey.set(key, row);\n  const urlExternalId = externalIdFromUrl(row['Ссылка']);\n  if (urlExternalId) existingByUrlExternalId.set(`hh:${urlExternalId}`, row);\n}\nlet nextNumber = maxNumber + 1;\nconst rows = [];\nfor (const analysis of run.analyses || []) {\n  if (!syncPriorities.has(analysis.priority)) continue;\n  const vacancy = analysis.vacancy_snapshot || {};\n  const key = `${vacancy.source || 'hh'}:${vacancy.external_id || ''}`;\n  const existingByCrmKey = existingByKey.get(key);\n  const existingByUrl = existingByUrlExternalId.get(key);\n  const existing = existingByCrmKey || existingByUrl || null;\n  const semantic = analysis.semantic_snapshot || {};\n  const features = analysis.deterministic_features || {};\n  const risks = (analysis.risks || []).map(riskLabel);\n  const blockers = (analysis.hard_blockers || []).map(riskLabel);\n  const provenance = analysis.provenance || {};\n  const rowNumber = existing ? (existing['№'] || existing['No'] || '') : nextNumber++;\n  const date = existing && existing['Дата'] ? existing['Дата'] : formatDate(vacancy.collected_at || analysis.created_at);\n  const crmRow = {\n    '№': rowNumber,\n    'Компания': vacancy.company || '',\n    'Должность': vacancy.title || '',\n    'Тип': typeLabel(analysis),\n    'Приоритет': analysis.priority || '',\n    'ЗП': vacancy.salary_text || '',\n    'Формат': workFormat(features),\n    'Стек': stackText(analysis),\n    'Дата': date,\n    'Ссылка': vacancy.url || '',\n    'Score': analysis.final_score ?? '',\n    'AI причина': semantic.short_reason || analysis.summary || '',\n    'Риски': join(risks, 6),\n    'Hard blockers': join(blockers, 6),\n    'CRM Key': key,\n    'Run ID': analysis.run_id || run.run_id,\n    'Анализ обновлён': analysis.created_at || '',\n    'Профили поиска': profileText(provenance.profile_ids),\n    crm_key: key,\n    match_strategy: existingByCrmKey ? 'crm_key' : (existingByUrl ? 'legacy_url' : 'new'),\n    crm_action: existing ? 'updated' : 'new'\n  };\n  rows.push(crmRow);\n}\nreturn rows.map(row => ({ json: row }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        128
+      ],
+      "id": "ca1a24a4-beca-4fea-9372-1edb83dd3b90",
+      "name": "Prepare CRM Rows"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b0e83f50-a581-4ffe-9c9d-20636da6af08",
+              "leftValue": "={{ $json.match_strategy }}",
+              "rightValue": "legacy_url",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -240,
+        128
+      ],
+      "id": "d872ad45-3523-4d08-907c-a4f16cca8245",
+      "name": "Legacy URL Match?"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.spreadsheet_id }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheet_name }}",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "№": "={{ $json['№'] }}",
+            "Компания": "={{ $json['Компания'] }}",
+            "Должность": "={{ $json['Должность'] }}",
+            "Тип": "={{ $json['Тип'] }}",
+            "Приоритет": "={{ $json['Приоритет'] }}",
+            "ЗП": "={{ $json['ЗП'] }}",
+            "Формат": "={{ $json['Формат'] }}",
+            "Стек": "={{ $json['Стек'] }}",
+            "Дата": "={{ $json['Дата'] }}",
+            "Ссылка": "={{ $json['Ссылка'] }}",
+            "Score": "={{ $json['Score'] }}",
+            "AI причина": "={{ $json['AI причина'] }}",
+            "Риски": "={{ $json['Риски'] }}",
+            "Hard blockers": "={{ $json['Hard blockers'] }}",
+            "CRM Key": "={{ $json['CRM Key'] }}",
+            "Run ID": "={{ $json['Run ID'] }}",
+            "Анализ обновлён": "={{ $json['Анализ обновлён'] }}",
+            "Профили поиска": "={{ $json['Профили поиска'] }}"
+          },
+          "matchingColumns": [
+            "CRM Key"
+          ],
+          "schema": [
+            {
+              "id": "№",
+              "displayName": "№",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Компания",
+              "displayName": "Компания",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Должность",
+              "displayName": "Должность",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Тип",
+              "displayName": "Тип",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Приоритет",
+              "displayName": "Приоритет",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ЗП",
+              "displayName": "ЗП",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Формат",
+              "displayName": "Формат",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Стек",
+              "displayName": "Стек",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Дата",
+              "displayName": "Дата",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Отклик",
+              "displayName": "Отклик",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Ответ",
+              "displayName": "Ответ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Интервью",
+              "displayName": "Интервью",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Итог",
+              "displayName": "Итог",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Ссылка",
+              "displayName": "Ссылка",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Комментарий",
+              "displayName": "Комментарий",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Score",
+              "displayName": "Score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "AI причина",
+              "displayName": "AI причина",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Риски",
+              "displayName": "Риски",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Hard blockers",
+              "displayName": "Hard blockers",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "CRM Key",
+              "displayName": "CRM Key",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Run ID",
+              "displayName": "Run ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Анализ обновлён",
+              "displayName": "Анализ обновлён",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Профили поиска",
+              "displayName": "Профили поиска",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        0,
+        240
+      ],
+      "id": "7990088a-b8d5-4e31-9f4f-72f4c02355e0",
+      "name": "CRM Upsert by CRM Key",
+      "credentials": {
+        "googleApi": {
+          "id": "2hE6eQR8uxrgmuJB",
+          "name": "Google Sheets account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.spreadsheet_id }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheet_name }}",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "№": "={{ $json['№'] }}",
+            "Компания": "={{ $json['Компания'] }}",
+            "Должность": "={{ $json['Должность'] }}",
+            "Тип": "={{ $json['Тип'] }}",
+            "Приоритет": "={{ $json['Приоритет'] }}",
+            "ЗП": "={{ $json['ЗП'] }}",
+            "Формат": "={{ $json['Формат'] }}",
+            "Стек": "={{ $json['Стек'] }}",
+            "Дата": "={{ $json['Дата'] }}",
+            "Ссылка": "={{ $json['Ссылка'] }}",
+            "Score": "={{ $json['Score'] }}",
+            "AI причина": "={{ $json['AI причина'] }}",
+            "Риски": "={{ $json['Риски'] }}",
+            "Hard blockers": "={{ $json['Hard blockers'] }}",
+            "CRM Key": "={{ $json['CRM Key'] }}",
+            "Run ID": "={{ $json['Run ID'] }}",
+            "Анализ обновлён": "={{ $json['Анализ обновлён'] }}",
+            "Профили поиска": "={{ $json['Профили поиска'] }}"
+          },
+          "matchingColumns": [
+            "Ссылка"
+          ],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        0,
+        0
+      ],
+      "id": "89163a82-f11d-4b0f-85b5-bf933fd25a29",
+      "name": "CRM Upsert Legacy by URL",
+      "credentials": {
+        "googleApi": {
+          "id": "2hE6eQR8uxrgmuJB",
+          "name": "Google Sheets account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "function nodeItems(name) {\n  try { return $(name).all().map(item => item.json); } catch (error) {}\n  try { return $items(name).map(item => item.json); } catch (error) {}\n  return [];\n}\nfunction firstNode(name) { return nodeItems(name)[0] || {}; }\nfunction escapeHtml(value) {\n  return String(value || '').replace(/[&<>\"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[char]));\n}\nconst check = firstNode('Build Run Context');\nconst run = firstNode('Get Current Run');\nconst worker = check.worker || {};\nconst crmRows = nodeItems('Prepare CRM Rows');\nconst priorityCounts = { P1: 0, P2: 0, P3: 0, ALT: 0 };\nfor (const analysis of run.analyses || []) {\n  if (analysis.priority in priorityCounts) priorityCounts[analysis.priority] += 1;\n}\nconst crmStats = {\n  crm_new_count: crmRows.filter(row => row.crm_action === 'new').length,\n  crm_updated_count: crmRows.filter(row => row.crm_action === 'updated').length,\n  crm_failed_count: 0,\n  crm_skipped_count: (run.analyses || []).filter(a => a.priority === 'P3').length\n};\nconst warnings = [...(check.warnings || [])];\nconst subjectPrefix = check.mode === 'existing_run_replay' ? 'AI Job Automation — повторная CRM/email синхронизация' : 'AI Job Automation — поиск завершён';\nconst subject = warnings.length\n  ? `${subjectPrefix} с предупреждениями — ${new Date().toLocaleDateString('ru-RU')}`\n  : `${subjectPrefix} — ${new Date().toLocaleDateString('ru-RU')}`;\nconst sortedTop = crmRows\n  .filter(row => ['P1', 'P2', 'ALT'].includes(row['Приоритет']))\n  .sort((a, b) => {\n    const order = { P1: 0, P2: 1, ALT: 2 };\n    return (order[a['Приоритет']] - order[b['Приоритет']]) || (Number(b.Score || 0) - Number(a.Score || 0));\n  })\n  .slice(0, check.config?.top_vacancy_limit || 10);\nconst topHtml = sortedTop.map(row => `\n  <li>\n    <b>[${escapeHtml(row['Приоритет'])}] ${escapeHtml(row.Score)} — ${escapeHtml(row['Должность'])}</b><br>\n    ${escapeHtml(row['Компания'])}<br>\n    Причина: ${escapeHtml(row['AI причина'])}<br>\n    Риски: ${escapeHtml(row['Риски'] || 'нет')}<br>\n    <a href=\"${escapeHtml(row['Ссылка'])}\">Ссылка</a>\n  </li>`).join('');\nconst stats = worker.persistence_stats || check.persistence_stats || {};\nconst html = `\n<p>Поиск вакансий завершён.</p>\n<p><b>Run:</b> ${escapeHtml(check.run_id)}</p>\n${check.mode === 'existing_run_replay' ? '<p><b>Mode:</b> повторная CRM/email синхронизация по существующему run_id</p>' : ''}\n${warnings.length ? `<p><b>Warnings:</b> ${escapeHtml(warnings.join('; '))}</p>` : ''}\n<ul>\n  <li>Найдено collection: ${escapeHtml(worker.collection_stats?.unique_vacancy_count ?? worker.collection_stats?.raw_vacancy_count ?? '')}</li>\n  <li>После preliminary filter: ${escapeHtml(worker.filter_stats?.processed_count ?? '')}</li>\n  <li>Полностью проанализировано: ${escapeHtml(worker.enrichment_stats?.enriched_count ?? '')}</li>\n  <li>Сохранено в DB: ${escapeHtml(stats.persisted_count ?? '')}</li>\n  <li>P1: ${priorityCounts.P1}, P2: ${priorityCounts.P2}, ALT: ${priorityCounts.ALT}, P3: ${priorityCounts.P3}</li>\n  <li>CRM новых строк: ${crmStats.crm_new_count}, обновлено: ${crmStats.crm_updated_count}, ошибок: ${crmStats.crm_failed_count}</li>\n  <li>Время выполнения Worker: ${escapeHtml(worker.duration_ms ?? '')} ms</li>\n</ul>\n${check.config?.spreadsheet_url ? `<p><a href=\"${escapeHtml(check.config.spreadsheet_url)}\">Открыть CRM</a></p>` : ''}\n<h3>Top vacancies</h3>\n<ol>${topHtml}</ol>`;\nreturn [{ json: { to: check.config?.email_to, subject, html, text: html.replace(/<[^>]*>/g, ' '), run_id: check.run_id, crm_stats: crmStats } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        128
+      ],
+      "id": "716711e3-b07a-446a-b4fd-d3219a205194",
+      "name": "Prepare Success Email"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        480,
+        128
+      ],
+      "id": "c8410c23-9616-47bd-9878-0d820ec600a1",
+      "name": "Gmail Send Digest",
+      "webhookId": "cc45853e-aca4-4bcd-85b0-026cb7046828",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "eAE53vUBjysirbsb",
+          "name": "Gmail account"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const check = $input.first().json;\nconst subject = `AI Job Automation — ошибка поиска — ${new Date().toLocaleDateString('ru-RU')}`;\nconst html = `<p>Pipeline failed.</p><ul><li>Run: ${check.run_id}</li><li>Stage: ${check.failure_stage || 'unknown'}</li><li>Error: ${check.safe_error || 'see n8n/Worker logs'}</li></ul><p>DB remains source of truth for successfully persisted earlier runs.</p>`;\nreturn [{ json: { to: check.config?.email_to, subject, html, text: html.replace(/<[^>]*>/g, ' '), run_id: check.run_id } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1392,
+        640
+      ],
+      "id": "ddb023ef-f938-4764-a483-9976d6059be2",
+      "name": "Prepare Failure Email"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -1200,
+        640
+      ],
+      "id": "69ec3ef5-9c7e-40d6-892a-dd0ffe1f0aef",
+      "name": "Gmail Send Failure",
+      "webhookId": "0a89ddf7-4a8c-4874-be54-703d159eae2e",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "eAE53vUBjysirbsb",
+          "name": "Gmail account"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Build Selected Profile IDs').first().json.config.orchestrator_api_url }}/health",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -5040,
+        128
+      ],
+      "id": "fb539655-d57c-4e1f-8467-63c620714592",
+      "name": "Preflight Orchestrator",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Build Selected Profile IDs').first().json.config.worker_api_url }}/health",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -4800,
+        128
+      ],
+      "id": "230afad7-6b13-4edf-b87f-d1c5937f90fe",
+      "name": "Preflight Worker",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Build Selected Profile IDs').first().json.config.worker_api_url }}/health/ollama",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -4560,
+        128
+      ],
+      "id": "8846314a-e072-47da-8ceb-885435753da0",
+      "name": "Preflight Ollama",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Build Selected Profile IDs').first().json.config.worker_api_url }}/health/ollama/compute",
+        "options": {
+          "timeout": 130000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -4320,
+        128
+      ],
+      "id": "9b2155fe-968b-4067-81ac-00b7cccc7bd2",
+      "name": "Preflight Compute",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Build Selected Profile IDs').first().json.config.worker_api_url }}/health/hh-auth",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -3840,
+        128
+      ],
+      "id": "bfb96eb5-b22a-48aa-8646-c49495f81c4a",
+      "name": "Preflight HH Auth",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Build Selected Profile IDs').first().json.config.worker_api_url }}/hh/authenticated-search-preview",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { profile_id: $('Build Selected Profile IDs').first().json.selected_resume_profile_id, page: 0 } }}",
+        "options": {
+          "timeout": 45000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -3600,
+        128
+      ],
+      "id": "e57f41cb-fd9f-432c-8e7b-496bcaea11a7",
+      "name": "Preflight HH Session",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "function firstNode(name) {\n  try { return $(name).first().json || {}; } catch (error) { return { error: { message: `Missing output from ${name}` } }; }\n}\nfunction hasError(data) {\n  return Boolean(data?.error);\n}\nfunction errorText(data) {\n  return String(data?.error?.message || data?.message || 'unavailable');\n}\nconst selection = $('Build Selected Profile IDs').first().json;\nconst config = selection.config;\nconst orchestrator = firstNode('Preflight Orchestrator');\nconst worker = firstNode('Preflight Worker');\nconst ollama = firstNode('Preflight Ollama');\nconst compute = firstNode('Preflight Compute');\nconst hhAuth = selection.has_resume_profile ? firstNode('Preflight HH Auth') : { status: 'skipped', component: 'hh_auth', storage_state_available: null };\nconst hhSession = selection.has_resume_profile ? firstNode('Preflight HH Session') : { status: 'skipped', authenticated: null, resume_context_confirmed: null };\nconst failures = [];\n\nif (hasError(orchestrator)) {\n  failures.push({ component: 'Orchestrator', reason: 'unavailable', detail: errorText(orchestrator) });\n} else if (orchestrator.status !== 'ok') {\n  failures.push({ component: 'Orchestrator', reason: 'unhealthy status', detail: `status=${orchestrator.status || 'missing'}` });\n}\n\nif (hasError(worker)) {\n  failures.push({ component: 'Worker API', reason: 'unavailable', detail: errorText(worker) });\n} else if (worker.status !== 'ok' || worker.component !== 'worker') {\n  failures.push({ component: 'Worker API', reason: 'unhealthy response', detail: `status=${worker.status || 'missing'} component=${worker.component || 'missing'}` });\n}\n\nif (hasError(ollama)) {\n  failures.push({ component: 'Ollama', reason: 'unavailable', detail: errorText(ollama) });\n} else if (ollama.status !== 'ok' || ollama.component !== 'ollama' || ollama.model_available !== true) {\n  failures.push({ component: 'Ollama', reason: 'unhealthy', detail: `status=${ollama.status || 'missing'} model_available=${ollama.model_available}` });\n}\n\nif (hasError(compute)) {\n  failures.push({ component: 'Ollama compute', reason: 'unavailable', detail: errorText(compute) });\n} else if (compute.status !== 'ok' || compute.component !== 'ollama_compute' || compute.model_loaded !== true || compute.compute_backend !== 'gpu' || compute.gpu_acceptable !== true) {\n  failures.push({ component: 'Ollama compute', reason: 'GPU required', detail: `status=${compute.status || 'missing'} model_loaded=${compute.model_loaded} compute_backend=${compute.compute_backend || 'missing'} gpu_acceptable=${compute.gpu_acceptable} warmup_status=${compute.warmup_status || 'missing'} reason=${compute.reason || 'none'}` });\n}\n\nif (selection.has_resume_profile && hasError(hhAuth)) {\n  failures.push({ component: 'HH auth', reason: 'unavailable', detail: errorText(hhAuth) });\n} else if (selection.has_resume_profile && (hhAuth.status !== 'configured' || hhAuth.component !== 'hh_auth' || hhAuth.storage_state_available !== true)) {\n  failures.push({ component: 'HH auth', reason: 'storage state not configured', detail: `status=${hhAuth.status || 'missing'} storage_state_available=${hhAuth.storage_state_available}` });\n}\n\nif (selection.has_resume_profile && hasError(hhSession)) {\n  failures.push({ component: 'HH session', reason: 'not confirmed', detail: errorText(hhSession) });\n} else if (selection.has_resume_profile && (hhSession.status !== 'succeeded' || hhSession.authenticated !== true || hhSession.resume_context_confirmed !== true)) {\n  failures.push({ component: 'HH session', reason: 'authentication or resume context not confirmed', detail: `status=${hhSession.status || 'missing'} authenticated=${hhSession.authenticated} resume_context_confirmed=${hhSession.resume_context_confirmed}` });\n}\n\nconst ok = failures.length === 0;\nconst firstFailure = failures[0] || null;\nreturn [{\n  json: {\n    ok,\n    config,\n    failure_stage: ok ? null : 'preflight',\n    safe_error: ok ? null : `Preflight failed: ${firstFailure.component} ${firstFailure.reason}`,\n    preflight: {\n      orchestrator: { status: orchestrator.status || null },\n      worker: { status: worker.status || null, component: worker.component || null },\n      ollama: { status: ollama.status || null, component: ollama.component || null, model_available: ollama.model_available === true },\n      compute: {\n        status: compute.status || null,\n        model_loaded: compute.model_loaded === true,\n        compute_backend: compute.compute_backend || null,\n        gpu_acceptable: compute.gpu_acceptable === true,\n        warmup_status: compute.warmup_status || null,\n        reason: compute.reason || null\n      },\n      hh_auth: { status: hhAuth.status || null, component: hhAuth.component || null, storage_state_available: hhAuth.storage_state_available === true },\n      hh_session: { status: hhSession.status || null, authenticated: hhSession.authenticated === true, resume_context_confirmed: hhSession.resume_context_confirmed === true }\n    },\n    failures\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3360,
+        128
+      ],
+      "id": "437defc6-3fef-4233-9ef6-980d47e7e78c",
+      "name": "Validate Preflight"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "79607eba-2efa-4111-b0fd-0cd2079c57ef",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -3120,
+        128
+      ],
+      "id": "f33bf186-e683-42fb-84b7-2d8f1034d1f4",
+      "name": "Preflight OK?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const message = $json.safe_error || 'Preflight failed';\nthrow new Error(message);"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2880,
+        368
+      ],
+      "id": "f6b2df5e-95b2-486f-b83c-0cbaed970681",
+      "name": "Stop Preflight Failed"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "31f40c84-a23b-44e9-a2f2-4f351d44b3c2",
+              "leftValue": "={{ String($json.existing_run_id || \"\").trim() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -5760,
+        128
+      ],
+      "id": "5c23072f-444d-463f-b0dc-e62ca54ac0c1",
+      "name": "Use Existing Run?"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{\n  {\n    ai_resume_recommendations: false,\n    python_resume_recommendations: false,\n    ai_automation_keywords: false,\n    vibecoding_keywords: true,\n    python_backend_keywords: false,\n    python_automation_keywords: false\n  }\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -5520,
+        128
+      ],
+      "id": "f0d66bda-0e4e-49e8-abe0-bbfb6b989997",
+      "name": "Search Profiles — EDIT BEFORE RUN"
+    },
+    {
+      "parameters": {
+        "jsCode": "const selection = $input.first().json || {};\nconst config = $('Config').first().json;\nconst allowedProfileIds = [\n  'ai_resume_recommendations',\n  'python_resume_recommendations',\n  'ai_automation_keywords',\n  'vibecoding_keywords',\n  'python_backend_keywords',\n  'python_automation_keywords'\n];\nconst resumeProfileIds = new Set(['ai_resume_recommendations', 'python_resume_recommendations']);\nfor (const [profileId, selected] of Object.entries(selection)) {\n  if (!allowedProfileIds.includes(profileId)) {\n    throw new Error(`Unknown search profile selector: ${profileId}`);\n  }\n  if (typeof selected !== 'boolean') {\n    throw new Error(`Search profile selector must be boolean: ${profileId}`);\n  }\n}\nconst profileIds = allowedProfileIds.filter(profileId => selection[profileId] === true);\nif (profileIds.length === 0) {\n  throw new Error('No search profiles selected');\n}\nconst selectedResumeProfileId = profileIds.find(profileId => resumeProfileIds.has(profileId)) || null;\nreturn [{\n  json: {\n    config: { ...config, profile_ids: profileIds },\n    profile_selection: selection,\n    has_resume_profile: selectedResumeProfileId !== null,\n    selected_resume_profile_id: selectedResumeProfileId\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5280,
+        128
+      ],
+      "id": "51cb7a22-5766-4ec4-8170-fe804be60473",
+      "name": "Build Selected Profile IDs"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "5e85e54c-6d28-44d2-9390-cf73933634e7",
+              "leftValue": "={{ $('Build Selected Profile IDs').first().json.has_resume_profile }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -4080,
+        128
+      ],
+      "id": "0dfbd929-e729-49a9-a24c-75e6e627ea0a",
+      "name": "Resume Profiles Selected?"
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3840,
+        368
+      ],
+      "id": "a1ee1756-5cf6-40f1-b15e-9c54dc4d460e",
+      "name": "Skip HH Auth Preflight (keyword-only)"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst config = input.config || input;\nconst existingRunId = String(input.existing_run_id || config.existing_run_id || '').trim();\nconst runId = String(input.run_id || existingRunId || '').trim();\nif (!runId) {\n  throw new Error('run_id is required for CRM/email sync');\n}\nconst replayMode = Boolean(existingRunId) && !input.worker;\nconst warnings = [...(input.warnings || [])];\nreturn [{\n  json: {\n    ok: input.ok !== false,\n    run_id: runId,\n    config,\n    worker: input.worker || { status: 'existing_run_replay' },\n    persistence_stats: input.persistence_stats || {},\n    warnings,\n    failure_stage: input.failure_stage || null,\n    safe_error: input.safe_error || null,\n    mode: replayMode ? 'existing_run_replay' : 'worker_pipeline'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1200,
+        128
+      ],
+      "id": "e76c692d-dff2-4661-883b-37c83eefc3f5",
+      "name": "Build Run Context"
+    },
+    {
+      "parameters": {
+        "amount": 20
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -2400,
+        400
+      ],
+      "id": "e075b487-faa2-4e8a-9f0a-7f669729cd91",
+      "name": "Wait 20s for Worker Run",
+      "webhookId": "68ba7eeb-d2ad-4e54-9718-f695b99906eb"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Generate Run ID').first().json.config.worker_api_url }}/hh/pipeline-runs/{{ $('Generate Run ID').first().json.run_id }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -2160,
+        400
+      ],
+      "id": "e84301cd-c241-4f79-9765-a2d98ca49c43",
+      "name": "Get Worker Run Status",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "145bc651-8702-4d85-9c4c-c93f95bf3322",
+              "leftValue": "={{ $json.result_available }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1440,
+        128
+      ],
+      "id": "c075d403-75eb-4a87-a136-937bf520be14",
+      "name": "Worker Result Available?"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Use Existing Run?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Current Run": {
+      "main": [
+        [
+          {
+            "node": "Read CRM Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read CRM Rows": {
+      "main": [
+        [
+          {
+            "node": "Prepare CRM Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare CRM Rows": {
+      "main": [
+        [
+          {
+            "node": "Legacy URL Match?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Legacy URL Match?": {
+      "main": [
+        [
+          {
+            "node": "CRM Upsert Legacy by URL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "CRM Upsert by CRM Key",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CRM Upsert Legacy by URL": {
+      "main": [
+        [
+          {
+            "node": "Prepare Success Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CRM Upsert by CRM Key": {
+      "main": [
+        [
+          {
+            "node": "Prepare Success Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Success Email": {
+      "main": [
+        [
+          {
+            "node": "Gmail Send Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Failure Email": {
+      "main": [
+        [
+          {
+            "node": "Gmail Send Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preflight Orchestrator": {
+      "main": [
+        [
+          {
+            "node": "Preflight Worker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preflight Worker": {
+      "main": [
+        [
+          {
+            "node": "Preflight Ollama",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preflight Ollama": {
+      "main": [
+        [
+          {
+            "node": "Preflight Compute",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preflight HH Auth": {
+      "main": [
+        [
+          {
+            "node": "Preflight HH Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preflight HH Session": {
+      "main": [
+        [
+          {
+            "node": "Validate Preflight",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Profiles — EDIT BEFORE RUN": {
+      "main": [
+        [
+          {
+            "node": "Build Selected Profile IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Selected Profile IDs": {
+      "main": [
+        [
+          {
+            "node": "Preflight Orchestrator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resume Profiles Selected?": {
+      "main": [
+        [
+          {
+            "node": "Preflight HH Auth",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip HH Auth Preflight (keyword-only)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip HH Auth Preflight (keyword-only)": {
+      "main": [
+        [
+          {
+            "node": "Validate Preflight",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Preflight": {
+      "main": [
+        [
+          {
+            "node": "Preflight OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preflight OK?": {
+      "main": [
+        [
+          {
+            "node": "Generate Run ID",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stop Preflight Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Use Existing Run?": {
+      "main": [
+        [
+          {
+            "node": "Build Run Context",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Search Profiles — EDIT BEFORE RUN",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Run Context": {
+      "main": [
+        [
+          {
+            "node": "Get Current Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preflight Compute": {
+      "main": [
+        [
+          {
+            "node": "Resume Profiles Selected?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Run ID": {
+      "main": [
+        [
+          {
+            "node": "Start Worker Pipeline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start Worker Pipeline": {
+      "main": [
+        [
+          {
+            "node": "Wait 20s for Worker Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 20s for Worker Run": {
+      "main": [
+        [
+          {
+            "node": "Get Worker Run Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Worker Run Status": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Worker Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Worker Run": {
+      "main": [
+        [
+          {
+            "node": "Worker Run Terminal?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Worker Run Terminal?": {
+      "main": [
+        [
+          {
+            "node": "Worker Result Available?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait 20s for Worker Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Worker Result Available?": {
+      "main": [
+        [
+          {
+            "node": "Build Run Context",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Failure Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "adb805ff-0742-4e77-ac92-4a0ab74b376a",
+  "meta": {
+    "instanceId": "0db81f0753baa06bf8dd01a6aa413440970bcc829c805aa818d17d0924efde58"
+  },
+  "nodeGroups": [],
+  "id": "9btjeilibSG4SZua",
+  "tags": []
+}

@@ -1590,8 +1590,10 @@ persistence выполняется до внешней синхронизаци�
 
 CRM sync работает с существующей таблицей `CRM_поиска_работы_и_заказов`.
 Основной лист: `Вакансии`; acceptance лист: `Вакансии_TEST`. Существующие
-колонки A:O сохранены. System-managed колонки P:V: `Score`, `AI причина`,
-`Риски`, `Hard blockers`, `CRM Key`, `Run ID`, `Анализ обновлён`.
+колонки A:W сохранены. System-managed колонки P:V: `Score`, `AI причина`,
+`Риски`, `Hard blockers`, `CRM Key`, `Run ID`, `Анализ обновлён`; последний
+диагностический столбец X `Профили поиска` получает только canonical
+`analysis.provenance.profile_ids` для оценки качества search profiles.
 
 CRM Key имеет формат `source + external_id` и является primary idempotent key.
 Новая вакансия создает строку. Существующая строка с CRM Key обновляется без

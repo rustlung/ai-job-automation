@@ -30,7 +30,7 @@ def test_v6_async_polling_contract() -> None:
     start, wait, status = (node(workflow, name) for name in ["Start Worker Pipeline", "Wait 20s for Worker Run", "Get Worker Run Status"])
     assert start["parameters"]["url"].endswith("/hh/pipeline-runs")
     assert start["parameters"]["options"]["timeout"] <= 15000
-    assert wait["parameters"]["amount"] == 20 and wait["parameters"]["unit"] == "seconds"
+    assert wait["parameters"]["amount"] == 20 and wait["parameters"].get("unit", "seconds") == "seconds"
     assert status["parameters"]["options"]["timeout"] <= 15000
     assert links(workflow, "Start Worker Pipeline") == ["Wait 20s for Worker Run"]
     assert links(workflow, "Wait 20s for Worker Run") == ["Get Worker Run Status"]

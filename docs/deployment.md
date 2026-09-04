@@ -133,7 +133,7 @@ Worker; не считать INFO application events обязательным к�
 
 ### Async Pipeline Recovery
 
-Production workflow v6 starts Worker through `POST /hh/pipeline-runs` and polls
+Production workflow v7 starts Worker through `POST /hh/pipeline-runs` and polls
 `GET /hh/pipeline-runs/{run_id}`. The Worker accepts one heavy run at a time.
 Its lifecycle registry is in-memory: after a Worker restart the old run returns
 `404 run_not_found`; check Orchestrator by `run_id` before using existing-run
@@ -885,6 +885,11 @@ CRM Key
 Run ID
 Анализ обновлён
 ```
+
+Existing A:W columns remain unchanged. The final diagnostic column X,
+`Профили поиска`, is populated from canonical `analysis.provenance.profile_ids`
+for both new and updated CRM rows. It is blank when provenance is unavailable
+and does not contain query variants, tracks, source type or run id.
 
 Existing user-managed columns are preserved. Automation must not overwrite:
 

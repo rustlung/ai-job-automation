@@ -4,6 +4,13 @@
 
 ### Added
 
+- n8n workflow v7 with CRM search-profile provenance in the final X column
+  `Профили поиска`, sourced only from canonical `profile_ids`.
+
+## 2026-09-04
+
+### Added
+
 - role-aware preliminary rejection policy that classifies clear irrelevant role
   families from title-first search-card evidence before Ollama batching;
 - identical post-LLM safety invariant, so a model result cannot promote a clear
