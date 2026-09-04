@@ -105,6 +105,23 @@ def pipeline_payload(run_id: str = "run-001", external_id: str = "123") -> dict:
     }
 
 
+def regional_payload(
+    *,
+    run_id: str,
+    external_id: str,
+    hostname: str,
+    profile_id: str,
+    description: str = "Python FastAPI PostgreSQL Docker API integrations.",
+) -> dict:
+    payload = pipeline_payload(run_id=run_id, external_id=external_id)
+    vacancy = payload["items"][0]["vacancy"]
+    vacancy["url"] = f"https://{hostname}/vacancy/{external_id}"
+    vacancy["description"] = description
+    payload["items"][0]["provenance"]["profile_ids"] = [profile_id]
+    payload["items"][0]["provenance"]["first_profile_id"] = profile_id
+    return payload
+
+
 def test_pipeline_results_persist_new_vacancy_analysis_and_events(db_session) -> None:
     with make_client(db_session) as client:
         response = client.post("/pipeline-results", json=pipeline_payload())
@@ -152,6 +169,57 @@ def test_pipeline_results_new_run_creates_analysis_history_and_updates_seen_coun
     assert second["stats"]["updated_vacancy_count"] == 1
     assert vacancy["seen_count"] == 2
     assert VacancyAnalysisRepository(db_session).count() == 2
+
+
+def test_grouped_run_results_resolve_regional_duplicates_across_runs_and_switch_to_samara(db_session) -> None:
+    first = regional_payload(
+        run_id="run-kazan",
+        external_id="200",
+        hostname="kazan.hh.ru",
+        profile_id="ai_automation_keywords",
+    )
+    second = regional_payload(
+        run_id="run-izhevsk",
+        external_id="100",
+        hostname="izhevsk.hh.ru",
+        profile_id="vibecoding_keywords",
+    )
+    third = regional_payload(
+        run_id="run-samara",
+        external_id="300",
+        hostname="samara.hh.ru",
+        profile_id="python_backend_keywords",
+    )
+    with make_client(db_session) as client:
+        client.post("/pipeline-results", json=first)
+        first_grouped = client.get("/pipeline-results/runs/run-kazan/grouped")
+        client.post("/pipeline-results", json=second)
+        second_grouped = client.get("/pipeline-results/runs/run-izhevsk/grouped")
+        client.post("/pipeline-results", json=third)
+        canonical = client.get("/pipeline-results/runs/run-samara")
+        grouped = client.get("/pipeline-results/runs/run-samara/grouped")
+
+    assert first_grouped.status_code == 200
+    first_key = first_grouped.json()["analyses"][0]["presentation_key"]
+    assert first_key.startswith("business:")
+    assert second_grouped.json()["analyses"][0]["presentation_key"] == first_key
+    assert second_grouped.json()["analyses"][0]["vacancy_snapshot"]["external_id"] == "100"
+    assert canonical.status_code == 200
+    assert canonical.json()["count"] == 1
+    assert grouped.status_code == 200
+    body = grouped.json()
+    assert body["count"] == 1
+    row = body["analyses"][0]
+    assert row["vacancy_snapshot"]["external_id"] == "300"
+    assert row["vacancy_snapshot"]["url"] == "https://samara.hh.ru/vacancy/300"
+    assert row["presentation_key"] == first_key
+    assert row["member_count"] == 3
+    assert row["provenance"]["profile_ids"] == [
+        "ai_automation_keywords",
+        "vibecoding_keywords",
+        "python_backend_keywords",
+    ]
+    assert VacancyRepository(db_session).count() == 3
 
 
 def test_pipeline_results_partial_failure_does_not_rollback_other_items(db_session) -> None:

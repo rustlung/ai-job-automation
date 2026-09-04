@@ -8,7 +8,10 @@ from sqlalchemy.orm import Session
 from app.repositories.vacancy import VacancyRepository
 from app.repositories.vacancy_analysis import VacancyAnalysisRepository
 from app.repositories.vacancy_processing_event import VacancyProcessingEventRepository
+from app.services.business_identity import build_business_fingerprint
 from app.schemas.pipeline_result import (
+    GroupedPipelineAnalysisRead,
+    GroupedPipelineRunResultsRead,
     LatestPipelineAnalysesRead,
     PipelineRunResultsRead,
     PipelineResultError,
@@ -20,7 +23,7 @@ from app.schemas.pipeline_result import (
     PipelineResultsCreate,
     PipelineResultsCreateResponse,
 )
-from app.schemas.vacancy_analysis import VacancyAnalysisPriority
+from app.schemas.vacancy_analysis import VacancyAnalysisPriority, VacancyAnalysisRead
 from app.schemas.vacancy import VacancyCreate
 from app.schemas.vacancy_analysis import VacancyAnalysisCreate
 from app.schemas.vacancy_processing_event import (
@@ -28,6 +31,7 @@ from app.schemas.vacancy_processing_event import (
     VacancyProcessingStage,
     VacancyProcessingStatus,
 )
+from app.services.business_vacancy_grouping import group_business_vacancies, merge_profile_ids
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +136,66 @@ class PipelineResultService:
         analyses = self.analysis_repository.list_by_run_id(run_id)
         return PipelineRunResultsRead(run_id=run_id, count=len(analyses), analyses=analyses)
 
+    def get_grouped_run_results(self, run_id: str) -> GroupedPipelineRunResultsRead:
+        current_analyses = self.analysis_repository.list_by_run_id(run_id)
+        current_vacancies = self.vacancy_repository.list_by_ids([analysis.vacancy_id for analysis in current_analyses])
+        current_by_vacancy_id = {vacancy.id: vacancy for vacancy in current_vacancies}
+        current_fingerprints = sorted(
+            {vacancy.business_fingerprint for vacancy in current_vacancies if vacancy.business_fingerprint is not None}
+        )
+        all_members = self.vacancy_repository.list_by_business_fingerprints(current_fingerprints)
+        members_by_id = {vacancy.id: vacancy for vacancy in all_members}
+        members_by_id.update(current_by_vacancy_id)
+
+        member_ids = list(members_by_id)
+        all_analyses = self.analysis_repository.list_by_vacancy_ids(member_ids)
+        latest_analyses = self.analysis_repository.latest_by_vacancy_ids(member_ids)
+        analyses_by_vacancy_id: dict[int, list] = {}
+        for analysis in all_analyses:
+            analyses_by_vacancy_id.setdefault(analysis.vacancy_id, []).append(analysis)
+
+        current_ids = set(current_by_vacancy_id)
+        grouped: list[GroupedPipelineAnalysisRead] = []
+        for group in group_business_vacancies(members_by_id.values()):
+            group_member_ids = {member.id for member in group.members}
+            if not group_member_ids.intersection(current_ids):
+                continue
+            representative_analysis = latest_analyses.get(group.representative.id)
+            if representative_analysis is None:
+                continue
+            provenance = dict(representative_analysis.provenance or {})
+            provenance["profile_ids"] = merge_profile_ids(
+                analysis
+                for member_id in group_member_ids
+                for analysis in analyses_by_vacancy_id.get(member_id, [])
+            )
+            response_payload = VacancyAnalysisRead.model_validate(representative_analysis).model_dump()
+            response_payload["provenance"] = provenance
+            grouped.append(
+                GroupedPipelineAnalysisRead(
+                    **response_payload,
+                    presentation_key=group.presentation_key,
+                    business_fingerprint=group.business_fingerprint,
+                    member_count=len(group.members),
+                )
+            )
+
+        priority_order = {"P1": 0, "P2": 1, "P3": 2, "ALT": 3, None: 4}
+        grouped.sort(
+            key=lambda analysis: (
+                priority_order[analysis.priority.value if analysis.priority is not None else None],
+                -(analysis.final_score or 0),
+                analysis.id,
+            )
+        )
+        logger.info(
+            "pipeline_results_grouped_read run_id=%s canonical_count=%s grouped_count=%s",
+            run_id,
+            len(current_analyses),
+            len(grouped),
+        )
+        return GroupedPipelineRunResultsRead(run_id=run_id, count=len(grouped), analyses=grouped)
+
     def list_latest_analyses(
         self,
         *,
@@ -174,9 +238,18 @@ class PipelineResultService:
         vacancy_input = self._vacancy_create(item)
         vacancy_created = vacancy is None
         if vacancy is None:
-            vacancy = self.vacancy_repository.create(vacancy_input, item.vacancy.collected_at.astimezone(timezone.utc))
+            vacancy = self.vacancy_repository.create(
+                vacancy_input,
+                item.vacancy.collected_at.astimezone(timezone.utc),
+                business_fingerprint=self._business_fingerprint(item),
+            )
         else:
-            self.vacancy_repository.update_from_input(vacancy, vacancy_input, item.vacancy.collected_at.astimezone(timezone.utc))
+            self.vacancy_repository.update_from_input(
+                vacancy,
+                vacancy_input,
+                item.vacancy.collected_at.astimezone(timezone.utc),
+                business_fingerprint=self._business_fingerprint(item),
+            )
 
         analysis = self.analysis_repository.create(vacancy.id, self._analysis_create(run_id, item))
         self._create_processing_events(vacancy.id, analysis.id, run_id, item)
@@ -216,6 +289,15 @@ class PipelineResultService:
             description=item.vacancy.description,
             published_at=published_at,
             seen_at=item.vacancy.collected_at.astimezone(timezone.utc),
+        )
+
+    @staticmethod
+    def _business_fingerprint(item: PipelineResultItem) -> str | None:
+        return build_business_fingerprint(
+            source=item.vacancy.source,
+            company=item.vacancy.company,
+            title=item.vacancy.title,
+            description=item.vacancy.description,
         )
 
     @staticmethod

@@ -1329,11 +1329,12 @@ run lifecycle остаются future work.
    ожидается.
 2. Async Worker pipeline.
 
-Filter calibration для keyword search, regional/business near-duplicate
-suppression для CRM/Web UI и безопасный `GET /hh/search-profiles` остаются
-follow-up backlog после этих reliability tasks. Exact deduplication по
-`source + external_id` сохраняется: разные HH external_id остаются отдельными
-source records, пока не появится отдельный grouping/representative layer.
+Filter calibration для keyword search и безопасный `GET /hh/search-profiles`
+остаются follow-up backlog после этих reliability tasks. Regional/business
+near-duplicate suppression реализован как отдельный cross-run presentation layer:
+exact deduplication по `source + external_id` сохраняется, а nullable indexed
+business fingerprint объединяет только одинаковые company, title и full
+description для CRM/Web UI representative view.
 
 Phase 6+ являются future improvements, а не обязательными частями текущего MVP.
 

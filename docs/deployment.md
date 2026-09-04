@@ -133,7 +133,7 @@ Worker; не считать INFO application events обязательным к�
 
 ### Async Pipeline Recovery
 
-Production workflow v7 starts Worker through `POST /hh/pipeline-runs` and polls
+Production workflow v8 starts Worker through `POST /hh/pipeline-runs` and polls
 `GET /hh/pipeline-runs/{run_id}`. The Worker accepts one heavy run at a time.
 Its lifecycle registry is in-memory: after a Worker restart the old run returns
 `404 run_not_found`; check Orchestrator by `run_id` before using existing-run
@@ -814,7 +814,7 @@ n8n responsibilities:
 - создает `pipeline_run_id`;
 - проверяет Worker result;
 - читает текущий run через Orchestrator
-  `GET /pipeline-results/runs/{run_id}`;
+  `GET /pipeline-results/runs/{run_id}/grouped` for CRM presentation;
 - синхронизирует Google Sheets CRM;
 - отправляет Gmail digest.
 
@@ -887,7 +887,7 @@ Run ID
 ```
 
 Existing A:W columns remain unchanged. The final diagnostic column X,
-`Профили поиска`, is populated from canonical `analysis.provenance.profile_ids`
+`Профили поиска`, is populated from grouped `analysis.provenance.profile_ids`
 for both new and updated CRM rows. It is blank when provenance is unavailable
 and does not contain query variants, tracks, source type or run id.
 
@@ -901,10 +901,10 @@ Existing user-managed columns are preserved. Automation must not overwrite:
 Комментарий
 ```
 
-CRM Key:
+CRM Key for a grouped presentation row:
 
 ``` text
-source + external_id
+business:<business_fingerprint>
 ```
 
 Example:
@@ -913,8 +913,11 @@ Example:
 hh:135997123
 ```
 
-CRM Key is the primary idempotent key. Do not use title, company, row number or
-URL alone as primary identity. Legacy rows without CRM Key are matched only by
+Canonical `source + external_id` remains the DB identity. A grouped CRM key is
+stable across regional HH copies and later Samara representatives; vacancies
+without a full-description fingerprint retain the canonical CRM key. Historical
+CRM rows are not mass-cleaned. Do not use title, company, row number or URL
+alone as primary identity. Legacy rows without CRM Key are matched only by
 extracting HH external id from the HH URL; fuzzy matching by title/company is not
 used.
 

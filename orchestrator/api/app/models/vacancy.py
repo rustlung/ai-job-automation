@@ -21,6 +21,7 @@ class Vacancy(Base):
         UniqueConstraint("source", "external_id", name="uq_vacancies_source_external_id"),
         Index("ix_vacancies_source", "source"),
         Index("ix_vacancies_external_id", "external_id"),
+        Index("ix_vacancies_business_fingerprint", "business_fingerprint"),
         Index("ix_vacancies_created_at", "created_at"),
         Index("ix_vacancies_first_seen_at", "first_seen_at"),
         Index("ix_vacancies_last_seen_at", "last_seen_at"),
@@ -36,6 +37,7 @@ class Vacancy(Base):
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     salary_text: Mapped[str | None] = mapped_column(String(255), nullable=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
+    business_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

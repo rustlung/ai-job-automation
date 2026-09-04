@@ -6,6 +6,10 @@
 
 - n8n workflow v7 with CRM search-profile provenance in the final X column
   `Профили поиска`, sourced only from canonical `profile_ids`.
+- persistent business fingerprint for conservative regional HH duplicate grouping;
+- grouped Orchestrator run-results API and n8n workflow v8 CRM presentation path;
+- cross-run CRM key `business:<fingerprint>` with Samara representative priority
+  and deterministic profile provenance union.
 
 ## 2026-09-04
 

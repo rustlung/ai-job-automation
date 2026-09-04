@@ -27,7 +27,7 @@
 ✅ GPU-required Local LLM compute preflight
 ✅ Async Worker pipeline start/status API
 ✅ Single-heavy-run protection and bounded in-memory run history
-✅ n8n polling Worker pipeline workflow v7
+✅ n8n polling Worker pipeline workflow v8
 ✅ Обработка ошибок интеграции Ollama
 ✅ Реальный локальный AI-запрос с русскоязычным текстом
 ✅ Доступ к Local AI endpoint с homeserver
@@ -121,6 +121,7 @@
 ✅ Google Sheets Service Account credential
 ✅ CRM Key idempotent upsert
 ✅ CRM search profile provenance column X
+✅ Cross-run regional/business duplicate suppression in CRM presentation
 ✅ Legacy HH URL fallback for old CRM rows
 ✅ User-managed CRM fields protection
 ✅ Gmail email digest
@@ -529,6 +530,9 @@ Read API для следующих фаз:
 
 - `GET /pipeline-results/runs/{run_id}` возвращает `run_id`, `count` и
   `analyses`;
+- `GET /pipeline-results/runs/{run_id}/grouped` возвращает presentation rows
+  для CRM: canonical records сохраняются, а regional HH copies с одинаковым
+  persistent business fingerprint объединяются cross-run;
 - `GET /pipeline-results/analyses/latest` поддерживает `priority`, `limit` и
   `offset`;
 - `GET /vacancies/{vacancy_id}/analyses` читает историю конкретной вакансии;
@@ -557,7 +561,7 @@ Manual Trigger
 → preflight health checks
 → Worker POST /hh/collect-filter-enrich-and-persist
 → Orchestrator DB
-→ Orchestrator GET /pipeline-results/runs/{run_id}
+→ Orchestrator GET /pipeline-results/runs/{run_id}/grouped
 → Google Sheets CRM sync
 → Gmail email digest
 ```
@@ -594,10 +598,12 @@ type или run id. Отдельная
 колонка `Track` не добавлялась: существующее поле `Тип` остается
 пользовательским отображением направления.
 
-CRM Key имеет формат `source + external_id`, например `hh:135997123`, и является
-основным idempotent key. Workflow не использует title, company, row number или
-URL alone как primary identity. Новая вакансия создает новую строку. Повторная
-синхронизация существующей строки с CRM Key выполняет update без дубля. Старые
+Canonical identity остается `source + external_id`, например `hh:135997123`.
+Для groupable presentation row CRM Key имеет формат `business:<fingerprint>`;
+это позволяет поздней regional copy, включая Samara, обновить существующую CRM
+строку, а не создать новую. Без full description используется canonical fallback.
+Samara publication имеет priority при выборе representative; analysis/score не
+смешиваются между members, а X получает union `profile_ids`. Старые
 строки без CRM Key сопоставляются только через legacy HH URL fallback: workflow
 извлекает external id из HH URL, обновляет найденную строку и добавляет CRM Key.
 Fuzzy matching по title/company не используется.

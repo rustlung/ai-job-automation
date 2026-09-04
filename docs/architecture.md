@@ -1330,8 +1330,11 @@ resume profiles, expanded variants, tracks и transports. Для уникаль�
 -   `first_query_variant_id`;
 -   `occurrence_count`.
 
-Не реализовано: fuzzy matching, Levenshtein, embeddings, cross-source
-deduplication и объединение разных external_id.
+Не реализованы fuzzy matching, Levenshtein, embeddings и cross-source
+deduplication. Отдельно от exact dedup реализован conservative business
+presentation grouping: разные HH `external_id` не удаляются и не меняют
+canonical identity, но одинаковые normalized company/title/full description
+получают persistent business fingerprint для CRM/Web UI view.
 
 ------------------------------------------------------------------------
 
@@ -1537,14 +1540,18 @@ Read API для следующих фаз:
 
 ``` text
 GET /pipeline-results/runs/{run_id}
+GET /pipeline-results/runs/{run_id}/grouped
 GET /pipeline-results/analyses/latest?priority=P1&limit=100&offset=0
 GET /vacancies/{vacancy_id}/analyses
 GET /processing-runs/{run_id}/events
 ```
 
-`GET /pipeline-results/runs/{run_id}` возвращает `run_id`, `count` и список
-`analyses`. Для синхронизации конкретного run n8n использует
-`GET /pipeline-results/runs/{run_id}`. `GET /pipeline-results/analyses/latest`
+`GET /pipeline-results/runs/{run_id}` возвращает canonical `run_id`, `count` и
+список `analyses`. `GET /pipeline-results/runs/{run_id}/grouped` возвращает
+отдельный presentation contract: groupable regional copies объединяются по
+persistent fingerprint, Samara publication выбирается representative, а
+canonical source records и analysis history сохраняются. Для CRM конкретного
+run n8n использует grouped endpoint. `GET /pipeline-results/analyses/latest`
 остается read API для диагностических и обзорных сценариев, но не заменяет
 current-run sync.
 
@@ -1565,7 +1572,7 @@ Worker POST /hh/collect-filter-enrich-and-persist
 ↓
 Orchestrator DB
 ↓
-Orchestrator GET /pipeline-results/runs/{run_id}
+Orchestrator GET /pipeline-results/runs/{run_id}/grouped
 ↓
 n8n
 ├── Google Sheets CRM sync
@@ -1594,12 +1601,15 @@ CRM sync работает с существующей таблицей `CRM_по
 Основной лист: `Вакансии`; acceptance лист: `Вакансии_TEST`. Существующие
 колонки A:W сохранены. System-managed колонки P:V: `Score`, `AI причина`,
 `Риски`, `Hard blockers`, `CRM Key`, `Run ID`, `Анализ обновлён`; последний
-диагностический столбец X `Профили поиска` получает только canonical
-`analysis.provenance.profile_ids` для оценки качества search profiles.
+диагностический столбец X `Профили поиска` получает union `profile_ids` со всех
+известных members business group для оценки качества search profiles.
 
-CRM Key имеет формат `source + external_id` и является primary idempotent key.
-Новая вакансия создает строку. Существующая строка с CRM Key обновляется без
-дубля. Legacy row без CRM Key может быть сопоставлена только через HH URL
+Canonical identity имеет формат `source + external_id`. CRM presentation key
+для groupable vacancy имеет формат `business:<fingerprint>` и сохраняется при
+появлении новых regional copies между runs; без fingerprint используется
+canonical fallback. Новая groupable vacancy создает строку, а поздняя Samara
+copy обновляет существующую business row без дубля. Legacy row без CRM Key может
+быть сопоставлена только через HH URL
 fallback: n8n извлекает external id из URL, обновляет найденную строку и
 добавляет CRM Key. Fuzzy matching по title/company не используется.
 

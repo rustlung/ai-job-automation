@@ -53,6 +53,22 @@ class VacancyAnalysisRepository:
         )
         return list(self.session.scalars(statement).all())
 
+    def list_by_vacancy_ids(self, vacancy_ids: list[int]) -> list[VacancyAnalysis]:
+        if not vacancy_ids:
+            return []
+        statement = (
+            select(VacancyAnalysis)
+            .where(VacancyAnalysis.vacancy_id.in_(vacancy_ids))
+            .order_by(VacancyAnalysis.created_at, VacancyAnalysis.id)
+        )
+        return list(self.session.scalars(statement).all())
+
+    def latest_by_vacancy_ids(self, vacancy_ids: list[int]) -> dict[int, VacancyAnalysis]:
+        latest: dict[int, VacancyAnalysis] = {}
+        for analysis in self.list_by_vacancy_ids(vacancy_ids):
+            latest[analysis.vacancy_id] = analysis
+        return latest
+
     def list_latest(self, *, priority: str | None = None, limit: int = 100, offset: int = 0) -> list[VacancyAnalysis]:
         statement = select(VacancyAnalysis).where(VacancyAnalysis.run_id.is_not(None))
         if priority is not None:

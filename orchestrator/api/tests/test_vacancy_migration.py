@@ -30,10 +30,12 @@ def test_vacancy_migration_upgrade_and_downgrade(tmp_path, monkeypatch) -> None:
     assert "ix_vacancies_created_at" in indexes
     assert "ix_vacancies_first_seen_at" in indexes
     assert "ix_vacancies_last_seen_at" in indexes
+    assert "ix_vacancies_business_fingerprint" in indexes
     vacancy_columns = {column["name"]: column for column in inspector.get_columns("vacancies")}
     assert vacancy_columns["first_seen_at"]["nullable"] is False
     assert vacancy_columns["last_seen_at"]["nullable"] is False
     assert vacancy_columns["seen_count"]["nullable"] is False
+    assert vacancy_columns["business_fingerprint"]["nullable"] is True
     check_constraints = {constraint["name"] for constraint in inspector.get_check_constraints("vacancies")}
     assert "ck_vacancies_seen_count_positive" in check_constraints
     analysis_indexes = {index["name"] for index in inspector.get_indexes("vacancy_analyses")}
@@ -65,10 +67,12 @@ def test_vacancy_migration_upgrade_and_downgrade(tmp_path, monkeypatch) -> None:
     assert "vacancies" in inspector.get_table_names()
     assert "vacancy_analyses" in inspector.get_table_names()
     assert "vacancy_processing_events" in inspector.get_table_names()
+    downgraded_vacancy_columns = {column["name"] for column in inspector.get_columns("vacancies")}
+    assert "business_fingerprint" not in downgraded_vacancy_columns
     downgraded_analysis_columns = {column["name"] for column in inspector.get_columns("vacancy_analyses")}
-    assert "run_id" not in downgraded_analysis_columns
-    assert "final_score" not in downgraded_analysis_columns
-    assert "priority" not in downgraded_analysis_columns
+    assert "run_id" in downgraded_analysis_columns
+    assert "final_score" in downgraded_analysis_columns
+    assert "priority" in downgraded_analysis_columns
     vacancy_columns_after_one_downgrade = {column["name"] for column in inspector.get_columns("vacancies")}
     assert "first_seen_at" in vacancy_columns_after_one_downgrade
     assert "last_seen_at" in vacancy_columns_after_one_downgrade
@@ -79,6 +83,42 @@ def test_vacancy_migration_upgrade_and_downgrade(tmp_path, monkeypatch) -> None:
     assert "vacancies" in inspector.get_table_names()
     assert "vacancy_analyses" in inspector.get_table_names()
     assert "vacancy_processing_events" in inspector.get_table_names()
+    engine.dispose()
+
+
+def test_business_fingerprint_migration_preserves_existing_vacancies(tmp_path, monkeypatch) -> None:
+    database_url = f"sqlite:///{tmp_path / 'business-fingerprint.db'}"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    get_settings.cache_clear()
+    config = make_alembic_config(database_url)
+
+    command.upgrade(config, "20260810_0001")
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO vacancies (
+                    source, external_id, url, title, company, description,
+                    first_seen_at, last_seen_at, seen_count, collected_at, created_at, updated_at
+                ) VALUES (
+                    'hh', 'legacy-001', 'https://hh.ru/vacancy/legacy-001', 'Python Developer', 'Test Company', 'Description',
+                    '2026-09-01T00:00:00+00:00', '2026-09-01T00:00:00+00:00', 1,
+                    '2026-09-01T00:00:00+00:00', '2026-09-01T00:00:00+00:00', '2026-09-01T00:00:00+00:00'
+                )
+                """
+            )
+        )
+
+    command.upgrade(config, "head")
+    inspector = inspect(engine)
+    columns = {column["name"]: column for column in inspector.get_columns("vacancies")}
+    assert columns["business_fingerprint"]["nullable"] is True
+    assert "ix_vacancies_business_fingerprint" in {index["name"] for index in inspector.get_indexes("vacancies")}
+    with engine.connect() as connection:
+        row = connection.execute(text("SELECT external_id, business_fingerprint FROM vacancies")).one()
+        assert row.external_id == "legacy-001"
+        assert row.business_fingerprint is None
     engine.dispose()
 
 
@@ -147,7 +187,8 @@ def test_processing_event_migration_preserves_existing_tables_on_downgrade(tmp_p
     assert "vacancies" in inspector.get_table_names()
     assert "vacancy_analyses" in inspector.get_table_names()
     assert "vacancy_processing_events" in inspector.get_table_names()
-    assert "run_id" not in {column["name"] for column in inspector.get_columns("vacancy_analyses")}
+    assert "business_fingerprint" not in {column["name"] for column in inspector.get_columns("vacancies")}
+    assert "run_id" in {column["name"] for column in inspector.get_columns("vacancy_analyses")}
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT COUNT(*) FROM vacancies")) == 1
         assert connection.scalar(text("SELECT COUNT(*) FROM vacancy_analyses")) == 1

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database.session import get_db_session
 from app.schemas.pipeline_result import (
+    GroupedPipelineRunResultsRead,
     LatestPipelineAnalysesRead,
     PipelineRunResultsRead,
     PipelineResultsCreate,
@@ -44,6 +45,14 @@ def get_pipeline_run_results(
     service: PipelineResultService = Depends(get_pipeline_result_service),
 ) -> PipelineRunResultsRead:
     return service.get_run_results(run_id)
+
+
+@router.get("/pipeline-results/runs/{run_id}/grouped", response_model=GroupedPipelineRunResultsRead)
+def get_grouped_pipeline_run_results(
+    run_id: str,
+    service: PipelineResultService = Depends(get_pipeline_result_service),
+) -> GroupedPipelineRunResultsRead:
+    return service.get_grouped_run_results(run_id)
 
 
 @router.get("/pipeline-results/analyses/latest", response_model=LatestPipelineAnalysesRead)

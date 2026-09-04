@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 from app.models.vacancy import Vacancy
 from app.schemas.vacancy import VacancyCreate
 
+_UNSET = object()
+
 
 class VacancyRepository:
     def __init__(self, session: Session) -> None:
@@ -19,10 +21,27 @@ class VacancyRepository:
         statement = select(Vacancy).where(Vacancy.source == source, Vacancy.external_id == external_id)
         return self.session.scalar(statement)
 
+    def list_by_ids(self, vacancy_ids: list[int]) -> list[Vacancy]:
+        if not vacancy_ids:
+            return []
+        return list(self.session.scalars(select(Vacancy).where(Vacancy.id.in_(vacancy_ids))).all())
+
+    def list_by_business_fingerprints(self, fingerprints: list[str]) -> list[Vacancy]:
+        if not fingerprints:
+            return []
+        statement = select(Vacancy).where(Vacancy.business_fingerprint.in_(fingerprints)).order_by(Vacancy.id)
+        return list(self.session.scalars(statement).all())
+
     def count(self) -> int:
         return len(self.session.scalars(select(Vacancy.id)).all())
 
-    def create(self, vacancy_input: VacancyCreate, seen_at: datetime | None = None) -> Vacancy:
+    def create(
+        self,
+        vacancy_input: VacancyCreate,
+        seen_at: datetime | None = None,
+        *,
+        business_fingerprint: str | None = None,
+    ) -> Vacancy:
         effective_seen_at = seen_at or self._now()
         vacancy = Vacancy(
             **vacancy_input.model_dump(exclude={"seen_at"}),
@@ -30,6 +49,7 @@ class VacancyRepository:
             last_seen_at=effective_seen_at,
             seen_count=1,
             collected_at=self._now(),
+            business_fingerprint=business_fingerprint,
         )
         self.session.add(vacancy)
         try:
@@ -39,12 +59,23 @@ class VacancyRepository:
             raise
         return vacancy
 
-    def update_from_input(self, vacancy: Vacancy, vacancy_input: VacancyCreate, seen_at: datetime | None = None) -> bool:
+    def update_from_input(
+        self,
+        vacancy: Vacancy,
+        vacancy_input: VacancyCreate,
+        seen_at: datetime | None = None,
+        *,
+        business_fingerprint: str | None | object = _UNSET,
+    ) -> bool:
         changed = False
         for field, value in vacancy_input.model_dump(exclude={"seen_at"}).items():
             if not self._values_equal(getattr(vacancy, field), value):
                 setattr(vacancy, field, value)
                 changed = True
+
+        if business_fingerprint is not _UNSET and vacancy.business_fingerprint != business_fingerprint:
+            vacancy.business_fingerprint = business_fingerprint
+            changed = True
 
         effective_seen_at = seen_at or self._now()
         last_seen_at = self._ensure_utc(vacancy.last_seen_at)

@@ -141,6 +141,18 @@ class PipelineRunResultsRead(BaseModel):
     analyses: list[VacancyAnalysisRead]
 
 
+class GroupedPipelineAnalysisRead(VacancyAnalysisRead):
+    presentation_key: str
+    business_fingerprint: str | None = None
+    member_count: int = Field(ge=1)
+
+
+class GroupedPipelineRunResultsRead(BaseModel):
+    run_id: str
+    count: int = Field(ge=0)
+    analyses: list[GroupedPipelineAnalysisRead]
+
+
 class LatestPipelineAnalysesRead(BaseModel):
     count: int = Field(ge=0)
     total: int = Field(ge=0)

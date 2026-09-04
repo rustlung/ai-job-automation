@@ -89,13 +89,13 @@ keyword profiles и configurable selection также приняты.
 Актуальный export:
 
 ``` text
-workflows/n8n/AI Job Automation — Daily Search CRM Digest v7.json
+workflows/n8n/AI Job Automation — Daily Search CRM Digest v8.json
 ```
 
 Workflow name:
 
 ``` text
-AI Job Automation — Daily Search CRM Digest v7
+AI Job Automation — Daily Search CRM Digest v8
 ```
 
 Export не содержит credentials. Workflow `active=false`. v4 сохраняется как
@@ -115,7 +115,7 @@ Manual Trigger
 → Worker POST /hh/pipeline-runs
 → Worker GET /hh/pipeline-runs/{run_id}
 → Orchestrator DB
-→ Orchestrator GET /pipeline-results/runs/{run_id}
+→ Orchestrator GET /pipeline-results/runs/{run_id}/grouped
 → Google Sheets CRM sync
 → Gmail email digest
 ```
@@ -226,7 +226,7 @@ Orchestrator DB → n8n → Google Sheets
 Current-run CRM sync использует:
 
 ``` text
-GET /pipeline-results/runs/{run_id}
+GET /pipeline-results/runs/{run_id}/grouped
 ```
 
 `GET /pipeline-results/analyses/latest` не используется для синхронизации
@@ -254,8 +254,8 @@ Run ID
 ```
 
 Последний столбец X `Профили поиска` является диагностическим полем quality
-calibration. n8n заполняет его только canonical
-`analysis.provenance.profile_ids`: один profile id записывается как есть,
+calibration. n8n заполняет его из объединенного provenance `profile_ids`
+business group: один profile id записывается как есть,
 несколько -- через `, ` в стабильном порядке provenance, а отсутствие provenance
 оставляет ячейку пустой. Query variants, tracks, source type и run id в X не
 пишутся. Поле обновляется и при new row, и при idempotent CRM Key/legacy URL
@@ -295,10 +295,10 @@ User-managed fields protected from automation:
 
 AI short reason writes to `AI причина`, not to `Комментарий`.
 
-CRM Key:
+CRM Key для presentation row:
 
 ``` text
-source + external_id
+business:<business_fingerprint>
 ```
 
 Example:
@@ -306,6 +306,13 @@ Example:
 ``` text
 hh:135997123
 ```
+
+Для vacancy без безопасного full-description fingerprint сохраняется canonical
+fallback `source:external_id`. Canonical endpoint
+`GET /pipeline-results/runs/{run_id}` не меняется; grouped endpoint используется
+только CRM/Web UI presentation layer. Regional copies сохраняются отдельными
+source records, но Samara URL выбирается representative при наличии, а profile
+provenance объединяется. Historical CRM rows массово не очищаются.
 
 Accepted behavior:
 
