@@ -133,11 +133,23 @@ Worker; не считать INFO application events обязательным к�
 
 ### Async Pipeline Recovery
 
-Production workflow v8 starts Worker through `POST /hh/pipeline-runs` and polls
+Production workflow v9 starts Worker through `POST /hh/pipeline-runs` and polls
 `GET /hh/pipeline-runs/{run_id}`. The Worker accepts one heavy run at a time.
 Its lifecycle registry is in-memory: after a Worker restart the old run returns
 `404 run_not_found`; check Orchestrator by `run_id` before using existing-run
 CRM/email recovery. Worker cancellation is not implemented.
+
+### Web Backend Foundation
+
+The future browser calls only Orchestrator `/api/...`. Configure
+`WORKER_API_URL`, `N8N_WEBHOOK_URL`, `N8N_WEBHOOK_SECRET` and, when internal
+run lifecycle endpoints are protected, `ORCHESTRATOR_INTERNAL_API_TOKEN` in the
+Orchestrator environment. These values remain environment-only and must never
+be placed in a frontend, operational settings, or a committed workflow export.
+
+The v9 webhook is an internal start boundary; it accepts quickly and does not
+hold a connection for Worker processing. Manual n8n full runs still register a
+`PipelineRun`, while `existing_run_id` remains a replay-only service path.
 
 Worker разворачивается на целевом узле Windows 11 через Docker Desktop.
 Для деплоя используется sparse checkout только каталога `worker`.

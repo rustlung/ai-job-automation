@@ -477,11 +477,18 @@ Search direction decisions:
 
 # 11. Приоритет проекта
 
-Async Worker pipeline execution реализован: n8n v7 запускает Worker коротким
+Async Worker pipeline execution реализован: n8n v9 запускает Worker коротким
 `POST /hh/pipeline-runs`, затем poll'ит status. Один Worker допускает один
 heavy run; lifecycle state intentionally in-memory, поэтому после restart нужно
 проверить Orchestrator и использовать existing-run recovery только для
 persisted results.
+
+Web backend foundation реализован в Orchestrator: persistent `PipelineRun` и
+singleton `OperationalSettings` поддерживают будущий Web UI, но React frontend
+ещё не создан. Web full run starts through an internal n8n webhook with an
+Orchestrator-generated `run_id`; manual n8n runs retain their own run-id
+generation and register the same persistent history. `existing_run_id` remains
+only a late-stage replay tool.
 
 Главная цель:
 

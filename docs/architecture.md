@@ -67,6 +67,20 @@ Public exposure:
     pipeline данных;
 -   Google Sheets является пользовательской CRM-витриной.
 
+Web backend foundation:
+
+``` text
+Future React UI
+↓ /api
+Orchestrator API
+├── PipelineRun and OperationalSettings persistence
+├── safe Worker profile/health proxy
+└── internal n8n webhook start
+```
+
+The Orchestrator is the only future frontend boundary. Google Sheets remains a
+reporting mirror; it is not a source of truth for user-owned application data.
+
 Production процесс осознанно ручной: Windows Worker не работает постоянно,
 поэтому пользователь включает Worker, проверяет Docker/Ollama/HH access и
 запускает n8n workflow через Manual Trigger.

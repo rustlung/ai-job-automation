@@ -152,6 +152,33 @@ fuzzy matching.
 Orchestrator API работает на homeserver, хранит состояние системы и является
 source of truth для автоматических vacancy pipeline данных.
 
+### Web Backend Foundation
+
+Orchestrator is the backend boundary for the future React UI. The UI receives
+only `/api/...` contracts and does not call Worker, Ollama, n8n or Google Sheets
+directly.
+
+``` text
+GET /api/settings
+PATCH /api/settings
+GET /api/search-profiles
+GET /api/system/health
+POST /api/runs
+GET /api/runs
+GET /api/runs/{run_id}
+```
+
+`OperationalSettings` is a typed singleton for editable operational values.
+Search profiles and `existing_run_id` are deliberately not settings. `POST
+/api/runs` validates enabled Worker profiles, creates a persistent `PipelineRun`
+with `trigger_source=web_ui`, snapshots safe run configuration, then starts the
+internal n8n webhook without waiting for the production pipeline.
+
+`GET /api/system/health` is lightweight: it does not call the Worker compute
+preflight or warm an Ollama model. Internal n8n lifecycle endpoints live under
+`/internal/pipeline-runs`; their optional token is configured only in the
+environment and must not be exposed to the browser.
+
 ### Health
 
 ``` text

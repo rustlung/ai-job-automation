@@ -1319,9 +1319,10 @@ Phase 5 имеет рабочий accepted MVP pipeline. Production запуск
 
 ## Current Reliability Priorities
 
-Async Worker pipeline реализован: workflow v6 использует async start/status,
-single-heavy-run policy и polling. Persistent queue, cancellation и durable
-run lifecycle остаются future work.
+Async Worker pipeline реализован: workflow v9 использует async start/status,
+single-heavy-run policy и polling. Persistent `PipelineRun` history and typed
+operational settings now provide the Web UI backend foundation; React frontend,
+persistent queue and cancellation remain future work.
 
 Следующие приоритеты:
 

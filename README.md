@@ -144,7 +144,9 @@ Worker — compute layer. Он собирает данные, парсит HH, �
 делает enrichment/scoring и отправляет результат в Orchestrator.
 
 Orchestrator — persistence layer и source of truth. Он хранит вакансии, историю
-анализа, processing events и результаты pipeline runs.
+анализа, processing events, persistent PipelineRun history и typed operational
+settings. Он также становится единственной backend API boundary для будущего
+React UI.
 
 n8n — orchestration и external integrations. Он запускает production workflow,
 выполняет preflight, вызывает Worker, читает current run из Orchestrator,
@@ -310,10 +312,14 @@ ai-job-automation/
   только GPU;
 - HH auth storage и live HH session, только если выбран resume profile.
 
-Workflow v5 содержит ноду `Search Profiles — EDIT BEFORE RUN` с boolean
+Workflow v9 содержит ноду `Search Profiles — EDIT BEFORE RUN` с boolean
 selection resume и keyword profiles. Keyword-only run использует public
 `expanded_search`/`httpx` path и не требует HH storage state; при выборе resume
 profile сохраняется strict live HH preflight.
+
+v9 сохраняет Manual Trigger и `existing_run_id` replay. Для будущего Web UI
+Orchestrator создаёт persistent run, передаёт его через защищённый internal
+webhook, а обе full-run ветки сходятся перед формированием `profile_ids`.
 
 Compute preflight выполняется отдельным `POST /health/ollama/compute`: при
 выгруженной модели он делает минимальный warm-up и проверяет её allocation через

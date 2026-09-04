@@ -62,7 +62,7 @@ def test_vacancy_migration_upgrade_and_downgrade(tmp_path, monkeypatch) -> None:
     assert foreign_keys[0]["referred_table"] == "vacancies"
     assert foreign_keys[0]["options"]["ondelete"] == "CASCADE"
 
-    command.downgrade(make_alembic_config(database_url), "-1")
+    command.downgrade(make_alembic_config(database_url), "20260810_0001")
     inspector = inspect(engine)
     assert "vacancies" in inspector.get_table_names()
     assert "vacancy_analyses" in inspector.get_table_names()
@@ -182,7 +182,7 @@ def test_processing_event_migration_preserves_existing_tables_on_downgrade(tmp_p
             )
         )
 
-    command.downgrade(config, "-1")
+    command.downgrade(config, "20260810_0001")
     inspector = inspect(engine)
     assert "vacancies" in inspector.get_table_names()
     assert "vacancy_analyses" in inspector.get_table_names()
@@ -196,6 +196,35 @@ def test_processing_event_migration_preserves_existing_tables_on_downgrade(tmp_p
 
     command.upgrade(config, "head")
     assert "vacancy_processing_events" in inspect(engine).get_table_names()
+    engine.dispose()
+
+
+def test_web_backend_foundation_migration_upgrade_and_single_step_downgrade(tmp_path, monkeypatch) -> None:
+    database_url = f"sqlite:///{tmp_path / 'web-foundation.db'}"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    get_settings.cache_clear()
+
+    config = make_alembic_config(database_url)
+    command.upgrade(config, "head")
+    engine = create_engine(database_url)
+    inspector = inspect(engine)
+    assert "pipeline_runs" in inspector.get_table_names()
+    assert "operational_settings" in inspector.get_table_names()
+    assert {column["name"] for column in inspector.get_columns("pipeline_runs")} >= {
+        "run_id",
+        "trigger_source",
+        "status",
+        "profile_ids",
+        "config_snapshot",
+        "stats_snapshot",
+    }
+    assert "ix_pipeline_runs_run_id" in {index["name"] for index in inspector.get_indexes("pipeline_runs")}
+
+    command.downgrade(config, "-1")
+    inspector = inspect(engine)
+    assert "pipeline_runs" not in inspector.get_table_names()
+    assert "operational_settings" not in inspector.get_table_names()
+    assert "business_fingerprint" in {column["name"] for column in inspector.get_columns("vacancies")}
     engine.dispose()
 
 

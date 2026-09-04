@@ -4,6 +4,12 @@
 
 ### Added
 
+- Web backend foundation: persistent `PipelineRun`, typed singleton
+  `OperationalSettings`, safe Worker search-profile proxy, lightweight system
+  health, Web run start/list/detail APIs and internal run lifecycle endpoints.
+- n8n workflow v9 with separate Manual and internal Webhook full-run entries,
+  one normalized profile/config input, persistent `trigger_source`, and the
+  preserved `existing_run_id` service replay branch.
 - n8n workflow v7 with CRM search-profile provenance in the final X column
   `Профили поиска`, sourced only from canonical `profile_ids`.
 - persistent business fingerprint for conservative regional HH duplicate grouping;

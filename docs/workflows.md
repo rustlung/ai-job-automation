@@ -89,13 +89,13 @@ keyword profiles и configurable selection также приняты.
 Актуальный export:
 
 ``` text
-workflows/n8n/AI Job Automation — Daily Search CRM Digest v8.json
+workflows/n8n/AI Job Automation — Daily Search CRM Digest v9.json
 ```
 
 Workflow name:
 
 ``` text
-AI Job Automation — Daily Search CRM Digest v8
+AI Job Automation — Daily Search CRM Digest v9
 ```
 
 Export не содержит credentials. Workflow `active=false`. v4 сохраняется как
@@ -132,6 +132,7 @@ Manual Trigger
 → Config
 → Use Existing Run?
 → Search Profiles — EDIT BEFORE RUN
+→ Normalize Manual Input
 → Build Selected Profile IDs
 → Preflight Orchestrator
 → Preflight Worker
@@ -142,8 +143,9 @@ Manual Trigger
 → Preflight HH Session (resume only)
 → Validate Preflight
 → Preflight OK?
-→ Generate Run ID
-→ HTTP Worker Pipeline
+→ Web Run ID Provided? / Generate Run ID
+→ register PipelineRun
+→ Start Worker Pipeline
 → Check Worker Result
 → Pipeline OK?
 → Get Current Run

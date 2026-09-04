@@ -88,6 +88,24 @@ class SearchProfile(BaseModel):
     order: int = Field(ge=0)
 
 
+class SearchProfilePublicRead(BaseModel):
+    """Safe metadata for profile selection clients; intentionally excludes search internals."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: ProfileIdString
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=PROFILE_NAME_MAX_LENGTH)]
+    track: SearchProfileTrack
+    source_type: SearchProfileSourceType
+    enabled: bool
+
+
+class SearchProfilePublicListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    profiles: list[SearchProfilePublicRead]
+
+
 class HHSearchCollectionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

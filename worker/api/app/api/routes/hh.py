@@ -22,7 +22,12 @@ from app.schemas.hh import (
     HHVacancyDetailsRequest,
 )
 from app.schemas.hh_auth import HHAuthHealthResponse, HHAuthHealthStatus, HHAuthenticatedSearchPreviewRequest, HHAuthenticatedSearchPreviewResult
-from app.schemas.hh_collection import HHSearchCollectionRequest, HHSearchCollectionResult
+from app.schemas.hh_collection import (
+    HHSearchCollectionRequest,
+    HHSearchCollectionResult,
+    SearchProfilePublicListResponse,
+    SearchProfilePublicRead,
+)
 from app.services.hh_auth_state import HHAuthStateInvalidError, HHAuthStateMissingError, HHAuthStateStore
 from app.services.hh_authenticated_search import (
     HHAuthenticatedSearchPreviewService,
@@ -34,6 +39,7 @@ from app.services.hh_search_collection import (
     HHSearchCollectionUnknownProfileError,
 )
 from app.services.hh_search import HHSearchService
+from app.services.hh_search_profiles import HHSearchProfileRegistry
 from app.services.hh_vacancy import HHVacancyService
 
 router = APIRouter()
@@ -53,6 +59,23 @@ def get_hh_authenticated_search_preview_service() -> HHAuthenticatedSearchPrevie
 
 def get_hh_vacancy_service() -> HHVacancyService:
     return HHVacancyService.from_settings(get_settings())
+
+
+@router.get("/hh/search-profiles", response_model=SearchProfilePublicListResponse)
+def list_hh_search_profiles() -> SearchProfilePublicListResponse:
+    profiles = HHSearchProfileRegistry(get_settings()).list_profiles()
+    return SearchProfilePublicListResponse(
+        profiles=[
+            SearchProfilePublicRead(
+                id=profile.id,
+                name=profile.name,
+                track=profile.track,
+                source_type=profile.source_type,
+                enabled=profile.enabled,
+            )
+            for profile in profiles
+        ]
+    )
 
 
 @router.post("/hh/search-preview", response_model=HHSearchPreviewResponse)
