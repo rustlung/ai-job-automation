@@ -127,6 +127,26 @@ async def test_clear_role_policy_reject_skips_ollama_and_preserves_contract() ->
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Media Buyer (Google Ads | Nutra | COD/SS)",
+        "Менеджер маркетплейса Яндекс Маркет",
+    ],
+)
+async def test_media_buyer_and_marketplace_manager_skip_ollama(title: str) -> None:
+    client = FakeOllamaClient([])
+
+    result = await service(client).filter_vacancies(
+        [vacancy("1", title, "Использовать AI и API", "Automation analytics")]
+    )
+
+    assert result.reject_count == 1
+    assert result.items[0].assessment.decision == PreliminaryDecision.REJECT
+    assert client.calls == []
+
+
+@pytest.mark.anyio
 async def test_conditional_role_with_implementation_core_calls_ollama() -> None:
     client = FakeOllamaClient([{"items": [model_item(1)]}])
 

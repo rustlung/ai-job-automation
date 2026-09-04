@@ -302,6 +302,8 @@ support, system administration/operations и security tracks без реальн
 AI/Python/backend implementation, а также ранее известные очевидно
 нерелевантные роли. Strong technical title защищает Python/backend/integration/
 AI/LLM/ML/CV роли от incidental domain words.
+Media Buyer/media buying отклоняется как commercial role; Marketplace Manager
+отклоняется при отсутствии strong engineering title.
 Positive guardrails защищают от false negative для явных Python/backend/automation, AI/LLM/automation и QA/API/testing карточек. Technical support как core role больше не является ALT protection.
 Forced reject имеет приоритет над positive guardrails.
 

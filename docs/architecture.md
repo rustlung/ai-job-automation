@@ -804,6 +804,8 @@ AI/Python/backend implementation. QA (включая Manual QA/AQA/SDET) ост�
 допустимым ALT направлением. Strong Python/backend/integration/AI/LLM/ML/CV
 title защищает вакансию от incidental domain words, например от упоминания 1C
 или finance в integration context.
+Media Buyer/media buying относится к commercial reject; Marketplace Manager
+отклоняется только при отсутствии такого strong engineering title.
 Positive guardrails покрывают явные Python/backend/automation, AI/LLM,
 QA/API/testing карточки. Technical support как core role больше не получает
 engineering-heavy promotion: он должен быть отсеян до full enrichment.

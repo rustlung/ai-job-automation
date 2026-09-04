@@ -39,6 +39,10 @@ def vacancy(title: str, responsibility: str = "", requirement: str = "") -> HHSe
         ("Pentester", "Писать Python инструменты", "Security", "security"),
         ("Наставник по Python", "Обучать AI и Python", "Проведение занятий", "education"),
         ("Community Manager", "Использовать AI", "Комьюнити", "commercial_community"),
+        ("Media Buyer (Google Ads | Nutra | COD/SS)", "Закупать трафик", "Google Ads", "commercial_community"),
+        ("Media Buyer", "Использовать AI creative automation", "Performance marketing", "commercial_community"),
+        ("Менеджер маркетплейса Яндекс Маркет", "Использовать API и AI", "Аналитика", "marketplace_operations"),
+        ("Marketplace Manager", "Настраивать automation dashboards", "Аналитика", "marketplace_operations"),
     ],
 )
 def test_hard_role_families_reject_incidental_technical_mentions(
@@ -72,6 +76,10 @@ def test_hard_role_families_reject_incidental_technical_mentions(
         ("SDET", "Тестировать backend", "API"),
         ("Technical System Analyst", "Описывать integrations", "API"),
         ("AI Application Security Engineer", "Разрабатывать LLM backend", "Python API"),
+        ("Python разработчик интеграций с маркетплейсами", "Разрабатывать API", "Python FastAPI"),
+        ("Marketplace Integration Engineer", "Интегрировать каталоги", "API"),
+        ("Backend Engineer — e-commerce / marketplace APIs", "Разрабатывать сервисы", "Python FastAPI"),
+        ("Automation Engineer for Ozon/Wildberries", "Собирать интеграции", "API"),
     ],
 )
 def test_target_technical_roles_and_qa_are_protected(

@@ -22,6 +22,8 @@
 
 - technical support as the core role is rejected instead of being promoted to
   an engineering-heavy ALT candidate; preliminary prompt version remains `v4`.
+- Media Buyer/media buying is rejected as a commercial role; Marketplace Manager
+  is rejected when its title has no strong engineering protection.
 
 ## 2026-09-02
 

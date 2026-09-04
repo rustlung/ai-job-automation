@@ -129,6 +129,18 @@ HARD_ROLE_FAMILIES = (
             "амбассадор",
             "business development",
             "бизнес-девелопмент",
+            "media buyer",
+            "media buying",
+            "медиабайер",
+        ),
+    ),
+    (
+        "marketplace_operations",
+        (
+            "менеджер маркетплейса",
+            "marketplace manager",
+            "e-commerce marketplace manager",
+            "ecommerce marketplace manager",
         ),
     ),
     ("procurement_supply", ("закупк", "снабжен", "procurement", "supply manager")),
@@ -224,6 +236,16 @@ LEGACY_HARD_ROLE_FAMILIES = (
     ("clearly_nontechnical", ("бухгалтер", "курьер", "студенческих работ", "автор работ"), PreliminaryRiskCode.UNRELATED_PRIMARY_STACK),
 )
 
+TRAFFIC_BUYER_TITLE_MARKERS = ("traffic buyer", "buyer traffic")
+ADVERTISING_CONTEXT_MARKERS = (
+    "google ads",
+    "adwords",
+    "nutra",
+    "cod",
+    "performance marketing",
+    "реклам",
+)
+
 
 def evaluate_preliminary_role_policy(vacancy: HHSearchCollectedVacancy) -> PreliminaryRolePolicyDecision:
     """Classify only clear role-family mismatches from a short HH search card."""
@@ -240,6 +262,17 @@ def evaluate_preliminary_role_policy(vacancy: HHSearchCollectedVacancy) -> Preli
     for role_family, markers in HARD_ROLE_FAMILIES:
         if _contains_any(title, markers):
             return PreliminaryRolePolicyDecision(role_family, True, False, _risk_code_for_role_family(role_family))
+
+    if _contains_any(title, TRAFFIC_BUYER_TITLE_MARKERS) and _contains_any(
+        f"{title} {context}",
+        ADVERTISING_CONTEXT_MARKERS,
+    ):
+        return PreliminaryRolePolicyDecision(
+            "commercial_community",
+            True,
+            False,
+            PreliminaryRiskCode.UNRELATED_PRIMARY_STACK,
+        )
 
     if _contains_any(title, SECURITY_TITLE_MARKERS):
         return PreliminaryRolePolicyDecision(
