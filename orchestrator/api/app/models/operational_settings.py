@@ -14,7 +14,7 @@ class OperationalSettings(Base):
     __tablename__ = "operational_settings"
 
     id: Mapped[int] = mapped_column(primary_key=True, default=1)
-    sheet_name: Mapped[str] = mapped_column(String(255), nullable=False, default="Вакансии_TEST")
+    sheet_name: Mapped[str] = mapped_column(String(255), nullable=False, default="Вакансии")
     email_to: Mapped[str] = mapped_column(String(320), nullable=False, default="")
     max_pages_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
     max_filter_items_override: Mapped[int | None] = mapped_column(Integer, nullable=True)

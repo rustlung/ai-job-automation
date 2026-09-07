@@ -27,7 +27,7 @@
 ✅ GPU-required Local LLM compute preflight
 ✅ Async Worker pipeline start/status API
 ✅ Single-heavy-run protection and bounded in-memory run history
-✅ n8n polling Worker pipeline workflow v10 with canonical Full Run Context
+✅ n8n polling Worker pipeline workflow v11 with canonical Full Run Context
 ✅ persistent PipelineRun history and OperationalSettings
 ✅ safe Web API foundation for React UI
 ✅ React + TypeScript Web UI foundation: Dashboard, запуск поиска и Runs
@@ -593,7 +593,7 @@ pipeline. Google Sheets является пользовательской CRM-в
 интеграций.
 
 CRM sync проверен на существующей таблице `CRM_поиска_работы_и_заказов`.
-Acceptance выполнялась на листе `Вакансии_TEST`, после приемки workflow
+Acceptance выполнялась на отдельном тестовом листе, после приемки workflow
 переключен на основной лист `Вакансии`. Существующие пользовательские колонки
 A:W сохранены. System-managed колонки P:V: `Score`, `AI причина`,
 `Риски`, `Hard blockers`, `CRM Key`, `Run ID`, `Анализ обновлён` сохранены.

@@ -220,12 +220,75 @@ def test_web_backend_foundation_migration_upgrade_and_single_step_downgrade(tmp_
     }
     assert "ix_pipeline_runs_run_id" in {index["name"] for index in inspector.get_indexes("pipeline_runs")}
 
-    command.downgrade(config, "-1")
+    command.downgrade(config, "-2")
     inspector = inspect(engine)
     assert "pipeline_runs" not in inspector.get_table_names()
     assert "operational_settings" not in inspector.get_table_names()
     assert "business_fingerprint" in {column["name"] for column in inspector.get_columns("vacancies")}
     engine.dispose()
+
+
+def test_crm_sheet_name_data_migration_replaces_only_legacy_setting(tmp_path, monkeypatch) -> None:
+    database_url = f"sqlite:///{tmp_path / 'crm-sheet-name.db'}"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    get_settings.cache_clear()
+    config = make_alembic_config(database_url)
+    legacy_sheet_name = "Вакансии" + "_TEST"
+
+    command.upgrade(config, "20260904_0002")
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO operational_settings (
+                    id, sheet_name, email_to, max_pages_override, max_filter_items_override,
+                    max_enrich_items_override, crm_sync_priorities, top_vacancy_limit,
+                    google_crm_sync_enabled, created_at, updated_at
+                ) VALUES (
+                    1, :sheet_name, '', NULL, NULL, NULL, '["P1", "P2", "ALT"]', 10, 1,
+                    '2026-09-07T00:00:00+00:00', '2026-09-07T00:00:00+00:00'
+                )
+                """
+            ),
+            {"sheet_name": legacy_sheet_name},
+        )
+
+    command.upgrade(config, "head")
+    with engine.connect() as connection:
+        assert connection.scalar(text("SELECT sheet_name FROM operational_settings WHERE id = 1")) == "Вакансии"
+
+    command.downgrade(config, "-1")
+    with engine.connect() as connection:
+        assert connection.scalar(text("SELECT sheet_name FROM operational_settings WHERE id = 1")) == "Вакансии"
+    engine.dispose()
+
+    custom_database_url = f"sqlite:///{tmp_path / 'crm-sheet-name-custom.db'}"
+    monkeypatch.setenv("DATABASE_URL", custom_database_url)
+    get_settings.cache_clear()
+    custom_config = make_alembic_config(custom_database_url)
+    command.upgrade(custom_config, "20260904_0002")
+    custom_engine = create_engine(custom_database_url)
+    with custom_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO operational_settings (
+                    id, sheet_name, email_to, max_pages_override, max_filter_items_override,
+                    max_enrich_items_override, crm_sync_priorities, top_vacancy_limit,
+                    google_crm_sync_enabled, created_at, updated_at
+                ) VALUES (
+                    1, 'Другой лист', '', NULL, NULL, NULL, '["P1", "P2", "ALT"]', 10, 1,
+                    '2026-09-07T00:00:00+00:00', '2026-09-07T00:00:00+00:00'
+                )
+                """
+            )
+        )
+
+    command.upgrade(custom_config, "head")
+    with custom_engine.connect() as connection:
+        assert connection.scalar(text("SELECT sheet_name FROM operational_settings WHERE id = 1")) == "Другой лист"
+    custom_engine.dispose()
 
 
 def test_seen_fields_migration_backfills_existing_rows(tmp_path, monkeypatch) -> None:

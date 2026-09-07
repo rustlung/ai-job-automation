@@ -1267,8 +1267,8 @@ Email digest
   текущий run через `GET /pipeline-results/runs/{run_id}`;
 - Orchestrator DB остается source of truth; Google Sheets является
   пользовательской CRM-витриной;
-- production sync проверен на существующем листе `Вакансии`, acceptance sync
-  проверялся на `Вакансии_TEST`;
+- production sync проверен на существующем листе `Вакансии`; acceptance sync
+  проверялся на отдельном тестовом листе;
 - существующие CRM колонки A:O сохранены, добавлены system-managed P:V:
   `Score`, `AI причина`, `Риски`, `Hard blockers`, `CRM Key`, `Run ID`,
   `Анализ обновлён`;
@@ -1319,7 +1319,7 @@ Phase 5 имеет рабочий accepted MVP pipeline. Production запуск
 
 ## Current Reliability Priorities
 
-Async Worker pipeline реализован: workflow v10 использует async start/status,
+Async Worker pipeline реализован: workflow v11 использует async start/status,
 single-heavy-run policy и polling через canonical Full Run Context, общий для
 Manual и Web full run. Persistent `PipelineRun` history, typed operational
 settings и React frontend foundation уже реализованы; persistent queue and

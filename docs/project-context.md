@@ -383,7 +383,7 @@ CRM and external integration decisions:
 - отказ Google Sheets, email или другой внешней интеграции не должен приводить
   к потере vacancy: DB persistence выполняется раньше внешних интеграций;
 - существующая CRM spreadsheet называется `CRM_поиска_работы_и_заказов`;
-- основной лист CRM — `Вакансии`, acceptance sheet — `Вакансии_TEST`;
+- основной лист CRM — `Вакансии`; acceptance выполнялась на отдельном тестовом листе;
 - CRM identity key — `source + external_id`, например `hh:135997123`;
 - title, company, row number или URL alone не используются как primary identity;
 - legacy rows без CRM Key сопоставляются только через HH URL fallback с

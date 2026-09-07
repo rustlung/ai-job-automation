@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- OperationalSettings now defaults to the production CRM sheet `Вакансии`; an
+  idempotent migration changes only the old legacy singleton value. Manual n8n
+  runs read the configured environment sheet name, while Web runs retain the
+  OperationalSettings snapshot passed by Orchestrator.
 - n8n workflow v10 now builds one canonical full-run context after Manual/Web
   convergence; Worker start, polling and CRM execution no longer reference
   branch-only `Generate Run ID` or `Config` nodes.

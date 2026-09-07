@@ -89,17 +89,17 @@ keyword profiles и configurable selection также приняты.
 Актуальный export:
 
 ``` text
-workflows/n8n/AI Job Automation — Daily Search CRM Digest v10.json
+workflows/n8n/AI Job Automation — Daily Search CRM Digest v11.json
 ```
 
 Workflow name:
 
 ``` text
-AI Job Automation — Daily Search CRM Digest v10
+AI Job Automation — Daily Search CRM Digest v11
 ```
 
 Export не содержит credentials. После import activation управляется n8n
-deployment; v9 сохраняется как historical baseline и не перезаписывается.
+deployment; v10 сохраняется как historical baseline и не перезаписывается.
 `Manual Trigger` остаётся полноценным production entry, а Web UI использует
 внутренний webhook entry. Schedule Trigger в текущем export отсутствует и не
 является частью production process.
@@ -182,7 +182,11 @@ Manual and Web full-run entries converge through `Build Full Run Context` after
 their `run_id` is available. It is the only context read by the shared Worker
 start and polling path: it carries the run identity, trigger source, normalized
 config, selection, `profile_ids`, resume metadata, Worker request and a single
-polling deadline timestamp created immediately before Worker start. The
+polling deadline timestamp created immediately before Worker start.
+Manual `Config` reads `sheet_name` from
+`GOOGLE_SHEETS_CRM_SHEET_NAME`; Web runs preserve the `sheet_name` received in
+the Orchestrator operational-settings config snapshot. Both paths expose the
+same `config.sheet_name` after normalization.
 `existing_run_id` replay remains separate and uses replay-safe `Build Run
 Context` only for grouped result, CRM and email processing.
 
@@ -254,8 +258,7 @@ CRM spreadsheet: `CRM_поиска_работы_и_заказов`.
 
 Листы:
 
-- `Вакансии_TEST` — acceptance sheet;
-- `Вакансии` — production sheet после приемки.
+- `Вакансии` — production sheet после приемки; acceptance выполнялась на отдельном тестовом листе.
 
 Существующие колонки A:W не меняются. System-managed колонки P:V сохранены:
 

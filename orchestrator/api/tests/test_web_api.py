@@ -87,6 +87,7 @@ def test_settings_defaults_are_operational_and_not_acceptance_limited(db_session
 
     assert response.status_code == 200
     body = response.json()
+    assert body["sheet_name"] == "Вакансии"
     assert body["max_pages_override"] is None
     assert body["crm_sync_priorities"] == ["P1", "P2", "ALT"]
     assert body["top_vacancy_limit"] == 10
@@ -141,8 +142,10 @@ def test_web_run_generates_id_before_webhook_and_snapshots_overrides(db_session)
     assert response.json()["run"]["status"] == "accepted"
     assert detail.status_code == 200
     assert detail.json()["config_snapshot"]["max_pages_override"] == 2
+    assert detail.json()["config_snapshot"]["sheet_name"] == "Вакансии"
     assert webhook.payloads[0]["run_id"] == run_id
     assert webhook.payloads[0]["trigger_source"] == "web_ui"
+    assert webhook.payloads[0]["config"]["sheet_name"] == "Вакансии"
     assert webhook.payloads[0]["profile_selection"]["ai_automation_keywords"] is True
 
 

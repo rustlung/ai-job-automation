@@ -86,6 +86,11 @@ n8n `Build Full Run Context`. Shared Worker polling reads only that normalized
 context, while `existing_run_id` replay deliberately bypasses it and continues
 through the replay-safe late-stage context.
 
+Manual n8n config reads the CRM sheet name from its environment. Web runs use
+the editable Orchestrator OperationalSettings value captured in each PipelineRun
+config snapshot; after input normalization, shared workflow nodes use only
+`config.sheet_name`.
+
 Production процесс осознанно ручной: Windows Worker не работает постоянно,
 поэтому пользователь включает Worker, проверяет Docker/Ollama/HH access и
 запускает n8n workflow через Manual Trigger.
@@ -267,7 +272,7 @@ Google Sheets:
 
 -   используется существующая CRM spreadsheet `CRM_поиска_работы_и_заказов`;
 -   production sync проверен на основном листе `Вакансии`;
--   acceptance sync проверялся на листе `Вакансии_TEST`;
+-   acceptance sync проверялся на отдельном тестовом листе;
 -   n8n использует отдельный Google Service Account credential для Sheets;
 -   service account имеет доступ только к CRM spreadsheet.
 
@@ -1617,7 +1622,7 @@ external integration не должен приводить к потере рез
 persistence выполняется до внешней синхронизации.
 
 CRM sync работает с существующей таблицей `CRM_поиска_работы_и_заказов`.
-Основной лист: `Вакансии`; acceptance лист: `Вакансии_TEST`. Существующие
+Основной лист: `Вакансии`; acceptance выполнялась на отдельном тестовом листе. Существующие
 колонки A:W сохранены. System-managed колонки P:V: `Score`, `AI причина`,
 `Риски`, `Hard blockers`, `CRM Key`, `Run ID`, `Анализ обновлён`; последний
 диагностический столбец X `Профили поиска` получает union `profile_ids` со всех

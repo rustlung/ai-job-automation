@@ -900,7 +900,7 @@ CRM:
 
 - spreadsheet title: `CRM_поиска_работы_и_заказов`;
 - production sheet: `Вакансии`;
-- acceptance test sheet: `Вакансии_TEST`;
+- acceptance test sheet: отдельный тестовый лист;
 - sync direction: Orchestrator DB → n8n → Google Sheets;
 - P1, P2 и ALT синхронизируются в CRM;
 - P3 остается DB-only.
