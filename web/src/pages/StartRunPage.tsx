@@ -13,7 +13,10 @@ export function StartRunPage() {
   const [selection, setSelection] = useState<ProfileSelection>({});
   const [showOverrides, setShowOverrides] = useState(false);
   const [limits, setLimits] = useState({ max_pages_override: "", max_filter_items_override: "", max_enrich_items_override: "" });
-  const profiles = useMemo(() => profilesQuery.data?.profiles.filter((profile) => profile.enabled) ?? [], [profilesQuery.data]);
+  const profiles = useMemo(
+    () => profilesQuery.data?.profiles.filter((profile) => profile.enabled && profile.user_selectable) ?? [],
+    [profilesQuery.data]
+  );
   const selectedProfileIds = useMemo(() => profileIdsFromSelection(selection, profiles), [selection, profiles]);
   const canSubmit = selectedProfileIds.length > 0 && !startRun.isPending;
 

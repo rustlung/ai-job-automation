@@ -1,6 +1,6 @@
 # Current State
 
-2026-09-04
+2026-09-05
 
 Работает:
 ✅ Ubuntu server
@@ -27,11 +27,12 @@
 ✅ GPU-required Local LLM compute preflight
 ✅ Async Worker pipeline start/status API
 ✅ Single-heavy-run protection and bounded in-memory run history
-✅ n8n polling Worker pipeline workflow v9
+✅ n8n polling Worker pipeline workflow v10 with canonical Full Run Context
 ✅ persistent PipelineRun history and OperationalSettings
-✅ safe Web API foundation for future React UI
+✅ safe Web API foundation for React UI
 ✅ React + TypeScript Web UI foundation: Dashboard, запуск поиска и Runs
 ✅ Docker deployment Web UI со SPA fallback
+✅ user_selectable profile contract across Worker, Orchestrator, Web UI and n8n
 ✅ Обработка ошибок интеграции Ollama
 ✅ Реальный локальный AI-запрос с русскоязычным текстом
 ✅ Доступ к Local AI endpoint с homeserver

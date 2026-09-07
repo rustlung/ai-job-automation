@@ -14,7 +14,11 @@ def test_search_profiles_endpoint_returns_registry_derived_safe_metadata(monkeyp
     assert response.status_code == 200
     profiles = response.json()["profiles"]
     assert any(profile["id"] == "ai_resume_recommendations" and profile["enabled"] for profile in profiles)
-    assert set(profiles[0]) == {"id", "name", "track", "source_type", "enabled"}
+    assert set(profiles[0]) == {"id", "name", "track", "source_type", "enabled", "user_selectable"}
+    by_id = {profile["id"]: profile for profile in profiles}
+    assert by_id["ai_resume_recommendations"]["user_selectable"] is True
+    assert by_id["ai_expanded_search"]["enabled"] is True
+    assert by_id["ai_expanded_search"]["user_selectable"] is False
     body = response.text
     assert "private-resume-id" not in body
     assert "query_variants" not in body

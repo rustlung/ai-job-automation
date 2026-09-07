@@ -8,7 +8,8 @@ vi.mock("../hooks/useOrchestrator", () => ({
   useSearchProfiles: () => ({
     data: {
       profiles: [
-        { id: "vibecoding_keywords", name: "Vibecoding", track: "main", source_type: "expanded_search", enabled: true }
+        { id: "vibecoding_keywords", name: "Vibecoding", track: "main", source_type: "expanded_search", enabled: true, user_selectable: true },
+        { id: "ai_expanded_search", name: "Legacy", track: "main", source_type: "expanded_search", enabled: true, user_selectable: false }
       ]
     },
     isLoading: false,
@@ -23,5 +24,6 @@ describe("StartRunPage", () => {
 
     expect(screen.getByRole("button", { name: "Запустить поиск" })).toBeDisabled();
     expect(screen.getByRole("status")).toHaveTextContent("Выберите хотя бы один поисковый профиль.");
+    expect(screen.queryByLabelText("Legacy")).not.toBeInTheDocument();
   });
 });

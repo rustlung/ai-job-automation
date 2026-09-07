@@ -1,5 +1,5 @@
 {
-  "name": "AI Job Automation — Daily Search CRM Digest v9",
+  "name": "AI Job Automation — Daily Search CRM Digest v10",
   "nodes": [
     {
       "parameters": {},
@@ -29,7 +29,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const input = $input.first().json;\nconst config = input.config || input;\nconst now = new Date();\nconst stamp = now.toISOString().replace(/[-:]/g, '').replace(/\\.\\d{3}Z$/, 'Z').replace('T', '-');\nconst random = Math.random().toString(36).slice(2, 8);\nconst runId = `n8n-${stamp}-${random}`;\nreturn [{ json: {\n  ...input,\n  config,\n  run_id: runId,\n  trigger_source: 'manual_n8n',\n  orchestration_started_at_ms: now.getTime(),\n  worker_request: {\n    profile_ids: config.profile_ids,\n    max_pages_override: config.max_pages_override,\n    max_filter_items_override: config.max_filter_items_override,\n    max_enrich_items_override: config.max_enrich_items_override,\n    pipeline_run_id: runId\n  }\n}}];"
+        "jsCode": "const input = $input.first().json;\nconst config = input.config || input;\nconst now = new Date();\nconst stamp = now.toISOString().replace(/[-:]/g, '').replace(/\\.\\d{3}Z$/, 'Z').replace('T', '-');\nconst random = Math.random().toString(36).slice(2, 8);\nconst runId = `n8n-${stamp}-${random}`;\nreturn [{ json: {\n  ...input,\n  config,\n  run_id: runId,\n  trigger_source: 'manual_n8n'\n}}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -54,7 +54,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        4800,
+        5280,
         336
       ],
       "id": "41565372-f639-4d10-958b-6b4af54bc9a7",
@@ -63,12 +63,12 @@
     },
     {
       "parameters": {
-        "jsCode": "const worker = $input.first().json || {};\nconst context = $('Generate Run ID').first().json;\nlet previous = {};\ntry { previous = $('Wait 20s for Worker Run').item.json || {}; } catch (error) {}\nconst elapsedMs = Date.now() - Number(context.orchestration_started_at_ms || Date.now());\nconst priorErrors = Number(previous.consecutive_polling_errors || 0);\nconst valid = new Set(['running', 'completed', 'completed_with_errors', 'failed']);\nconst status = String(worker.status || '');\nconst statusCode = Number(worker.statusCode || worker.error?.httpCode || worker.error?.statusCode || 0);\nconst summary = worker.summary || {};\nconst output = { run_id: worker.run_id || context.run_id, config: context.config, worker: { status: status || 'unknown', collection_stats: { unique_vacancy_count: summary.collection_unique_vacancy_count }, filter_stats: { processed_count: summary.filter_processed_count }, enrichment_stats: { enriched_count: summary.enriched_count }, duration_ms: summary.duration_ms }, persistence_stats: { persisted_count: summary.persisted_count, status: summary.persistence_status, failed_count: 0 }, warnings: [], terminal: false, result_available: false, consecutive_polling_errors: 0, orchestration_elapsed_ms: elapsedMs, failure_stage: null, safe_error: null };\nif (valid.has(status)) { if (status === 'running') { output.consecutive_polling_errors = 0; } else { output.terminal = true; output.result_available = worker.result_available === true; if (status === 'completed_with_errors') output.warnings.push('Worker completed with errors'); if (status === 'failed') { output.failure_stage = 'worker_pipeline'; output.safe_error = worker.error_code || 'worker_pipeline_failed'; } else if (!output.result_available) { output.failure_stage = 'orchestrator_persistence'; output.safe_error = worker.error_code || 'worker_result_unavailable'; } } } else if (statusCode === 404) { output.terminal = true; output.failure_stage = 'worker_run_recovery'; output.safe_error = 'worker_run_not_found; check Orchestrator before existing-run recovery'; } else if (elapsedMs >= 7200000) { output.terminal = true; output.failure_stage = 'worker_polling_deadline'; output.safe_error = 'worker run polling deadline exceeded; use existing-run recovery after checking Orchestrator'; } else { output.consecutive_polling_errors = priorErrors + 1; if (output.consecutive_polling_errors >= 3) { output.terminal = true; output.failure_stage = 'worker_polling'; output.safe_error = 'worker status polling failed repeatedly; use existing-run recovery after checking Orchestrator'; } }\nreturn [{ json: output }];"
+        "jsCode": "const worker = $input.first().json || {};\nconst context = $('Build Full Run Context').first().json;\nlet previous = {};\ntry { previous = $('Wait 20s for Worker Run').item.json || {}; } catch (error) {}\nconst elapsedMs = Date.now() - Number(context.orchestration_started_at_ms || Date.now());\nconst priorErrors = Number(previous.consecutive_polling_errors || 0);\nconst valid = new Set(['running', 'completed', 'completed_with_errors', 'failed']);\nconst status = String(worker.status || '');\nconst statusCode = Number(worker.statusCode || worker.error?.httpCode || worker.error?.statusCode || 0);\nconst summary = worker.summary || {};\nconst output = { run_id: worker.run_id || context.run_id, config: context.config, worker: { status: status || 'unknown', collection_stats: { unique_vacancy_count: summary.collection_unique_vacancy_count }, filter_stats: { processed_count: summary.filter_processed_count }, enrichment_stats: { enriched_count: summary.enriched_count }, duration_ms: summary.duration_ms }, persistence_stats: { persisted_count: summary.persisted_count, status: summary.persistence_status, failed_count: 0 }, warnings: [], terminal: false, result_available: false, consecutive_polling_errors: 0, orchestration_elapsed_ms: elapsedMs, failure_stage: null, safe_error: null };\nif (valid.has(status)) { if (status === 'running') { output.consecutive_polling_errors = 0; } else { output.terminal = true; output.result_available = worker.result_available === true; if (status === 'completed_with_errors') output.warnings.push('Worker completed with errors'); if (status === 'failed') { output.failure_stage = 'worker_pipeline'; output.safe_error = worker.error_code || 'worker_pipeline_failed'; } else if (!output.result_available) { output.failure_stage = 'orchestrator_persistence'; output.safe_error = worker.error_code || 'worker_result_unavailable'; } } } else if (statusCode === 404) { output.terminal = true; output.failure_stage = 'worker_run_recovery'; output.safe_error = 'worker_run_not_found; check Orchestrator before existing-run recovery'; } else if (elapsedMs >= 7200000) { output.terminal = true; output.failure_stage = 'worker_polling_deadline'; output.safe_error = 'worker run polling deadline exceeded; use existing-run recovery after checking Orchestrator'; } else { output.consecutive_polling_errors = priorErrors + 1; if (output.consecutive_polling_errors >= 3) { output.terminal = true; output.failure_stage = 'worker_polling'; output.safe_error = 'worker status polling failed repeatedly; use existing-run recovery after checking Orchestrator'; } }\nreturn [{ json: output }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        5520,
+        6000,
         608
       ],
       "id": "9afb58db-abec-4abf-ba92-19e1f883a164",
@@ -101,7 +101,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        5760,
+        6240,
         608
       ],
       "id": "a95cbce8-507a-46f3-af70-0c6381c070a9",
@@ -117,7 +117,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        6720,
+        7200,
         336
       ],
       "id": "7907a399-1011-4f4a-bf0c-c1d2de8e57bc",
@@ -128,12 +128,12 @@
         "authentication": "serviceAccount",
         "documentId": {
           "__rl": true,
-          "value": "={{ $('Config').first().json.spreadsheet_id }}",
+          "value": "={{ $('Build Run Context').first().json.config.spreadsheet_id }}",
           "mode": "id"
         },
         "sheetName": {
           "__rl": true,
-          "value": "={{ $('Config').first().json.sheet_name  }}",
+          "value": "={{ $('Build Run Context').first().json.config.sheet_name  }}",
           "mode": "name"
         },
         "options": {}
@@ -141,7 +141,7 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.6,
       "position": [
-        6960,
+        7440,
         336
       ],
       "id": "4437e833-1512-4ed4-86bd-cbd2886c4170",
@@ -160,7 +160,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        7200,
+        7680,
         336
       ],
       "id": "705bd000-56d8-4d0c-b373-54d2258f8fd8",
@@ -193,7 +193,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        7440,
+        7920,
         336
       ],
       "id": "828756b9-98ad-4aa9-b728-350396b89374",
@@ -205,12 +205,12 @@
         "operation": "appendOrUpdate",
         "documentId": {
           "__rl": true,
-          "value": "={{ $('Config').first().json.spreadsheet_id }}",
+          "value": "={{ $('Build Run Context').first().json.config.spreadsheet_id }}",
           "mode": "id"
         },
         "sheetName": {
           "__rl": true,
-          "value": "={{ $('Config').first().json.sheet_name }}",
+          "value": "={{ $('Build Run Context').first().json.config.sheet_name }}",
           "mode": "name"
         },
         "columns": {
@@ -460,7 +460,7 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.6,
       "position": [
-        7680,
+        8160,
         448
       ],
       "id": "b6774a23-0b08-410d-b0b0-4811b8c40a65",
@@ -479,12 +479,12 @@
         "operation": "appendOrUpdate",
         "documentId": {
           "__rl": true,
-          "value": "={{ $('Config').first().json.spreadsheet_id }}",
+          "value": "={{ $('Build Run Context').first().json.config.spreadsheet_id }}",
           "mode": "id"
         },
         "sheetName": {
           "__rl": true,
-          "value": "={{ $('Config').first().json.sheet_name }}",
+          "value": "={{ $('Build Run Context').first().json.config.sheet_name }}",
           "mode": "name"
         },
         "columns": {
@@ -521,7 +521,7 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.6,
       "position": [
-        7680,
+        8160,
         208
       ],
       "id": "28354680-a5a3-42fe-bea8-8956ac99583e",
@@ -541,7 +541,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        7920,
+        8400,
         336
       ],
       "id": "49b0382a-a654-40f0-a348-8773859f4556",
@@ -557,7 +557,7 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
       "position": [
-        8160,
+        8640,
         336
       ],
       "id": "f0a52651-0a5f-42f1-902a-604d81fcf729",
@@ -578,7 +578,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        6480,
+        6960,
         848
       ],
       "id": "cdafcef7-ce26-4291-a7ca-443131230609",
@@ -594,7 +594,7 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
       "position": [
-        6720,
+        7200,
         848
       ],
       "id": "2084f99f-b937-4096-a987-68c6dec62998",
@@ -888,7 +888,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        6480,
+        6960,
         336
       ],
       "id": "9c011c9b-28d2-4d87-b197-35b806748567",
@@ -901,7 +901,7 @@
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
       "position": [
-        5040,
+        5520,
         608
       ],
       "id": "dd148c8a-a752-4994-807b-8ed6b486e363",
@@ -910,7 +910,7 @@
     },
     {
       "parameters": {
-        "url": "={{ $('Generate Run ID').first().json.config.worker_api_url }}/hh/pipeline-runs/{{ $('Generate Run ID').first().json.run_id }}",
+        "url": "={{ $('Build Full Run Context').first().json.config.worker_api_url }}/hh/pipeline-runs/{{ $('Build Full Run Context').first().json.run_id }}",
         "options": {
           "timeout": 15000
         }
@@ -918,7 +918,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        5280,
+        5760,
         608
       ],
       "id": "1e041a20-60e4-4d43-9092-3e98de8cda76",
@@ -952,7 +952,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        6000,
+        6480,
         336
       ],
       "id": "89ed0ea5-d927-4518-bbe7-f2883842a67a",
@@ -1048,7 +1048,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const input = $input.first().json;\nreturn [{ json: {\n  ...input,\n  orchestration_started_at_ms: Date.now(),\n  worker_request: {\n    profile_ids: input.config.profile_ids,\n    max_pages_override: input.config.max_pages_override,\n    max_filter_items_override: input.config.max_filter_items_override,\n    max_enrich_items_override: input.config.max_enrich_items_override,\n    pipeline_run_id: input.run_id\n  }\n}}];"
+        "jsCode": "return $input.all();"
       },
       "name": "Build Web Worker Request",
       "type": "n8n-nodes-base.code",
@@ -1125,20 +1125,20 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        4320,
+        4800,
         336
       ],
       "id": "d84dc381-3e04-4cd1-9786-190164f5ddfc"
     },
     {
       "parameters": {
-        "jsCode": "try { return [{ json: $('Build Web Worker Request').first().json }]; } catch (error) {}\nreturn [{ json: $('Generate Run ID').first().json }];"
+        "jsCode": "return [{ json: $('Build Full Run Context').first().json }];"
       },
       "name": "Restore Worker Start Context",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4560,
+        5040,
         336
       ],
       "id": "7344569c-38ba-48d2-9e0d-83a27c7d638e"
@@ -1167,7 +1167,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        6240,
+        6720,
         208
       ],
       "id": "c0313d59-1389-41b1-9f08-3c5a69382162"
@@ -1180,7 +1180,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        6480,
+        6960,
         208
       ],
       "id": "6973f9e2-73b6-4c19-8478-6d0c1f03458b"
@@ -1209,7 +1209,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        6240,
+        6720,
         848
       ],
       "id": "d281363f-7b74-43c7-8b95-3328715cc2f3"
@@ -1222,10 +1222,23 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        6480,
+        6960,
         720
       ],
       "id": "965b3bbc-eb6a-49df-8a50-3833935d6600"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\nconst config = input.config || {};\nconst runId = String(input.run_id || '').trim();\nif (!runId) throw new Error('run_id is required before Worker start');\n\nconst profileIds = Array.isArray(config.profile_ids) ? config.profile_ids : [];\nreturn [{ json: {\n  ...input,\n  run_id: runId,\n  trigger_source: String(input.trigger_source || ''),\n  orchestration_started_at_ms: Date.now(),\n  config,\n  profile_selection: input.profile_selection || {},\n  profile_ids: profileIds,\n  has_resume_profile: input.has_resume_profile === true,\n  selected_resume_profile_id: input.selected_resume_profile_id || null,\n  worker_request: {\n    profile_ids: profileIds,\n    max_pages_override: config.max_pages_override,\n    max_filter_items_override: config.max_filter_items_override,\n    max_enrich_items_override: config.max_enrich_items_override,\n    pipeline_run_id: runId\n  }\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4560,
+        336
+      ],
+      "id": "v10-canonical-full-run-context",
+      "name": "Build Full Run Context"
     }
   ],
   "pinData": {},
@@ -1650,7 +1663,7 @@
       "main": [
         [
           {
-            "node": "Mark Pipeline Run Running",
+            "node": "Build Full Run Context",
             "type": "main",
             "index": 0
           }
@@ -1683,7 +1696,7 @@
       "main": [
         [
           {
-            "node": "Mark Pipeline Run Running",
+            "node": "Build Full Run Context",
             "type": "main",
             "index": 0
           }
@@ -1773,6 +1786,17 @@
           }
         ]
       ]
+    },
+    "Build Full Run Context": {
+      "main": [
+        [
+          {
+            "node": "Mark Pipeline Run Running",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": true,
@@ -1781,11 +1805,10 @@
     "binaryMode": "separate",
     "availableInMCP": false
   },
-  "versionId": "59ef633c-b783-49f3-83a7-e6a3a91448bb",
+  "versionId": "v10-canonical-full-run-context",
   "meta": {
     "instanceId": "0db81f0753baa06bf8dd01a6aa413440970bcc829c805aa818d17d0924efde58"
   },
   "nodeGroups": [],
-  "id": "BiRiDQrnvSqhXP7E",
   "tags": []
 }

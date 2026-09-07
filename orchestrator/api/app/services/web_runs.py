@@ -70,8 +70,8 @@ class WebRunService:
             raise WebRunValidationError("No search profiles selected")
         for profile_id in selected:
             profile = known.get(profile_id)
-            if profile is None or not profile.enabled:
-                raise WebRunValidationError("Unknown or disabled search profile")
+            if profile is None or not profile.enabled or not profile.user_selectable:
+                raise WebRunValidationError("Unknown, disabled, or non-selectable search profile")
         return selected
 
     @staticmethod

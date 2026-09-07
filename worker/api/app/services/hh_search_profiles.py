@@ -44,6 +44,7 @@ class HHSearchProfileRegistry:
                 track=SearchProfileTrack.MAIN,
                 source_type=SearchProfileSourceType.RESUME_RECOMMENDATIONS,
                 enabled=bool(self.settings.hh_ai_resume_search_url),
+                user_selectable=True,
                 base_url=self.settings.hh_ai_resume_search_url or None,
                 max_pages=3,
                 items_on_page=100,
@@ -57,6 +58,7 @@ class HHSearchProfileRegistry:
                 track=SearchProfileTrack.MAIN,
                 source_type=SearchProfileSourceType.RESUME_RECOMMENDATIONS,
                 enabled=bool(self.settings.hh_python_resume_search_url),
+                user_selectable=True,
                 base_url=self.settings.hh_python_resume_search_url or None,
                 max_pages=3,
                 items_on_page=100,
@@ -112,6 +114,7 @@ class HHSearchProfileRegistry:
                 ],
                 max_pages=3,
                 order=60,
+                user_selectable=True,
             ),
             self._public_profile(
                 id="vibecoding_keywords",
@@ -125,6 +128,7 @@ class HHSearchProfileRegistry:
                 ],
                 max_pages=3,
                 order=70,
+                user_selectable=True,
             ),
             self._public_profile(
                 id="python_backend_keywords",
@@ -136,6 +140,7 @@ class HHSearchProfileRegistry:
                 ],
                 max_pages=3,
                 order=80,
+                user_selectable=True,
             ),
             self._public_profile(
                 id="python_automation_keywords",
@@ -147,6 +152,7 @@ class HHSearchProfileRegistry:
                 ],
                 max_pages=3,
                 order=90,
+                user_selectable=True,
             ),
         ]
         return sorted(profiles, key=lambda profile: profile.order)
@@ -245,12 +251,14 @@ class HHSearchProfileRegistry:
         query_variants: list[SearchQueryVariant],
         max_pages: int,
         order: int,
+        user_selectable: bool = False,
     ) -> SearchProfile:
         return SearchProfile(
             id=id,
             name=name,
             track=track,
             source_type=SearchProfileSourceType.EXPANDED_SEARCH,
+            user_selectable=user_selectable,
             base_url=self._public_search_url(),
             query_variants=query_variants,
             max_pages=max_pages,

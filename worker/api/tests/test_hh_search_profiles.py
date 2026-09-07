@@ -35,6 +35,18 @@ def test_registry_defines_expected_profiles_without_secrets_in_response(monkeypa
     ]
     assert profiles[0].enabled is True
     assert profiles[1].enabled is False
+    assert {profile.id for profile in profiles if profile.user_selectable} == {
+        "ai_resume_recommendations",
+        "python_resume_recommendations",
+        "ai_automation_keywords",
+        "vibecoding_keywords",
+        "python_backend_keywords",
+        "python_automation_keywords",
+    }
+    assert all(
+        not registry.get_profiles([profile_id])[0].user_selectable
+        for profile_id in ["ai_expanded_search", "python_expanded_search", "alt_opportunities"]
+    )
     alt_profile = registry.get_profiles(["alt_opportunities"])[0]
     assert alt_profile.track.value == "alternative"
     alt_queries = " ".join(variant.query for variant in alt_profile.query_variants).casefold()

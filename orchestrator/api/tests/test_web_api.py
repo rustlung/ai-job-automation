@@ -25,6 +25,7 @@ class FakeWorkerGateway:
                     track="main",
                     source_type="expanded_search",
                     enabled=True,
+                    user_selectable=True,
                 ),
                 SearchProfileRead(
                     id="disabled_profile",
@@ -32,6 +33,15 @@ class FakeWorkerGateway:
                     track="main",
                     source_type="expanded_search",
                     enabled=False,
+                    user_selectable=False,
+                ),
+                SearchProfileRead(
+                    id="ai_expanded_search",
+                    name="AI expanded search",
+                    track="main",
+                    source_type="expanded_search",
+                    enabled=True,
+                    user_selectable=False,
                 ),
             ]
         )
@@ -108,6 +118,7 @@ def test_search_profiles_proxy_and_lightweight_system_health(db_session) -> None
         "track": "main",
         "source_type": "expanded_search",
         "enabled": True,
+        "user_selectable": True,
     }
     assert health.status_code == 200
     assert health.json()["compute_status"] == "unknown"
@@ -135,15 +146,18 @@ def test_web_run_generates_id_before_webhook_and_snapshots_overrides(db_session)
     assert webhook.payloads[0]["profile_selection"]["ai_automation_keywords"] is True
 
 
-def test_invalid_or_disabled_profile_creates_no_web_run(db_session) -> None:
-    with make_client(db_session) as (client, _, _):
+def test_invalid_disabled_or_non_selectable_profile_creates_no_web_run(db_session) -> None:
+    with make_client(db_session) as (client, _, webhook):
         invalid = client.post("/api/runs", json={"profile_ids": ["unknown"]})
         disabled = client.post("/api/runs", json={"profile_ids": ["disabled_profile"]})
+        legacy = client.post("/api/runs", json={"profile_ids": ["ai_expanded_search"]})
         runs = client.get("/api/runs")
 
     assert invalid.status_code == 422
     assert disabled.status_code == 422
+    assert legacy.status_code == 422
     assert runs.json()["total"] == 0
+    assert webhook.payloads == []
 
 
 def test_manual_registration_and_lifecycle_are_visible_in_run_history(db_session) -> None:

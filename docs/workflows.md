@@ -89,18 +89,19 @@ keyword profiles и configurable selection также приняты.
 Актуальный export:
 
 ``` text
-workflows/n8n/AI Job Automation — Daily Search CRM Digest v9.json
+workflows/n8n/AI Job Automation — Daily Search CRM Digest v10.json
 ```
 
 Workflow name:
 
 ``` text
-AI Job Automation — Daily Search CRM Digest v9
+AI Job Automation — Daily Search CRM Digest v10
 ```
 
-Export не содержит credentials. Workflow `active=false`. v4 сохраняется как
-historical production baseline и не перезаписывается. Каноничный production
-trigger — `Manual Trigger`; Schedule Trigger в текущем export отсутствует и не
+Export не содержит credentials. После import activation управляется n8n
+deployment; v9 сохраняется как historical baseline и не перезаписывается.
+`Manual Trigger` остаётся полноценным production entry, а Web UI использует
+внутренний webhook entry. Schedule Trigger в текущем export отсутствует и не
 является частью production process.
 
 ### Назначение
@@ -145,6 +146,7 @@ Manual Trigger
 → Preflight OK?
 → Web Run ID Provided? / Generate Run ID
 → register PipelineRun
+→ Build Full Run Context
 → Start Worker Pipeline
 → Check Worker Result
 → Pipeline OK?
@@ -175,6 +177,18 @@ two resume profiles and four custom keyword profiles. `Build Selected Profile
 IDs` converts only `true` values to the existing Worker `profile_ids` contract.
 When all values are `false`, it stops with `No search profiles selected` before
 the Worker pipeline.
+
+Manual and Web full-run entries converge through `Build Full Run Context` after
+their `run_id` is available. It is the only context read by the shared Worker
+start and polling path: it carries the run identity, trigger source, normalized
+config, selection, `profile_ids`, resume metadata, Worker request and a single
+polling deadline timestamp created immediately before Worker start. The
+`existing_run_id` replay remains separate and uses replay-safe `Build Run
+Context` only for grouped result, CRM and email processing.
+
+Profile metadata distinguishes `enabled` (technically available) from
+`user_selectable` (allowed in Manual/Web selection). Legacy expanded profiles
+remain internally available but are not selectable through the Web API or UI.
 
 The preflight branch always checks Orchestrator `GET /health`, Worker
 `GET /health`, Worker `GET /health/ollama` and Worker

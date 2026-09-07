@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-05
+
+### Fixed
+
+- n8n workflow v10 now builds one canonical full-run context after Manual/Web
+  convergence; Worker start, polling and CRM execution no longer reference
+  branch-only `Generate Run ID` or `Config` nodes.
+- safe profile metadata now includes `user_selectable`; legacy expanded profiles
+  remain enabled internally but are rejected by Web run start and hidden in the
+  Web UI.
+
 ## 2026-09-04
 
 ### Added

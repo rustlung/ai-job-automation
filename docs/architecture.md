@@ -81,6 +81,11 @@ Orchestrator API
 The Orchestrator is the only frontend boundary. Google Sheets remains a
 reporting mirror; it is not a source of truth for user-owned application data.
 
+For a full run, Manual and Web entries converge before Worker start into one
+n8n `Build Full Run Context`. Shared Worker polling reads only that normalized
+context, while `existing_run_id` replay deliberately bypasses it and continues
+through the replay-safe late-stage context.
+
 Production процесс осознанно ручной: Windows Worker не работает постоянно,
 поэтому пользователь включает Worker, проверяет Docker/Ollama/HH access и
 запускает n8n workflow через Manual Trigger.

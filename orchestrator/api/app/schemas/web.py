@@ -23,6 +23,7 @@ class SearchProfileRead(BaseModel):
     track: SearchProfileTrack
     source_type: SearchProfileSourceType
     enabled: bool
+    user_selectable: bool
 
 
 class SearchProfilesResponse(BaseModel):

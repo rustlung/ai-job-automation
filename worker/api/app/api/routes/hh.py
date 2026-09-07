@@ -72,6 +72,7 @@ def list_hh_search_profiles() -> SearchProfilePublicListResponse:
                 track=profile.track,
                 source_type=profile.source_type,
                 enabled=profile.enabled,
+                user_selectable=profile.user_selectable,
             )
             for profile in profiles
         ]

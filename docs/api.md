@@ -154,7 +154,7 @@ source of truth для автоматических vacancy pipeline данны�
 
 ### Web Backend Foundation
 
-Orchestrator is the backend boundary for the future React UI. The UI receives
+Orchestrator is the backend boundary for the React UI. The UI receives
 only `/api/...` contracts and does not call Worker, Ollama, n8n or Google Sheets
 directly.
 
@@ -169,8 +169,10 @@ GET /api/runs/{run_id}
 ```
 
 `OperationalSettings` is a typed singleton for editable operational values.
-Search profiles and `existing_run_id` are deliberately not settings. `POST
-/api/runs` validates enabled Worker profiles, creates a persistent `PipelineRun`
+Search profiles and `existing_run_id` are deliberately not settings. Search
+profile metadata contains both `enabled` and `user_selectable`: the latter is
+required for `POST /api/runs`, while legacy profiles may remain enabled for
+internal use. `POST /api/runs` validates enabled, selectable Worker profiles, creates a persistent `PipelineRun`
 with `trigger_source=web_ui`, snapshots safe run configuration, then starts the
 internal n8n webhook without waiting for the production pipeline.
 

@@ -24,6 +24,7 @@ export interface SearchProfile {
   track: SearchProfileTrack;
   source_type: SearchProfileSourceType;
   enabled: boolean;
+  user_selectable: boolean;
 }
 
 export interface SearchProfilesResponse {

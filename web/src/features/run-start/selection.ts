@@ -9,7 +9,9 @@ export const emptyOverrides: PipelineRunOverrides = {
 };
 
 export function profileIdsFromSelection(selection: ProfileSelection, profiles: SearchProfile[]): string[] {
-  return profiles.filter((profile) => profile.enabled && selection[profile.id] === true).map((profile) => profile.id);
+  return profiles
+    .filter((profile) => profile.enabled && profile.user_selectable && selection[profile.id] === true)
+    .map((profile) => profile.id);
 }
 
 export function parseOptionalLimit(value: string): number | null {

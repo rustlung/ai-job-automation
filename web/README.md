@@ -34,6 +34,11 @@ npm run build
 - `src/types` — shared API DTO types.
 - `src/features/run-start` — local profile-selection state and helpers.
 
+The run-start page renders only profiles where the API reports both
+`enabled=true` and `user_selectable=true`. `enabled` alone means that a Worker
+profile is technically available; legacy profiles remain intentionally hidden
+from user selection.
+
 ## Docker deployment
 
 The production image is a static nginx server for the SPA only. It does not

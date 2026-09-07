@@ -1319,10 +1319,11 @@ Phase 5 имеет рабочий accepted MVP pipeline. Production запуск
 
 ## Current Reliability Priorities
 
-Async Worker pipeline реализован: workflow v9 использует async start/status,
-single-heavy-run policy и polling. Persistent `PipelineRun` history and typed
-operational settings now provide the Web UI backend foundation; React frontend,
-persistent queue and cancellation remain future work.
+Async Worker pipeline реализован: workflow v10 использует async start/status,
+single-heavy-run policy и polling через canonical Full Run Context, общий для
+Manual и Web full run. Persistent `PipelineRun` history, typed operational
+settings и React frontend foundation уже реализованы; persistent queue and
+cancellation remain future work.
 
 Следующие приоритеты:
 
@@ -1330,8 +1331,9 @@ persistent queue and cancellation remain future work.
    ожидается.
 2. Async Worker pipeline.
 
-Filter calibration для keyword search и безопасный `GET /hh/search-profiles`
-остаются follow-up backlog после этих reliability tasks. Regional/business
+Filter calibration для keyword search остаётся follow-up backlog после этих
+reliability tasks. `GET /hh/search-profiles` реализован как safe metadata API;
+`user_selectable` предотвращает показ legacy profiles в Web UI. Regional/business
 near-duplicate suppression реализован как отдельный cross-run presentation layer:
 exact deduplication по `source + external_id` сохраняется, а nullable indexed
 business fingerprint объединяет только одинаковые company, title и full
