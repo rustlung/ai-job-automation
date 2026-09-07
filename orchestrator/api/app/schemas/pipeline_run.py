@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 
 class PipelineRunStatus(str, Enum):
@@ -52,10 +52,16 @@ class PipelineRunRegister(BaseModel):
 class PipelineRunLifecycleUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    status: PipelineRunStatus
+    status: PipelineRunStatus | None = None
     stats_snapshot: dict[str, Any] | None = None
     error_code: SafeErrorCode | None = None
     error_summary: SafeErrorSummary | None = None
+
+    @model_validator(mode="after")
+    def requires_update(self) -> "PipelineRunLifecycleUpdate":
+        if self.status is None and self.stats_snapshot is None:
+            raise ValueError("status or stats_snapshot is required")
+        return self
 
 
 class PipelineRunRead(BaseModel):

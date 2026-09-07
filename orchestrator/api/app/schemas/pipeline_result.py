@@ -145,6 +145,7 @@ class GroupedPipelineAnalysisRead(VacancyAnalysisRead):
     presentation_key: str
     business_fingerprint: str | None = None
     member_count: int = Field(ge=1)
+    canonical_member_keys: list[str] = Field(default_factory=list)
 
 
 class GroupedPipelineRunResultsRead(BaseModel):

@@ -1319,7 +1319,7 @@ Phase 5 имеет рабочий accepted MVP pipeline. Production запуск
 
 ## Current Reliability Priorities
 
-Async Worker pipeline реализован: workflow v11 использует async start/status,
+Async Worker pipeline реализован: workflow v12 использует async start/status,
 single-heavy-run policy и polling через canonical Full Run Context, общий для
 Manual и Web full run. Persistent `PipelineRun` history, typed operational
 settings и React frontend foundation уже реализованы; persistent queue and
@@ -1338,6 +1338,21 @@ near-duplicate suppression реализован как отдельный cross-
 exact deduplication по `source + external_id` сохраняется, а nullable indexed
 business fingerprint объединяет только одинаковые company, title и full
 description для CRM/Web UI representative view.
+
+### Backlog: Remove legacy CRM key fallback
+
+Temporary `legacy_crm_key_fallback` can be removed only after both conditions
+are met:
+
+1. at least five consecutive full production runs have
+   `legacy_crm_key_matches = 0`;
+2. an audit confirms that active groupable CRM rows use `business:*` keys and
+   no longer require canonical-member lookup.
+
+The cleanup removes the legacy lookup, metric, Web UI diagnostic and related
+tests/docs, then verifies ordinary business and non-groupable canonical CRM
+reconciliation. Historical `hh:*` keys alone are not a blocker because they
+remain valid for non-groupable vacancies.
 
 Phase 6+ являются future improvements, а не обязательными частями текущего MVP.
 

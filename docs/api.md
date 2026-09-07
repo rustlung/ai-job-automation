@@ -182,6 +182,11 @@ preflight or warm an Ollama model. Internal n8n lifecycle endpoints live under
 `/internal/pipeline-runs`; their optional token is configured only in the
 environment and must not be exposed to the browser.
 
+`PATCH /internal/pipeline-runs/{run_id}` also accepts a stats-only update. It
+merges supplied fields into `stats_snapshot` without changing the lifecycle
+status; v12 uses this for the temporary `legacy_crm_key_matches` CRM migration
+diagnostic.
+
 ### Health
 
 ``` text

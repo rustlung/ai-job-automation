@@ -214,6 +214,7 @@ def test_grouped_run_results_resolve_regional_duplicates_across_runs_and_switch_
     assert row["vacancy_snapshot"]["url"] == "https://samara.hh.ru/vacancy/300"
     assert row["presentation_key"] == first_key
     assert row["member_count"] == 3
+    assert row["canonical_member_keys"] == ["hh:100", "hh:200", "hh:300"]
     assert row["provenance"]["profile_ids"] == [
         "ai_automation_keywords",
         "vibecoding_keywords",

@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- n8n workflow v12 temporarily migrates pre-grouping CRM rows from canonical
+  member keys to the permanent business key without appending a duplicate. Each
+  run records `legacy_crm_key_matches` for removal tracking; Web UI shows it as
+  an isolated migration diagnostic.
 - OperationalSettings now defaults to the production CRM sheet `Вакансии`; an
   idempotent migration changes only the old legacy singleton value. Manual n8n
   runs read the configured environment sheet name, while Web runs retain the

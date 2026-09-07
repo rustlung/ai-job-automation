@@ -27,7 +27,7 @@
 ✅ GPU-required Local LLM compute preflight
 ✅ Async Worker pipeline start/status API
 ✅ Single-heavy-run protection and bounded in-memory run history
-✅ n8n polling Worker pipeline workflow v11 with canonical Full Run Context
+✅ n8n polling Worker pipeline workflow v12 with canonical Full Run Context
 ✅ persistent PipelineRun history and OperationalSettings
 ✅ safe Web API foundation for React UI
 ✅ React + TypeScript Web UI foundation: Dashboard, запуск поиска и Runs
@@ -127,6 +127,7 @@
 ✅ CRM Key idempotent upsert
 ✅ CRM search profile provenance column X
 ✅ Cross-run regional/business duplicate suppression in CRM presentation
+✅ Temporary legacy CRM key compatibility migration with per-run diagnostics
 ✅ Legacy HH URL fallback for old CRM rows
 ✅ User-managed CRM fields protection
 ✅ Gmail email digest
@@ -612,6 +613,13 @@ Samara publication имеет priority при выборе representative; analy
 строки без CRM Key сопоставляются только через legacy HH URL fallback: workflow
 извлекает external id из HH URL, обновляет найденную строку и добавляет CRM Key.
 Fuzzy matching по title/company не используется.
+
+Для строк, созданных до business presentation keys, v12 временно проверяет
+canonical keys всех known members уже подтвержденной business group. Найденная
+legacy row обновляется на месте и получает `business:<fingerprint>`; это не
+применяется к non-groupable vacancy, для которой `source:external_id` остается
+постоянным CRM key. `PipelineRun.stats_snapshot.legacy_crm_key_matches` хранит
+число таких lazy migrations и показывается отдельно в Web UI.
 
 Automation обновляет system-managed поля: `Компания`, `Должность`, `Тип`,
 `Приоритет`, `ЗП`, `Формат`, `Стек`, `Дата`, `Ссылка`, `Score`, `AI причина`,

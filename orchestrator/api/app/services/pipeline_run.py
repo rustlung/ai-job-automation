@@ -69,11 +69,14 @@ class PipelineRunService:
             run = self.repository.get_by_run_id(run_id)
             if run is None:
                 raise PipelineRunNotFoundError
-            run.status = payload.status.value
+            if payload.status is not None:
+                run.status = payload.status.value
             if payload.stats_snapshot is not None:
-                run.stats_snapshot = payload.stats_snapshot
-            run.error_code = payload.error_code
-            run.error_summary = payload.error_summary
+                run.stats_snapshot = {**(run.stats_snapshot or {}), **payload.stats_snapshot}
+            if payload.status is not None or "error_code" in payload.model_fields_set:
+                run.error_code = payload.error_code
+            if payload.status is not None or "error_summary" in payload.model_fields_set:
+                run.error_summary = payload.error_summary
             if payload.status in {PipelineRunStatus.COMPLETED, PipelineRunStatus.COMPLETED_WITH_ERRORS, PipelineRunStatus.FAILED}:
                 run.completed_at = datetime.now(timezone.utc)
             self.session.commit()

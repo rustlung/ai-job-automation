@@ -1360,6 +1360,13 @@ presentation grouping: разные HH `external_id` не удаляются и 
 canonical identity, но одинаковые normalized company/title/full description
 получают persistent business fingerprint для CRM/Web UI view.
 
+CRM reconciliation keeps `business:<fingerprint>` as the permanent presentation
+key. A temporary `legacy_crm_key_fallback` is limited to canonical member keys
+of an already established business group: it migrates a matched pre-grouping CRM
+row in place, without fuzzy matching or destructive cleanup. The per-run count
+is stored in `PipelineRun.stats_snapshot.legacy_crm_key_matches`; it is not a
+permanent health or business metric.
+
 ------------------------------------------------------------------------
 
 # 11. Хранение вакансий и обработки

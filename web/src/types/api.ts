@@ -46,6 +46,11 @@ export interface PipelineRunOverrides {
   max_enrich_items_override: number | null;
 }
 
+export interface PipelineRunStatsSnapshot {
+  legacy_crm_key_matches?: number;
+  [key: string]: unknown;
+}
+
 export interface RunCreateRequest {
   profile_ids: string[];
   overrides: PipelineRunOverrides;
@@ -56,7 +61,7 @@ export interface PipelineRunSummary {
   trigger_source: PipelineRunTriggerSource;
   status: PipelineRunStatus;
   profile_ids: string[];
-  stats_snapshot: Record<string, unknown> | null;
+  stats_snapshot: PipelineRunStatsSnapshot | null;
   error_code: string | null;
   started_at: string;
   completed_at: string | null;

@@ -177,6 +177,9 @@ class PipelineResultService:
                     presentation_key=group.presentation_key,
                     business_fingerprint=group.business_fingerprint,
                     member_count=len(group.members),
+                    canonical_member_keys=sorted(
+                        f"{member.source}:{member.external_id}" for member in group.members
+                    ),
                 )
             )
 

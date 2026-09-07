@@ -89,13 +89,13 @@ keyword profiles и configurable selection также приняты.
 Актуальный export:
 
 ``` text
-workflows/n8n/AI Job Automation — Daily Search CRM Digest v11.json
+workflows/n8n/AI Job Automation — Daily Search CRM Digest v12.json
 ```
 
 Workflow name:
 
 ``` text
-AI Job Automation — Daily Search CRM Digest v11
+AI Job Automation — Daily Search CRM Digest v12
 ```
 
 Export не содержит credentials. После import activation управляется n8n
@@ -154,7 +154,7 @@ Manual Trigger
 → Read CRM Rows
 → Prepare CRM Rows
 → Legacy URL Match?
-→ CRM Upsert by CRM Key / CRM Upsert Legacy by URL
+→ CRM Upsert by CRM Key / temporary legacy CRM key fallback / CRM Upsert Legacy by URL
 → Prepare Success Email
 → Gmail Send Digest
 ```
@@ -320,6 +320,12 @@ CRM Key для presentation row:
 business:<business_fingerprint>
 ```
 
+`v12` first matches this business key. Only when it is absent, and only for a
+groupable item, `canonical_member_keys` are checked for a pre-grouping canonical
+CRM key. A matched row is updated in place and receives the business key. This
+temporary `legacy_crm_key_fallback` must be removed after its metric is zero for
+five full production runs and groupable CRM rows have been audited.
+
 Example:
 
 ``` text
@@ -337,6 +343,9 @@ Accepted behavior:
 
 - no CRM Key and no legacy row → `match_strategy=new`, `crm_action=new`;
 - existing row with CRM Key → `match_strategy=crm_key`, `crm_action=update`;
+- groupable row with no business key match but a canonical member key match →
+  `match_strategy=legacy_crm_key_fallback`, update the matched row by its row
+  number and replace its CRM Key with `business:<fingerprint>`;
 - old row without CRM Key → extract HH external id from URL, update legacy row,
   add CRM Key;
 - no fuzzy matching by title/company;

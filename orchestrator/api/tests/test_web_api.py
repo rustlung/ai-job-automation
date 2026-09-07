@@ -185,3 +185,44 @@ def test_manual_registration_and_lifecycle_are_visible_in_run_history(db_session
     assert lifecycle.json()["completed_at"] is not None
     assert history.json()["total"] == 1
     assert history.json()["runs"][0]["status"] == "completed_with_errors"
+
+
+def test_lifecycle_stats_only_update_merges_temporary_crm_migration_metric(db_session) -> None:
+    with make_client(db_session) as (client, _, _):
+        client.post(
+            "/internal/pipeline-runs",
+            json={
+                "run_id": "n8n-crm-migration-001",
+                "trigger_source": "manual_n8n",
+                "profile_ids": ["ai_automation_keywords"],
+                "config_snapshot": {"profile_ids": ["ai_automation_keywords"]},
+            },
+        )
+        completed = client.patch(
+            "/internal/pipeline-runs/n8n-crm-migration-001",
+            json={"status": "completed", "stats_snapshot": {"persisted_count": 3}},
+        )
+        crm_metric = client.patch(
+            "/internal/pipeline-runs/n8n-crm-migration-001",
+            json={"stats_snapshot": {"legacy_crm_key_matches": 2}},
+        )
+        client.post(
+            "/internal/pipeline-runs",
+            json={
+                "run_id": "n8n-crm-migration-002",
+                "trigger_source": "manual_n8n",
+                "profile_ids": ["ai_automation_keywords"],
+                "config_snapshot": {"profile_ids": ["ai_automation_keywords"]},
+            },
+        )
+        zero_metric = client.patch(
+            "/internal/pipeline-runs/n8n-crm-migration-002",
+            json={"stats_snapshot": {"legacy_crm_key_matches": 0}},
+        )
+        detail = client.get("/api/runs/n8n-crm-migration-001")
+
+    assert completed.status_code == 200
+    assert crm_metric.status_code == 200
+    assert crm_metric.json()["status"] == "completed"
+    assert zero_metric.json()["stats_snapshot"] == {"legacy_crm_key_matches": 0}
+    assert detail.json()["stats_snapshot"] == {"persisted_count": 3, "legacy_crm_key_matches": 2}
