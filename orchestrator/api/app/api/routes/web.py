@@ -19,6 +19,7 @@ from app.schemas.web import (
     SearchProfilesResponse,
     SortDirection,
     SystemHealthResponse,
+    VacancyDetail,
     VacancyListResponse,
     VacancyListSort,
     WebPipelineRunCreateResponse,
@@ -27,7 +28,7 @@ from app.services.operational_settings import OperationalSettingsDatabaseError, 
 from app.services.pipeline_run import PipelineRunDatabaseError, PipelineRunNotFoundError, PipelineRunService
 from app.services.web_gateway import N8nWebhookClient, N8nWebhookError, WorkerGateway, WorkerGatewayError
 from app.services.web_runs import WebRunService, WebRunValidationError
-from app.services.web_vacancies import WebVacancyListService
+from app.services.web_vacancies import WebVacancyListService, WebVacancyNotFoundError
 
 router = APIRouter(prefix="/api", tags=["web api"])
 
@@ -164,6 +165,17 @@ def list_vacancies(
         sort=sort,
         sort_direction=sort_direction,
     )
+
+
+@router.get("/vacancies/{presentation_key}", response_model=VacancyDetail)
+def get_vacancy_detail(
+    presentation_key: str,
+    service: WebVacancyListService = Depends(get_web_vacancy_list_service),
+) -> VacancyDetail:
+    try:
+        return service.get(presentation_key)
+    except WebVacancyNotFoundError as exc:
+        raise HTTPException(status_code=404, detail={"error_code": "vacancy_not_found"}) from exc
 
 
 InternalToken = Annotated[str | None, Header(alias="X-Orchestrator-Internal-Token")]

@@ -136,3 +136,52 @@ export interface VacancyFilters {
   sort: VacancyListSort;
   sort_direction: SortDirection;
 }
+
+export interface VacancyCanonicalMember {
+  source: string;
+  external_id: string;
+  url: string;
+  title: string;
+  company: string;
+  location: string | null;
+  representative: boolean;
+}
+
+export interface VacancyAnalysisDetail {
+  priority: VacancyPriority | null;
+  final_score: number | null;
+  relevance: number;
+  track: string | null;
+  summary: string;
+  reason: string;
+  risks: string[];
+  hard_blockers: string[];
+}
+
+export interface VacancyDetail {
+  presentation_key: string;
+  vacancy_id: number;
+  source: string;
+  external_id: string;
+  member_count: number;
+  company: string;
+  title: string;
+  salary_text: string | null;
+  location: string | null;
+  work_format: string | null;
+  working_hours: string | null;
+  experience_min_years: number | null;
+  experience_max_years: number | null;
+  published_at: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+  url: string;
+  description: string;
+  skills: string[];
+  analysis: VacancyAnalysisDetail;
+  profile_ids: string[];
+  query_variant_ids: string[];
+  provenance_tracks: string[];
+  run_ids: string[];
+  members: VacancyCanonicalMember[];
+}

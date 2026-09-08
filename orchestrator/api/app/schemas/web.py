@@ -97,3 +97,58 @@ class VacancyListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class VacancyCanonicalMember(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source: str
+    external_id: str
+    url: str
+    title: str
+    company: str
+    location: str | None
+    representative: bool
+
+
+class VacancyAnalysisDetail(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    priority: VacancyAnalysisPriority | None
+    final_score: int | None
+    relevance: int
+    track: str | None
+    summary: str
+    reason: str
+    risks: list[str]
+    hard_blockers: list[str]
+
+
+class VacancyDetail(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    presentation_key: str
+    vacancy_id: int
+    source: str
+    external_id: str
+    member_count: int
+    company: str
+    title: str
+    salary_text: str | None
+    location: str | None
+    work_format: str | None
+    working_hours: str | None
+    experience_min_years: int | None
+    experience_max_years: int | None
+    published_at: datetime | None
+    first_seen_at: datetime
+    last_seen_at: datetime
+    url: str
+    description: str
+    skills: list[str]
+    analysis: VacancyAnalysisDetail
+    profile_ids: list[str]
+    query_variant_ids: list[str]
+    provenance_tracks: list[str]
+    run_ids: list[str]
+    members: list[VacancyCanonicalMember]

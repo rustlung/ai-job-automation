@@ -189,6 +189,13 @@ pagination. The endpoint supports priority, track, profile provenance union,
 run id, company/title text search, `first_seen`/`final_score`/`priority` sort
 and `asc`/`desc` direction. It does not return full descriptions.
 
+`GET /api/vacancies/{presentation_key}` returns one logical presentation group
+for the Vacancy Detail page. It reads the selected representative and canonical
+members only from Orchestrator DB, preserving the existing Samara selection.
+The response includes saved full description, representative analysis, profile
+and provenance unions, and compact regional-member metadata. It is independent
+of Worker availability.
+
 `GET /api/system/health` is lightweight: it does not call the Worker compute
 preflight or warm an Ollama model. Internal n8n lifecycle endpoints live under
 `/internal/pipeline-runs`; their optional token is configured only in the

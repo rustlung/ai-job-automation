@@ -6,6 +6,7 @@ import type {
   RunsResponse,
   SearchProfilesResponse,
   SystemHealth,
+  VacancyDetail,
   VacancyFilters,
   VacancyListResponse
 } from "../types/api";
@@ -37,6 +38,7 @@ export const orchestratorApi = {
   getRuns: (limit = 20, offset = 0) => request<RunsResponse>(`/api/runs?limit=${limit}&offset=${offset}`),
   getRun: (runId: string) => request<PipelineRunDetail>(`/api/runs/${encodeURIComponent(runId)}`),
   getVacancies: (filters: VacancyFilters) => request<VacancyListResponse>(`/api/vacancies?${vacancyQuery(filters)}`),
+  getVacancyDetail: (presentationKey: string) => request<VacancyDetail>(`/api/vacancies/${encodeURIComponent(presentationKey)}`),
   startRun: (payload: RunCreateRequest) =>
     request<RunCreateResponse>("/api/runs", { method: "POST", body: JSON.stringify(payload) })
 };

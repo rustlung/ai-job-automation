@@ -46,6 +46,13 @@ def add_vacancy(
     final_score: int = 85,
     profiles: list[str] | None = None,
     track: str = "main",
+    description: str = "Полное описание вакансии",
+    query_variant_ids: list[str] | None = None,
+    provenance_tracks: list[str] | None = None,
+    vacancy_snapshot: dict | None = None,
+    deterministic_features: dict | None = None,
+    risks: list[str] | None = None,
+    hard_blockers: list[str] | None = None,
 ) -> Vacancy:
     vacancy = Vacancy(
         source="hh",
@@ -55,7 +62,7 @@ def add_vacancy(
         company=company,
         location="Самара",
         salary_text="200 000 ₽",
-        description="Полное описание вакансии",
+        description=description,
         business_fingerprint=fingerprint,
         published_at=first_seen_at,
         first_seen_at=first_seen_at,
@@ -78,7 +85,15 @@ def add_vacancy(
             summary=f"{title} summary",
             reason="test reason",
             semantic_snapshot={"target_track": track},
-            provenance={"profile_ids": profiles or ["ai_automation_keywords"]},
+            deterministic_features=deterministic_features,
+            vacancy_snapshot=vacancy_snapshot,
+            provenance={
+                "profile_ids": profiles or ["ai_automation_keywords"],
+                "query_variant_ids": query_variant_ids or [],
+                "tracks": provenance_tracks or [],
+            },
+            risks=risks,
+            hard_blockers=hard_blockers,
         )
     )
     db_session.commit()
@@ -198,3 +213,83 @@ def test_non_groupable_vacancy_uses_canonical_presentation_key_and_priority_filt
 
     assert response.status_code == 200
     assert response.json()["items"][0]["presentation_key"] == "hh:301"
+
+
+def test_business_vacancy_detail_uses_samara_representative_and_group_provenance(db_session) -> None:
+    add_vacancy(
+        db_session,
+        external_id="401",
+        company="Solution",
+        title="AI-разработчик",
+        fingerprint="c" * 64,
+        url="https://kazan.hh.ru/vacancy/401",
+        first_seen_at=datetime(2026, 9, 1, 8, tzinfo=timezone.utc),
+        run_id="run-kazan",
+        profiles=["ai_automation_keywords"],
+        query_variant_ids=["ai-ru"],
+        provenance_tracks=["main"],
+    )
+    add_vacancy(
+        db_session,
+        external_id="402",
+        company="Solution",
+        title="AI-разработчик",
+        fingerprint="c" * 64,
+        url="https://samara.hh.ru/vacancy/402",
+        first_seen_at=datetime(2026, 9, 2, 8, tzinfo=timezone.utc),
+        run_id="run-samara",
+        profiles=["vibecoding_keywords"],
+        query_variant_ids=["vibe-builder"],
+        provenance_tracks=["alternative"],
+        description="Полное описание из сохраненной базы.\n\nВторой абзац.",
+        vacancy_snapshot={"schedule_text": "Удалённо", "working_hours_text": "8 часов", "skills": ["Python", "FastAPI"]},
+        deterministic_features={"required_experience_min_years": 1, "required_experience_max_years": 3},
+        risks=["experience_stretch"],
+        hard_blockers=["office_outside_samara"],
+    )
+
+    with make_client(db_session) as client:
+        response = client.get(f"/api/vacancies/business:{'c' * 64}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["external_id"] == "402"
+    assert body["member_count"] == 2
+    assert body["description"] == "Полное описание из сохраненной базы.\n\nВторой абзац."
+    assert body["first_seen_at"].startswith("2026-09-01")
+    assert body["analysis"]["track"] == "main"
+    assert body["analysis"]["risks"] == ["experience_stretch"]
+    assert body["profile_ids"] == ["ai_automation_keywords", "vibecoding_keywords"]
+    assert body["query_variant_ids"] == ["ai-ru", "vibe-builder"]
+    assert body["provenance_tracks"] == ["main", "alternative"]
+    assert body["run_ids"] == ["run-kazan", "run-samara"]
+    assert body["work_format"] == "Удалённо"
+    assert body["experience_min_years"] == 1
+    assert body["skills"] == ["Python", "FastAPI"]
+    assert body["members"][0]["representative"] is True
+    assert body["members"][0]["external_id"] == "402"
+
+
+def test_non_groupable_vacancy_detail_and_missing_key(db_session) -> None:
+    add_vacancy(
+        db_session,
+        external_id="501",
+        company="Gamma",
+        title="QA Engineer",
+        fingerprint=None,
+        url="https://hh.ru/vacancy/501",
+        first_seen_at=datetime(2026, 9, 5, 8, tzinfo=timezone.utc),
+        run_id="run-gamma",
+        priority="ALT",
+    )
+
+    with make_client(db_session) as client:
+        canonical = client.get("/api/vacancies/hh:501")
+        missing = client.get("/api/vacancies/business:not-found")
+
+    assert canonical.status_code == 200
+    assert canonical.json()["presentation_key"] == "hh:501"
+    assert canonical.json()["member_count"] == 1
+    assert canonical.json()["members"][0]["representative"] is True
+    assert missing.status_code == 404
+    assert missing.json()["detail"]["error_code"] == "vacancy_not_found"

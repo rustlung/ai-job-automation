@@ -32,6 +32,14 @@ export function useVacancies(filters: VacancyFilters) {
   });
 }
 
+export function useVacancyDetail(presentationKey: string) {
+  return useQuery({
+    queryKey: ["vacancy", presentationKey],
+    queryFn: () => orchestratorApi.getVacancyDetail(presentationKey),
+    enabled: Boolean(presentationKey)
+  });
+}
+
 export function useStartRun() {
   return useMutation({ mutationFn: (payload: RunCreateRequest) => orchestratorApi.startRun(payload) });
 }

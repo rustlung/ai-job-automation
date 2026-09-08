@@ -30,7 +30,7 @@
 ✅ n8n polling Worker pipeline workflow v12 with canonical Full Run Context
 ✅ persistent PipelineRun history and OperationalSettings
 ✅ safe Web API foundation for React UI
-✅ React + TypeScript Web UI foundation: Dashboard, запуск поиска, Runs и global grouped Vacancies list
+✅ React + TypeScript Web UI foundation: Dashboard, запуск поиска, Runs, global grouped Vacancies list и Vacancy Detail
 ✅ Docker deployment Web UI со SPA fallback
 ✅ user_selectable profile contract across Worker, Orchestrator, Web UI and n8n
 ✅ Обработка ошибок интеграции Ollama

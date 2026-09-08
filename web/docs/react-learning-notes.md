@@ -38,6 +38,19 @@ run-status endpoint every four seconds only while a run is `accepted` or
 `src/app/router.tsx` maps URLs to pages. `:runId` is a route parameter read in
 `RunDetailPage` with `useParams`.
 
+## Detail pages
+
+`src/pages/VacancyDetailPage.tsx` reads `presentationKey` from the route and
+passes it to `useVacancyDetail`. The query key identifies one server entity,
+while conditional rendering keeps loading, not-found, error and success states
+separate. A list link stores its current URL in Router state, so the back link
+can preserve filters without global state.
+
+`src/components/VacancyDescription.tsx` renders saved vacancy content as React
+text, not with `dangerouslySetInnerHTML`. Current Orchestrator descriptions are
+normalized text; should an unexpected HTML fragment arrive, React displays it
+without executing tags or handlers.
+
 ## Lists, filters and pagination
 
 `src/pages/VacanciesPage.tsx` renders `items.map(...)` from the paginated
@@ -57,4 +70,5 @@ after it changes.
 Potential patterns for a later extraction: typed API client, `HealthCard`,
 `RunStatusBadge`, shared states, run polling, profile-selection form,
 `DateRangeFilter`, `FilterBar`, simple data table, pagination and URL-synced
-filters.
+filters, entity detail header, metadata sidebar, safe rich-text renderer and
+back navigation with preserved filters.

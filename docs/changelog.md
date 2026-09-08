@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-09
+
+### Added
+
+- `GET /api/vacancies/{presentation_key}` and a React Vacancy Detail page with
+  persisted full description, representative AI analysis, provenance, regional
+  members and safe original-HH links; description is rendered as text rather
+  than executable HTML.
+
 ## 2026-09-08
 
 ### Added
