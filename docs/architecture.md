@@ -81,6 +81,12 @@ Orchestrator API
 The Orchestrator is the only frontend boundary. Google Sheets remains a
 reporting mirror; it is not a source of truth for user-owned application data.
 
+`Application` is a permanent Orchestrator entity for a real response to one
+canonical `Vacancy.id`, rather than to a business presentation key. A canonical
+vacancy may have multiple applications. Its absence means no application has
+been recorded; `not_applied` is deliberately not an application status. Google
+Sheets sync and historical import are separate future steps.
+
 For a full run, Manual and Web entries converge before Worker start into one
 n8n `Build Full Run Context`. Shared Worker polling reads only that normalized
 context, while `existing_run_id` replay deliberately bypasses it and continues
@@ -1538,6 +1544,7 @@ Orchestrator отвечает за:
 -   Vacancy;
 -   VacancyAnalysis;
 -   VacancyProcessingEvent;
+-   Application;
 -   idempotent upsert;
 -   final unique constraint;
 -   first_seen_at;
@@ -1560,7 +1567,8 @@ Orchestrator API
 Orchestrator DB
 ├── Vacancy
 ├── VacancyAnalysis history
-└── Processing events
+├── Processing events
+└── Applications
 ```
 
 Worker остается stateless processing node. Orchestrator DB является source of

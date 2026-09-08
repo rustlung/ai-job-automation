@@ -167,6 +167,10 @@ POST /api/runs
 GET /api/runs
 GET /api/runs/{run_id}
 GET /api/vacancies
+POST /api/vacancies/{vacancy_id}/applications
+GET /api/vacancies/{vacancy_id}/applications
+GET /api/applications/{application_id}
+PATCH /api/applications/{application_id}
 ```
 
 `OperationalSettings` is a typed singleton for editable operational values,
@@ -205,6 +209,24 @@ environment and must not be exposed to the browser.
 merges supplied fields into `stats_snapshot` without changing the lifecycle
 status; v12 uses this for the temporary `legacy_crm_key_matches` CRM migration
 diagnostic.
+
+### Applications
+
+``` text
+POST /api/vacancies/{vacancy_id}/applications
+GET /api/vacancies/{vacancy_id}/applications
+GET /api/applications/{application_id}
+PATCH /api/applications/{application_id}
+```
+
+`Application` belongs to one canonical `Vacancy.id`, so a future logical
+business-vacancy screen can still show applications for its individual source
+members. Multiple applications per vacancy are allowed. The status enum is
+`submitted`, `response_received`, `screening`, `test_task`, `interview`,
+`offer`, `rejected`, `withdrawn`; lack of an Application record means no
+application. PATCH is partial: omitted fields are unchanged and explicit
+`null` clears nullable fields. Google Sheets sync and historical import are not
+part of this API foundation.
 
 ### Health
 

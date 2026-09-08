@@ -4,6 +4,10 @@
 
 ### Added
 
+- permanent `Application` persistence foundation: canonical `Vacancy.id` FK,
+  status enum, nullable historical dates, multiple records per vacancy and
+  typed create/read/partial-update Web API; frontend, Google Sheets sync and
+  historical import remain future work;
 - `GET /api/vacancies/{presentation_key}` and a React Vacancy Detail page with
   persisted full description, representative AI analysis, provenance, regional
   members and safe original-HH links; description is rendered as text rather

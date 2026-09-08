@@ -2,6 +2,8 @@ from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.exc import IntegrityError
+import pytest
 
 from app.core.config import get_settings
 
@@ -24,6 +26,7 @@ def test_vacancy_migration_upgrade_and_downgrade(tmp_path, monkeypatch) -> None:
     assert "vacancies" in inspector.get_table_names()
     assert "vacancy_analyses" in inspector.get_table_names()
     assert "vacancy_processing_events" in inspector.get_table_names()
+    assert "applications" in inspector.get_table_names()
     indexes = {index["name"] for index in inspector.get_indexes("vacancies")}
     assert "ix_vacancies_source" in indexes
     assert "ix_vacancies_external_id" in indexes
@@ -61,12 +64,23 @@ def test_vacancy_migration_upgrade_and_downgrade(tmp_path, monkeypatch) -> None:
     foreign_keys = inspector.get_foreign_keys("vacancy_processing_events")
     assert foreign_keys[0]["referred_table"] == "vacancies"
     assert foreign_keys[0]["options"]["ondelete"] == "CASCADE"
+    application_indexes = {index["name"] for index in inspector.get_indexes("applications")}
+    assert {"ix_applications_vacancy_id", "ix_applications_status", "ix_applications_applied_at"} <= application_indexes
+    application_columns = {column["name"]: column for column in inspector.get_columns("applications")}
+    assert application_columns["applied_at"]["nullable"] is True
+    assert application_columns["response_received_at"]["nullable"] is True
+    application_checks = {constraint["name"] for constraint in inspector.get_check_constraints("applications")}
+    assert "ck_applications_status" in application_checks
+    application_foreign_keys = inspector.get_foreign_keys("applications")
+    assert application_foreign_keys[0]["referred_table"] == "vacancies"
+    assert application_foreign_keys[0]["options"]["ondelete"] == "CASCADE"
 
     command.downgrade(make_alembic_config(database_url), "20260810_0001")
     inspector = inspect(engine)
     assert "vacancies" in inspector.get_table_names()
     assert "vacancy_analyses" in inspector.get_table_names()
     assert "vacancy_processing_events" in inspector.get_table_names()
+    assert "applications" not in inspector.get_table_names()
     downgraded_vacancy_columns = {column["name"] for column in inspector.get_columns("vacancies")}
     assert "business_fingerprint" not in downgraded_vacancy_columns
     downgraded_analysis_columns = {column["name"] for column in inspector.get_columns("vacancy_analyses")}
@@ -83,6 +97,7 @@ def test_vacancy_migration_upgrade_and_downgrade(tmp_path, monkeypatch) -> None:
     assert "vacancies" in inspector.get_table_names()
     assert "vacancy_analyses" in inspector.get_table_names()
     assert "vacancy_processing_events" in inspector.get_table_names()
+    assert "applications" in inspector.get_table_names()
     engine.dispose()
 
 
@@ -119,6 +134,57 @@ def test_business_fingerprint_migration_preserves_existing_vacancies(tmp_path, m
         row = connection.execute(text("SELECT external_id, business_fingerprint FROM vacancies")).one()
         assert row.external_id == "legacy-001"
         assert row.business_fingerprint is None
+    engine.dispose()
+
+
+def test_application_migration_preserves_existing_vacancies_and_is_reversible(tmp_path, monkeypatch) -> None:
+    database_url = f"sqlite:///{tmp_path / 'applications-migration.db'}"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    get_settings.cache_clear()
+    config = make_alembic_config(database_url)
+
+    command.upgrade(config, "20260907_0001")
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO vacancies (
+                    source, external_id, url, title, company, description,
+                    first_seen_at, last_seen_at, seen_count, collected_at, created_at, updated_at
+                ) VALUES (
+                    'hh', 'application-migration-001', 'https://hh.ru/vacancy/application-migration-001',
+                    'Python Developer', 'Test Company', 'Description',
+                    '2026-09-09T00:00:00+00:00', '2026-09-09T00:00:00+00:00', 1,
+                    '2026-09-09T00:00:00+00:00', '2026-09-09T00:00:00+00:00', '2026-09-09T00:00:00+00:00'
+                )
+                """
+            )
+        )
+
+    command.upgrade(config, "head")
+    with engine.connect() as connection:
+        assert connection.scalar(text("SELECT COUNT(*) FROM vacancies")) == 1
+    assert "applications" in inspect(engine).get_table_names()
+    with pytest.raises(IntegrityError):
+        with engine.begin() as connection:
+            connection.execute(text("PRAGMA foreign_keys=ON"))
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO applications (vacancy_id, status, created_at, updated_at)
+                    VALUES (999, 'submitted', '2026-09-09T00:00:00+00:00', '2026-09-09T00:00:00+00:00')
+                    """
+                )
+            )
+
+    command.downgrade(config, "-1")
+    with engine.connect() as connection:
+        assert connection.scalar(text("SELECT COUNT(*) FROM vacancies")) == 1
+    assert "applications" not in inspect(engine).get_table_names()
+
+    command.upgrade(config, "head")
+    assert "applications" in inspect(engine).get_table_names()
     engine.dispose()
 
 
@@ -220,7 +286,7 @@ def test_web_backend_foundation_migration_upgrade_and_single_step_downgrade(tmp_
     }
     assert "ix_pipeline_runs_run_id" in {index["name"] for index in inspector.get_indexes("pipeline_runs")}
 
-    command.downgrade(config, "-2")
+    command.downgrade(config, "20260904_0001")
     inspector = inspect(engine)
     assert "pipeline_runs" not in inspector.get_table_names()
     assert "operational_settings" not in inspector.get_table_names()

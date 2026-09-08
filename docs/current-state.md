@@ -38,6 +38,7 @@
 ✅ Доступ к Local AI endpoint с homeserver
 ✅ Vacancy persistence API
 ✅ VacancyAnalysis persistence API
+✅ Application persistence API: canonical vacancy relation, multiple records and partial updates
 ✅ Idempotent vacancy upsert
 ✅ Idempotent analysis upsert
 ✅ Alembic migrations на homeserver

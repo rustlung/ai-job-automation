@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database.base import Base
 
 if TYPE_CHECKING:
+    from app.models.application import Application
     from app.models.vacancy_analysis import VacancyAnalysis
     from app.models.vacancy_processing_event import VacancyProcessingEvent
 
@@ -56,6 +57,11 @@ class Vacancy(Base):
         passive_deletes=True,
     )
     processing_events: Mapped[list["VacancyProcessingEvent"]] = relationship(
+        back_populates="vacancy",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    applications: Mapped[list["Application"]] = relationship(
         back_populates="vacancy",
         cascade="all, delete-orphan",
         passive_deletes=True,

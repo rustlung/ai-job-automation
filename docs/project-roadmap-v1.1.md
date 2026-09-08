@@ -1421,6 +1421,17 @@ Notification
 - сравнение n8n и собственного orchestrator;
 - материалы для портфолио.
 
+## Backlog 004.1. Application model + API
+
+Статус: завершен.
+
+Orchestrator DB получила permanent сущность `Application`, связанную с
+canonical `Vacancy.id`. Поддерживаются несколько откликов на одну source
+vacancy, согласованный application lifecycle и partial API updates. Отсутствие
+record означает «без отклика»; отдельный `not_applied` status не вводится.
+Frontend Applications UI, application filters, Google Sheets sync и historical
+import остаются следующими подэтапами.
+
 ---
 
 # Правила разработки
