@@ -1,5 +1,7 @@
 from contextlib import contextmanager
 from datetime import datetime, timezone
+import importlib
+import inspect
 from typing import Generator
 
 from fastapi.testclient import TestClient
@@ -19,6 +21,15 @@ def make_client(db_session) -> Generator[TestClient, None, None]:
             yield client
     finally:
         app.dependency_overrides.clear()
+
+
+def test_web_vacancy_service_imports_and_registers_the_api_route(db_session) -> None:
+    module = importlib.import_module("app.services.web_vacancies")
+    importlib.import_module("app.main")
+
+    assert "from __future__ import annotations" in inspect.getsource(module).splitlines()[:3]
+    assert isinstance(module.WebVacancyListService(db_session), WebVacancyListService)
+    assert any(route.path == "/api/vacancies" for route in app.routes)
 
 
 def add_vacancy(
