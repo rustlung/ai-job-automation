@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-08
+
+### Added
+
+- global `GET /api/vacancies` grouped presentation list for the React UI with
+  group-level first-seen date filtering, profile provenance union, safe sorting
+  and pagination after business grouping;
+- `/vacancies` Web UI page with URL-synchronised date, priority, profile,
+  search and advanced filters, plus a future-ready presentation-key detail
+  route.
+
 ## 2026-09-05
 
 ### Fixed

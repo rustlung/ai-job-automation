@@ -26,6 +26,9 @@ class VacancyRepository:
             return []
         return list(self.session.scalars(select(Vacancy).where(Vacancy.id.in_(vacancy_ids))).all())
 
+    def list_all(self) -> list[Vacancy]:
+        return list(self.session.scalars(select(Vacancy).order_by(Vacancy.id)).all())
+
     def list_by_business_fingerprints(self, fingerprints: list[str]) -> list[Vacancy]:
         if not fingerprints:
             return []

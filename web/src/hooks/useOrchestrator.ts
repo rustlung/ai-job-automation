@@ -2,7 +2,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { orchestratorApi } from "../api/orchestrator";
 import { runPollingInterval } from "../lib/format";
-import type { RunCreateRequest } from "../types/api";
+import type { RunCreateRequest, VacancyFilters } from "../types/api";
 
 export function useSystemHealth() {
   return useQuery({ queryKey: ["system-health"], queryFn: orchestratorApi.getSystemHealth, refetchInterval: 30_000 });
@@ -22,6 +22,13 @@ export function useRun(runId: string) {
     queryFn: () => orchestratorApi.getRun(runId),
     enabled: Boolean(runId),
     refetchInterval: (query) => runPollingInterval(query.state.data?.status)
+  });
+}
+
+export function useVacancies(filters: VacancyFilters) {
+  return useQuery({
+    queryKey: ["vacancies", filters],
+    queryFn: () => orchestratorApi.getVacancies(filters)
   });
 }
 

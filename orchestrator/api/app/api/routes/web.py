@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
@@ -14,11 +14,20 @@ from app.schemas.pipeline_run import (
     PipelineRunTriggerSource,
     WebPipelineRunCreate,
 )
-from app.schemas.web import SearchProfilesResponse, SystemHealthResponse, WebPipelineRunCreateResponse
+from app.schemas.vacancy_analysis import VacancyAnalysisPriority
+from app.schemas.web import (
+    SearchProfilesResponse,
+    SortDirection,
+    SystemHealthResponse,
+    VacancyListResponse,
+    VacancyListSort,
+    WebPipelineRunCreateResponse,
+)
 from app.services.operational_settings import OperationalSettingsDatabaseError, OperationalSettingsService
 from app.services.pipeline_run import PipelineRunDatabaseError, PipelineRunNotFoundError, PipelineRunService
 from app.services.web_gateway import N8nWebhookClient, N8nWebhookError, WorkerGateway, WorkerGatewayError
 from app.services.web_runs import WebRunService, WebRunValidationError
+from app.services.web_vacancies import WebVacancyListService
 
 router = APIRouter(prefix="/api", tags=["web api"])
 
@@ -29,6 +38,10 @@ def get_operational_settings_service(db: Session = Depends(get_db_session)) -> O
 
 def get_pipeline_run_service(db: Session = Depends(get_db_session)) -> PipelineRunService:
     return PipelineRunService(db)
+
+
+def get_web_vacancy_list_service(db: Session = Depends(get_db_session)) -> WebVacancyListService:
+    return WebVacancyListService(db)
 
 
 def get_worker_gateway(settings: Settings = Depends(get_settings)) -> WorkerGateway:
@@ -121,6 +134,36 @@ def get_pipeline_run(run_id: str, service: PipelineRunService = Depends(get_pipe
         return service.get(run_id)
     except PipelineRunNotFoundError as exc:
         raise HTTPException(status_code=404, detail={"error_code": "run_not_found"}) from exc
+
+
+@router.get("/vacancies", response_model=VacancyListResponse)
+def list_vacancies(
+    date_from: date | None = None,
+    date_to: date | None = None,
+    priority: list[VacancyAnalysisPriority] | None = Query(default=None),
+    track: str | None = None,
+    profile_id: str | None = None,
+    run_id: str | None = None,
+    search: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    sort: VacancyListSort = VacancyListSort.FIRST_SEEN,
+    sort_direction: SortDirection = SortDirection.DESC,
+    service: WebVacancyListService = Depends(get_web_vacancy_list_service),
+) -> VacancyListResponse:
+    return service.list(
+        date_from=date_from,
+        date_to=date_to,
+        priorities=priority,
+        track=track,
+        profile_id=profile_id,
+        run_id=run_id,
+        search=search,
+        limit=limit,
+        offset=offset,
+        sort=sort,
+        sort_direction=sort_direction,
+    )
 
 
 InternalToken = Annotated[str | None, Header(alias="X-Orchestrator-Internal-Token")]

@@ -38,6 +38,16 @@ run-status endpoint every four seconds only while a run is `accepted` or
 `src/app/router.tsx` maps URLs to pages. `:runId` is a route parameter read in
 `RunDetailPage` with `useParams`.
 
+## Lists, filters and pagination
+
+`src/pages/VacanciesPage.tsx` renders `items.map(...)` from the paginated
+Orchestrator response. Its filter values live in React Router search params, so
+refresh, browser navigation and a copied URL retain the current list view.
+`useVacancies(filters)` includes the filter object in its React Query key: a
+different period, profile or page is different server state and receives its
+own request. `src/features/vacancies/dateFilters.ts` keeps the date-preset
+calculation small and testable for later reuse by Statistics.
+
 ## Build-time environment
 
 `VITE_API_BASE_URL` is read by `src/api/client.ts`. Vite puts it into the
@@ -45,4 +55,6 @@ compiled browser bundle, so it is public configuration and Docker must rebuild
 after it changes.
 
 Potential patterns for a later extraction: typed API client, `HealthCard`,
-`RunStatusBadge`, shared states, run polling and profile-selection form.
+`RunStatusBadge`, shared states, run polling, profile-selection form,
+`DateRangeFilter`, `FilterBar`, simple data table, pagination and URL-synced
+filters.

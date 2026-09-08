@@ -166,6 +166,7 @@ GET /api/system/health
 POST /api/runs
 GET /api/runs
 GET /api/runs/{run_id}
+GET /api/vacancies
 ```
 
 `OperationalSettings` is a typed singleton for editable operational values,
@@ -176,6 +177,17 @@ required for `POST /api/runs`, while legacy profiles may remain enabled for
 internal use. `POST /api/runs` validates enabled, selectable Worker profiles, creates a persistent `PipelineRun`
 with `trigger_source=web_ui`, snapshots safe run configuration, then starts the
 internal n8n webhook without waiting for the production pipeline.
+
+`GET /api/vacancies` is the paginated global logical-vacancy list for the Web
+UI. It uses the established business presentation grouping: groupable rows use
+`business:<fingerprint>`, non-groupable rows retain `source:external_id`, and
+the representative remains subject to the Samara preference. `date_from` and
+`date_to` filter the earliest `first_seen_at` among group members, meaning when
+the system first found the logical vacancy rather than HH publication time.
+Filters apply after grouping, followed by whitelist sorting and offset/limit
+pagination. The endpoint supports priority, track, profile provenance union,
+run id, company/title text search, `first_seen`/`final_score`/`priority` sort
+and `asc`/`desc` direction. It does not return full descriptions.
 
 `GET /api/system/health` is lightweight: it does not call the Worker compute
 preflight or warm an Ollama model. Internal n8n lifecycle endpoints live under

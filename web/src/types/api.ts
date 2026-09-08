@@ -90,3 +90,49 @@ export interface RunsResponse {
 export interface ApiErrorBody {
   detail?: string | { error_code?: string };
 }
+
+export type VacancyPriority = "P1" | "P2" | "P3" | "ALT";
+export type VacancyListSort = "first_seen" | "final_score" | "priority";
+export type SortDirection = "asc" | "desc";
+
+export interface VacancyListItem {
+  presentation_key: string;
+  vacancy_id: number;
+  source: string;
+  external_id: string;
+  company: string;
+  title: string;
+  salary_text: string | null;
+  location: string | null;
+  published_at: string | null;
+  first_seen_at: string;
+  url: string;
+  priority: VacancyPriority | null;
+  final_score: number | null;
+  track: string | null;
+  summary: string;
+  profile_ids: string[];
+  run_id: string | null;
+  member_count: number;
+}
+
+export interface VacancyListResponse {
+  items: VacancyListItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface VacancyFilters {
+  date_from?: string;
+  date_to?: string;
+  priority?: VacancyPriority[];
+  track?: string;
+  profile_id?: string;
+  run_id?: string;
+  search?: string;
+  limit: number;
+  offset: number;
+  sort: VacancyListSort;
+  sort_direction: SortDirection;
+}

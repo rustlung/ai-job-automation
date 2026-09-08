@@ -25,6 +25,13 @@ export function formatDateTime(value: string | null): string {
   }).format(date);
 }
 
+export function formatDate(value: string | null): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("ru-RU", { dateStyle: "medium" }).format(date);
+}
+
 export function formatDuration(startedAt: string, completedAt: string | null): string {
   if (!completedAt) return "Выполняется";
   const milliseconds = new Date(completedAt).getTime() - new Date(startedAt).getTime();

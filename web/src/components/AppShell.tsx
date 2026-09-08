@@ -4,11 +4,11 @@ import { NavLink, Outlet } from "react-router-dom";
 const navigation = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/runs/new", label: "Запуск поиска", icon: CirclePlay },
-  { to: "/runs", label: "Runs", icon: BriefcaseBusiness }
+  { to: "/runs", label: "Runs", icon: BriefcaseBusiness },
+  { to: "/vacancies", label: "Vacancies", icon: BriefcaseBusiness }
 ];
 
 const futureNavigation = [
-  { label: "Vacancies", icon: BriefcaseBusiness },
   { label: "Applications", icon: Users },
   { label: "Statistics", icon: BarChart3 },
   { label: "Settings", icon: Settings }
