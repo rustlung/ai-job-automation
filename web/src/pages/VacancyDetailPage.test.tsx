@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -30,6 +30,7 @@ const vacancy = {
   query_variant_ids: ["ai-ru"],
   provenance_tracks: ["main"],
   run_ids: ["run-1"],
+  applications: [],
   members: [
     { source: "hh", external_id: "102", url: "https://samara.hh.ru/vacancy/102", title: "Python Developer", company: "Example Company", location: "Самара", representative: true },
     { source: "hh", external_id: "101", url: "https://kazan.hh.ru/vacancy/101", title: "Python Developer", company: "Example Company", location: "Казань", representative: false }
@@ -38,9 +39,13 @@ const vacancy = {
 
 const useVacancyDetail = vi.fn();
 const useSearchProfiles = vi.fn();
+const useCreateApplication = vi.fn();
+const useUpdateApplication = vi.fn();
 vi.mock("../hooks/useOrchestrator", () => ({
   useVacancyDetail: (...args: unknown[]) => useVacancyDetail(...args),
-  useSearchProfiles: () => useSearchProfiles()
+  useSearchProfiles: () => useSearchProfiles(),
+  useCreateApplication: () => useCreateApplication(),
+  useUpdateApplication: () => useUpdateApplication()
 }));
 
 function renderPage(entry: string | { pathname: string; state?: unknown } = "/vacancies/business%3Aabc123") {
@@ -51,6 +56,8 @@ describe("VacancyDetailPage", () => {
   beforeEach(() => {
     useVacancyDetail.mockReturnValue({ data: vacancy, isLoading: false, isError: false });
     useSearchProfiles.mockReturnValue({ data: { profiles: [{ id: "ai_automation_keywords", name: "AI Automation" }] }, isError: false });
+    useCreateApplication.mockReturnValue({ isPending: false, error: null, mutateAsync: vi.fn() });
+    useUpdateApplication.mockReturnValue({ isPending: false, error: null, mutateAsync: vi.fn() });
   });
   afterEach(() => cleanup());
 
@@ -65,7 +72,27 @@ describe("VacancyDetailPage", () => {
     expect(screen.getByText("AI Automation")).toBeInTheDocument();
     expect(screen.getByText("Региональные копии: 2")).toBeInTheDocument();
     expect(screen.getByText("Представитель")).toBeInTheDocument();
+    expect(screen.getByText("Отклик не отправлен")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Открыть оригинал" })).toHaveAttribute("href", vacancy.url);
+  });
+
+  it("shows all group applications and creates a canonical application", async () => {
+    const createApplication = vi.fn().mockResolvedValue({ id: 3 });
+    useCreateApplication.mockReturnValue({ isPending: false, error: null, mutateAsync: createApplication });
+    useVacancyDetail.mockReturnValue({ data: {
+      ...vacancy,
+      applications: [{
+        application: { id: 2, vacancy_id: 2, status: "rejected", applied_at: "2026-09-04T10:00:00Z", application_text: "Текст", employer_response: "Спасибо, нет", response_received_at: "2026-09-05T10:00:00Z", interview_at: null, offer_at: null, notes: null, platform: "hh", created_at: "2026-09-04T10:00:00Z", updated_at: "2026-09-05T10:00:00Z" },
+        source: "hh", external_id: "101", url: "https://kazan.hh.ru/vacancy/101", representative_member: false, current: true
+      }]
+    }, isLoading: false, isError: false });
+    renderPage();
+
+    expect(screen.getByText("Текущий отклик")).toBeInTheDocument();
+    expect(screen.getByText("Спасибо, нет")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Добавить ещё" }));
+    fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+    await waitFor(() => expect(createApplication).toHaveBeenCalledWith(expect.objectContaining({ vacancyId: 1, payload: expect.objectContaining({ status: "submitted", platform: "hh" }) })));
   });
 
   it("falls back to raw profile ids when metadata is unavailable", () => {

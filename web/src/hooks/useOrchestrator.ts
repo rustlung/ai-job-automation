@@ -1,8 +1,8 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { orchestratorApi } from "../api/orchestrator";
 import { runPollingInterval } from "../lib/format";
-import type { RunCreateRequest, VacancyFilters } from "../types/api";
+import type { ApplicationCreateRequest, ApplicationFilters, ApplicationPatchRequest, RunCreateRequest, VacancyFilters } from "../types/api";
 
 export function useSystemHealth() {
   return useQuery({ queryKey: ["system-health"], queryFn: orchestratorApi.getSystemHealth, refetchInterval: 30_000 });
@@ -37,6 +37,35 @@ export function useVacancyDetail(presentationKey: string) {
     queryKey: ["vacancy", presentationKey],
     queryFn: () => orchestratorApi.getVacancyDetail(presentationKey),
     enabled: Boolean(presentationKey)
+  });
+}
+
+export function useApplications(filters: ApplicationFilters) {
+  return useQuery({ queryKey: ["applications", filters], queryFn: () => orchestratorApi.getApplications(filters) });
+}
+
+function useApplicationInvalidation() {
+  const queryClient = useQueryClient();
+  return () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["vacancy"] }),
+    queryClient.invalidateQueries({ queryKey: ["vacancies"] }),
+    queryClient.invalidateQueries({ queryKey: ["applications"] })
+  ]);
+}
+
+export function useCreateApplication() {
+  const invalidate = useApplicationInvalidation();
+  return useMutation({
+    mutationFn: ({ vacancyId, payload }: { vacancyId: number; payload: ApplicationCreateRequest }) => orchestratorApi.createApplication(vacancyId, payload),
+    onSuccess: invalidate
+  });
+}
+
+export function useUpdateApplication() {
+  const invalidate = useApplicationInvalidation();
+  return useMutation({
+    mutationFn: ({ applicationId, payload }: { applicationId: number; payload: ApplicationPatchRequest }) => orchestratorApi.updateApplication(applicationId, payload),
+    onSuccess: invalidate
   });
 }
 

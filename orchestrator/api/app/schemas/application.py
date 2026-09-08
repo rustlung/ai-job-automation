@@ -80,3 +80,19 @@ class ApplicationRead(BaseModel):
     platform: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class ApplicationListItem(ApplicationRead):
+    presentation_key: str
+    company: str
+    title: str
+    vacancy_url: str
+
+
+class ApplicationListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ApplicationListItem]
+    total: int
+    limit: int
+    offset: int

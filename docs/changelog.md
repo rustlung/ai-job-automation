@@ -4,6 +4,11 @@
 
 ### Added
 
+- Applications Web UI: create/edit forms in Vacancy Detail, an `/applications`
+  list, a shared readable status badge, and backend-owned grouped navigation;
+  grouped Vacancy list now displays and filters by the deterministic latest
+  canonical-member Application. Google Sheets sync and historical import remain
+  intentionally out of scope;
 - permanent `Application` persistence foundation: canonical `Vacancy.id` FK,
   status enum, nullable historical dates, multiple records per vacancy and
   typed create/read/partial-update Web API; frontend, Google Sheets sync and

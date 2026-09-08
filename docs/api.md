@@ -169,6 +169,7 @@ GET /api/runs/{run_id}
 GET /api/vacancies
 POST /api/vacancies/{vacancy_id}/applications
 GET /api/vacancies/{vacancy_id}/applications
+GET /api/applications
 GET /api/applications/{application_id}
 PATCH /api/applications/{application_id}
 ```
@@ -190,15 +191,17 @@ the representative remains subject to the Samara preference. `date_from` and
 the system first found the logical vacancy rather than HH publication time.
 Filters apply after grouping, followed by whitelist sorting and offset/limit
 pagination. The endpoint supports priority, track, profile provenance union,
-run id, company/title text search, `first_seen`/`final_score`/`priority` sort
+current application status (including `application_status=none` for groups with
+no Application), run id, company/title text search, `first_seen`/`final_score`/`priority` sort
 and `asc`/`desc` direction. It does not return full descriptions.
 
 `GET /api/vacancies/{presentation_key}` returns one logical presentation group
 for the Vacancy Detail page. It reads the selected representative and canonical
 members only from Orchestrator DB, preserving the existing Samara selection.
 The response includes saved full description, representative analysis, profile
-and provenance unions, and compact regional-member metadata. It is independent
-of Worker availability.
+and provenance unions, compact regional-member metadata, and every Application
+attached to a canonical member. The latest Application is marked deterministically
+by `updated_at DESC, id DESC`. It is independent of Worker availability.
 
 `GET /api/system/health` is lightweight: it does not call the Worker compute
 preflight or warm an Ollama model. Internal n8n lifecycle endpoints live under
@@ -227,6 +230,12 @@ members. Multiple applications per vacancy are allowed. The status enum is
 application. PATCH is partial: omitted fields are unchanged and explicit
 `null` clears nullable fields. Google Sheets sync and historical import are not
 part of this API foundation.
+
+`GET /api/applications` is the paginated Applications-screen endpoint. It
+filters by `status`, `date_from`, `date_to`, `platform` and optional
+company/title `search`; each row includes a backend-generated grouped
+`presentation_key` for navigation to Vacancy Detail. It neither invents a
+business key in the frontend nor requires Worker availability.
 
 ### Health
 

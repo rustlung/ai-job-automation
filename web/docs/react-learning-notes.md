@@ -61,6 +61,24 @@ different period, profile or page is different server state and receives its
 own request. `src/features/vacancies/dateFilters.ts` keeps the date-preset
 calculation small and testable for later reuse by Statistics.
 
+## Mutations and controlled forms
+
+`src/components/ApplicationSection.tsx` keeps Application form values in
+`useState`, so text survives a failed save. `useCreateApplication` and
+`useUpdateApplication` use React Query `useMutation`; an edit builds a partial
+PATCH payload, where omitted fields remain unchanged and a cleared nullable
+field becomes `null`. On success the hooks invalidate the vacancy detail,
+Vacancies list, and Applications list instead of maintaining a second local
+copy of server data.
+
+`src/components/ApplicationStatusBadge.tsx` is one shared status mapping used
+by Vacancy Detail, Vacancies, and `/applications`. The special text `Без
+отклика` is a UI presentation for a missing record, not an Application status.
+
+`src/pages/ApplicationsPage.tsx` is another URL-synchronised list. Its
+application filters and pagination are query state, while the API returns a
+backend-owned `presentation_key` for navigation to the grouped vacancy detail.
+
 ## Build-time environment
 
 `VITE_API_BASE_URL` is read by `src/api/client.ts`. Vite puts it into the
@@ -70,5 +88,6 @@ after it changes.
 Potential patterns for a later extraction: typed API client, `HealthCard`,
 `RunStatusBadge`, shared states, run polling, profile-selection form,
 `DateRangeFilter`, `FilterBar`, simple data table, pagination and URL-synced
-filters, entity detail header, metadata sidebar, safe rich-text renderer and
-back navigation with preserved filters.
+filters, entity detail header, metadata sidebar, safe rich-text renderer,
+back navigation with preserved filters, CRUD detail form, shared status badge,
+mutation plus invalidation, URL enum filter and entity-list-to-detail navigation.

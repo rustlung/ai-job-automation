@@ -3,6 +3,7 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.application import ApplicationRead, ApplicationStatus
 from app.schemas.pipeline_run import PipelineRunRead
 from app.schemas.vacancy_analysis import VacancyAnalysisPriority
 
@@ -67,6 +68,18 @@ class SortDirection(str, Enum):
     DESC = "desc"
 
 
+class VacancyApplicationStatusFilter(str, Enum):
+    NONE = "none"
+    SUBMITTED = ApplicationStatus.SUBMITTED.value
+    RESPONSE_RECEIVED = ApplicationStatus.RESPONSE_RECEIVED.value
+    SCREENING = ApplicationStatus.SCREENING.value
+    TEST_TASK = ApplicationStatus.TEST_TASK.value
+    INTERVIEW = ApplicationStatus.INTERVIEW.value
+    OFFER = ApplicationStatus.OFFER.value
+    REJECTED = ApplicationStatus.REJECTED.value
+    WITHDRAWN = ApplicationStatus.WITHDRAWN.value
+
+
 class VacancyListItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -88,6 +101,9 @@ class VacancyListItem(BaseModel):
     profile_ids: list[str]
     run_id: str | None
     member_count: int
+    application_id: int | None
+    application_status: ApplicationStatus | None
+    application_updated_at: datetime | None
 
 
 class VacancyListResponse(BaseModel):
@@ -109,6 +125,17 @@ class VacancyCanonicalMember(BaseModel):
     company: str
     location: str | None
     representative: bool
+
+
+class VacancyApplicationDetail(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    application: ApplicationRead
+    source: str
+    external_id: str
+    url: str
+    representative_member: bool
+    current: bool
 
 
 class VacancyAnalysisDetail(BaseModel):
@@ -152,3 +179,4 @@ class VacancyDetail(BaseModel):
     provenance_tracks: list[str]
     run_ids: list[str]
     members: list[VacancyCanonicalMember]
+    applications: list[VacancyApplicationDetail]

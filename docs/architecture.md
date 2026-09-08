@@ -87,6 +87,15 @@ vacancy may have multiple applications. Its absence means no application has
 been recorded; `not_applied` is deliberately not an application status. Google
 Sheets sync and historical import are separate future steps.
 
+The Web UI aggregates Applications only on the Orchestrator side: a logical
+Vacancy Detail returns every application of its canonical group members, while
+the grouped Vacancy list exposes the deterministic current record selected by
+`updated_at DESC, id DESC`. `GET /api/applications` remains an application-level
+view but supplies the backend-owned presentation key for safe navigation. This
+keeps regional grouping in one backend implementation and avoids React N+1
+requests. Google Sheets synchronization and historical import remain separate
+future milestones.
+
 For a full run, Manual and Web entries converge before Worker start into one
 n8n `Build Full Run Context`. Shared Worker polling reads only that normalized
 context, while `existing_run_id` replay deliberately bypasses it and continues

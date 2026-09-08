@@ -92,6 +92,8 @@ export interface ApiErrorBody {
 }
 
 export type VacancyPriority = "P1" | "P2" | "P3" | "ALT";
+export type ApplicationStatus = "submitted" | "response_received" | "screening" | "test_task" | "interview" | "offer" | "rejected" | "withdrawn";
+export type VacancyApplicationStatusFilter = ApplicationStatus | "none";
 export type VacancyListSort = "first_seen" | "final_score" | "priority";
 export type SortDirection = "asc" | "desc";
 
@@ -114,6 +116,9 @@ export interface VacancyListItem {
   profile_ids: string[];
   run_id: string | null;
   member_count: number;
+  application_id: number | null;
+  application_status: ApplicationStatus | null;
+  application_updated_at: string | null;
 }
 
 export interface VacancyListResponse {
@@ -131,6 +136,7 @@ export interface VacancyFilters {
   profile_id?: string;
   run_id?: string;
   search?: string;
+  application_status?: VacancyApplicationStatusFilter;
   limit: number;
   offset: number;
   sort: VacancyListSort;
@@ -145,6 +151,69 @@ export interface VacancyCanonicalMember {
   company: string;
   location: string | null;
   representative: boolean;
+}
+
+export interface Application {
+  id: number;
+  vacancy_id: number;
+  status: ApplicationStatus;
+  applied_at: string | null;
+  application_text: string | null;
+  employer_response: string | null;
+  response_received_at: string | null;
+  interview_at: string | null;
+  offer_at: string | null;
+  notes: string | null;
+  platform: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ApplicationCreateRequest {
+  status: ApplicationStatus;
+  applied_at?: string | null;
+  application_text?: string | null;
+  employer_response?: string | null;
+  response_received_at?: string | null;
+  interview_at?: string | null;
+  offer_at?: string | null;
+  notes?: string | null;
+  platform?: string | null;
+}
+
+export type ApplicationPatchRequest = Partial<ApplicationCreateRequest>;
+
+export interface ApplicationListItem extends Application {
+  presentation_key: string;
+  company: string;
+  title: string;
+  vacancy_url: string;
+}
+
+export interface ApplicationListResponse {
+  items: ApplicationListItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface ApplicationFilters {
+  status?: ApplicationStatus;
+  date_from?: string;
+  date_to?: string;
+  platform?: string;
+  search?: string;
+  limit: number;
+  offset: number;
+}
+
+export interface VacancyApplicationDetail {
+  application: Application;
+  source: string;
+  external_id: string;
+  url: string;
+  representative_member: boolean;
+  current: boolean;
 }
 
 export interface VacancyAnalysisDetail {
@@ -184,4 +253,5 @@ export interface VacancyDetail {
   provenance_tracks: string[];
   run_ids: string[];
   members: VacancyCanonicalMember[];
+  applications: VacancyApplicationDetail[];
 }

@@ -38,7 +38,7 @@ class ApplicationService:
             self.session.commit()
             self.session.refresh(application)
             logger.info("application_created application_id=%s vacancy_id=%s status=%s", application.id, vacancy_id, application.status)
-            return self._to_read(application)
+            return self.to_read(application)
         except ApplicationVacancyNotFoundError:
             raise
         except SQLAlchemyError as exc:
@@ -50,12 +50,12 @@ class ApplicationService:
         application = self.application_repository.get_by_id(application_id)
         if application is None:
             raise ApplicationNotFoundError
-        return self._to_read(application)
+        return self.to_read(application)
 
     def list_for_vacancy(self, vacancy_id: int) -> list[ApplicationRead]:
         if self.vacancy_repository.get_by_id(vacancy_id) is None:
             raise ApplicationVacancyNotFoundError
-        return [self._to_read(application) for application in self.application_repository.list_for_vacancy(vacancy_id)]
+        return [self.to_read(application) for application in self.application_repository.list_for_vacancy(vacancy_id)]
 
     def update(self, application_id: int, application_input: ApplicationUpdate) -> ApplicationRead:
         try:
@@ -66,7 +66,7 @@ class ApplicationService:
             self.session.commit()
             self.session.refresh(application)
             logger.info("application_updated application_id=%s vacancy_id=%s status=%s", application.id, application.vacancy_id, application.status)
-            return self._to_read(application)
+            return self.to_read(application)
         except ApplicationNotFoundError:
             raise
         except SQLAlchemyError as exc:
@@ -75,7 +75,7 @@ class ApplicationService:
             raise ApplicationDatabaseError from exc
 
     @staticmethod
-    def _to_read(application: Application) -> ApplicationRead:
+    def to_read(application: Application) -> ApplicationRead:
         return ApplicationRead(
             id=application.id,
             vacancy_id=application.vacancy_id,

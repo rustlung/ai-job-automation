@@ -7,15 +7,19 @@ from typing import Generator
 from fastapi.testclient import TestClient
 
 from app.api.routes.web import get_web_vacancy_list_service
+from app.api.routes.applications import get_web_application_list_service
 from app.main import app
+from app.models.application import Application
 from app.models.vacancy import Vacancy
 from app.models.vacancy_analysis import VacancyAnalysis
 from app.services.web_vacancies import WebVacancyListService
+from app.services.web_applications import WebApplicationListService
 
 
 @contextmanager
 def make_client(db_session) -> Generator[TestClient, None, None]:
     app.dependency_overrides[get_web_vacancy_list_service] = lambda: WebVacancyListService(db_session)
+    app.dependency_overrides[get_web_application_list_service] = lambda: WebApplicationListService(db_session)
     try:
         with TestClient(app) as client:
             yield client
@@ -98,6 +102,29 @@ def add_vacancy(
     )
     db_session.commit()
     return vacancy
+
+
+def add_application(
+    db_session,
+    *,
+    vacancy_id: int,
+    status: str,
+    updated_at: datetime,
+    applied_at: datetime | None = None,
+    platform: str | None = "hh",
+) -> Application:
+    application = Application(
+        vacancy_id=vacancy_id,
+        status=status,
+        applied_at=applied_at,
+        platform=platform,
+        created_at=updated_at,
+        updated_at=updated_at,
+    )
+    db_session.add(application)
+    db_session.commit()
+    db_session.refresh(application)
+    return application
 
 
 def test_global_vacancy_list_groups_regional_members_and_keeps_samara_representative(db_session) -> None:
@@ -293,3 +320,129 @@ def test_non_groupable_vacancy_detail_and_missing_key(db_session) -> None:
     assert canonical.json()["members"][0]["representative"] is True
     assert missing.status_code == 404
     assert missing.json()["detail"]["error_code"] == "vacancy_not_found"
+
+
+def test_vacancy_list_and_detail_use_latest_application_across_regional_members(db_session) -> None:
+    historical = add_vacancy(
+        db_session,
+        external_id="601",
+        company="Solution",
+        title="AI Developer",
+        fingerprint="d" * 64,
+        url="https://kazan.hh.ru/vacancy/601",
+        first_seen_at=datetime(2026, 9, 1, 8, tzinfo=timezone.utc),
+        run_id="run-kazan",
+    )
+    representative = add_vacancy(
+        db_session,
+        external_id="602",
+        company="Solution",
+        title="AI Developer",
+        fingerprint="d" * 64,
+        url="https://samara.hh.ru/vacancy/602",
+        first_seen_at=datetime(2026, 9, 2, 8, tzinfo=timezone.utc),
+        run_id="run-samara",
+    )
+    old_application = add_application(
+        db_session,
+        vacancy_id=historical.id,
+        status="submitted",
+        updated_at=datetime(2026, 9, 3, 8, tzinfo=timezone.utc),
+    )
+    current_application = add_application(
+        db_session,
+        vacancy_id=historical.id,
+        status="rejected",
+        updated_at=datetime(2026, 9, 4, 8, tzinfo=timezone.utc),
+    )
+
+    with make_client(db_session) as client:
+        listed = client.get("/api/vacancies?application_status=rejected")
+        none = client.get("/api/vacancies?application_status=none")
+        detail = client.get(f"/api/vacancies/business:{'d' * 64}")
+
+    assert listed.status_code == 200
+    assert listed.json()["total"] == 1
+    assert listed.json()["items"][0]["application_id"] == current_application.id
+    assert listed.json()["items"][0]["application_status"] == "rejected"
+    assert none.json()["total"] == 0
+    assert detail.json()["external_id"] == representative.external_id
+    assert [item["application"]["id"] for item in detail.json()["applications"]] == [current_application.id, old_application.id]
+    assert detail.json()["applications"][0]["current"] is True
+    assert detail.json()["applications"][0]["external_id"] == historical.external_id
+
+
+def test_application_list_uses_grouped_presentation_keys_and_filters(db_session) -> None:
+    vacancy = add_vacancy(
+        db_session,
+        external_id="701",
+        company="Gamma",
+        title="Backend Developer",
+        fingerprint=None,
+        url="https://hh.ru/vacancy/701",
+        first_seen_at=datetime(2026, 9, 5, 8, tzinfo=timezone.utc),
+        run_id="run-gamma",
+    )
+    application = add_application(
+        db_session,
+        vacancy_id=vacancy.id,
+        status="interview",
+        updated_at=datetime(2026, 9, 6, 8, tzinfo=timezone.utc),
+        applied_at=datetime(2026, 9, 5, 8, tzinfo=timezone.utc),
+        platform="hh",
+    )
+
+    with make_client(db_session) as client:
+        listed = client.get("/api/applications?status=interview&date_from=2026-09-05&platform=hh&limit=1")
+        empty = client.get("/api/applications?status=rejected")
+
+    assert listed.status_code == 200
+    assert listed.json()["total"] == 1
+    assert listed.json()["items"][0]["id"] == application.id
+    assert listed.json()["items"][0]["presentation_key"] == "hh:701"
+    assert listed.json()["items"][0]["company"] == "Gamma"
+    assert empty.json()["items"] == []
+
+
+def test_application_list_paginates_multiple_canonical_records(db_session) -> None:
+    first_vacancy = add_vacancy(
+        db_session,
+        external_id="801",
+        company="First",
+        title="First role",
+        fingerprint=None,
+        url="https://hh.ru/vacancy/801",
+        first_seen_at=datetime(2026, 9, 5, 8, tzinfo=timezone.utc),
+        run_id="run-first",
+    )
+    second_vacancy = add_vacancy(
+        db_session,
+        external_id="802",
+        company="Second",
+        title="Second role",
+        fingerprint=None,
+        url="https://hh.ru/vacancy/802",
+        first_seen_at=datetime(2026, 9, 5, 8, tzinfo=timezone.utc),
+        run_id="run-second",
+    )
+    first = add_application(
+        db_session,
+        vacancy_id=first_vacancy.id,
+        status="submitted",
+        updated_at=datetime(2026, 9, 6, 8, tzinfo=timezone.utc),
+    )
+    second = add_application(
+        db_session,
+        vacancy_id=second_vacancy.id,
+        status="submitted",
+        updated_at=datetime(2026, 9, 7, 8, tzinfo=timezone.utc),
+    )
+
+    with make_client(db_session) as client:
+        first_page = client.get("/api/applications?limit=1&offset=0")
+        second_page = client.get("/api/applications?limit=1&offset=1")
+
+    assert first_page.status_code == 200
+    assert first_page.json()["total"] == 2
+    assert first_page.json()["items"][0]["id"] == second.id
+    assert second_page.json()["items"][0]["id"] == first.id

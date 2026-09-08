@@ -1429,8 +1429,12 @@ Orchestrator DB получила permanent сущность `Application`, св�
 canonical `Vacancy.id`. Поддерживаются несколько откликов на одну source
 vacancy, согласованный application lifecycle и partial API updates. Отсутствие
 record означает «без отклика»; отдельный `not_applied` status не вводится.
-Frontend Applications UI, application filters, Google Sheets sync и historical
-import остаются следующими подэтапами.
+Подэтап 004.2 завершен: Vacancy Detail позволяет создать и отредактировать
+Application, `/applications` показывает отдельный paginated list, а grouped
+Vacancy list отображает и фильтрует latest Application status. Для нескольких
+records current определяется детерминированно по `updated_at DESC, id DESC`;
+detail при этом показывает все записи canonical members. Google Sheets sync и
+historical import остаются следующими подэтапами.
 
 ---
 

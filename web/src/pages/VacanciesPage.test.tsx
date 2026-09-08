@@ -22,7 +22,10 @@ const vacancy = {
   summary: "summary",
   profile_ids: ["ai_automation_keywords"],
   run_id: "run-1",
-  member_count: 2
+  member_count: 2,
+  application_id: null,
+  application_status: null,
+  application_updated_at: null
 };
 
 const useVacancies = vi.fn();
@@ -64,6 +67,7 @@ describe("VacanciesPage", () => {
     renderPage("/vacancies?priority=P1");
 
     expect(screen.getByText("Example Company")).toBeInTheDocument();
+    expect(screen.getAllByText("Без отклика")).toHaveLength(2);
     expect(screen.getAllByText("AI Automation")).toHaveLength(2);
     expect(screen.getByRole("checkbox", { name: "P1" })).toBeChecked();
     fireEvent.click(screen.getByText("Python Developer"));
@@ -124,6 +128,18 @@ describe("VacanciesPage", () => {
     expect(screen.getByText("Example Company")).toBeInTheDocument();
     expect(screen.getByText("Фильтр профилей недоступен.")).toBeInTheDocument();
     expect(useVacancies).toHaveBeenLastCalledWith(expect.objectContaining({ profile_id: undefined }));
+  });
+
+  it("synchronizes the application status filter and resets pagination", () => {
+    renderPage("/vacancies?offset=50");
+    const dropdown = screen.getByRole("combobox", { name: "Статус отклика" });
+
+    fireEvent.change(dropdown, { target: { value: "rejected" } });
+    expect(screen.getByTestId("location")).toHaveTextContent("application_status=rejected");
+    expect(screen.getByTestId("location")).not.toHaveTextContent("offset");
+
+    fireEvent.change(dropdown, { target: { value: "" } });
+    expect(screen.getByTestId("location")).not.toHaveTextContent("application_status");
   });
 
   it("resets pagination for first page, filters and page size", () => {

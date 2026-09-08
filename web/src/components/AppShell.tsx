@@ -5,11 +5,11 @@ const navigation = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/runs/new", label: "Запуск поиска", icon: CirclePlay },
   { to: "/runs", label: "Runs", icon: BriefcaseBusiness },
-  { to: "/vacancies", label: "Vacancies", icon: BriefcaseBusiness }
+  { to: "/vacancies", label: "Vacancies", icon: BriefcaseBusiness },
+  { to: "/applications", label: "Отклики", icon: Users }
 ];
 
 const futureNavigation = [
-  { label: "Applications", icon: Users },
   { label: "Statistics", icon: BarChart3 },
   { label: "Settings", icon: Settings }
 ];

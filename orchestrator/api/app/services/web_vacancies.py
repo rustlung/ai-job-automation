@@ -5,6 +5,8 @@ from datetime import date, datetime, timezone
 
 from sqlalchemy.orm import Session
 
+from app.models.application import Application
+from app.repositories.application import ApplicationRepository
 from app.repositories.vacancy import VacancyRepository
 from app.repositories.vacancy_analysis import VacancyAnalysisRepository
 from app.schemas.vacancy_analysis import VacancyAnalysisPriority
@@ -16,7 +18,10 @@ from app.schemas.web import (
     VacancyListItem,
     VacancyListResponse,
     VacancyListSort,
+    VacancyApplicationDetail,
+    VacancyApplicationStatusFilter,
 )
+from app.services.application import ApplicationService
 from app.services.business_vacancy_grouping import group_business_vacancies, merge_profile_ids
 
 
@@ -26,6 +31,7 @@ class WebVacancyListService:
     def __init__(self, session: Session) -> None:
         self.vacancy_repository = VacancyRepository(session)
         self.analysis_repository = VacancyAnalysisRepository(session)
+        self.application_repository = ApplicationRepository(session)
 
     def list(
         self,
@@ -35,6 +41,7 @@ class WebVacancyListService:
         priorities: list[VacancyAnalysisPriority] | None,
         track: str | None,
         profile_id: str | None,
+        application_status: VacancyApplicationStatusFilter | None,
         run_id: str | None,
         search: str | None,
         limit: int,
@@ -44,6 +51,9 @@ class WebVacancyListService:
     ) -> VacancyListResponse:
         vacancies = self.vacancy_repository.list_all()
         analyses = self.analysis_repository.list_by_vacancy_ids([vacancy.id for vacancy in vacancies])
+        applications_by_vacancy_id = self._applications_by_vacancy_id(
+            self.application_repository.list_by_vacancy_ids([vacancy.id for vacancy in vacancies])
+        )
         analyses_by_vacancy_id: dict[int, list] = {}
         latest_analyses: dict[int, object] = {}
         for analysis in analyses:
@@ -61,6 +71,12 @@ class WebVacancyListService:
                 for member in group.members
                 for analysis in analyses_by_vacancy_id.get(member.id, [])
             ]
+            group_applications = [
+                application
+                for member in group.members
+                for application in applications_by_vacancy_id.get(member.id, [])
+            ]
+            current_application = self._current_application(group_applications)
             first_seen_at = min(self._as_utc(member.first_seen_at) for member in group.members)
             semantic_snapshot = representative_analysis.semantic_snapshot or {}
             track_value = semantic_snapshot.get("target_track")
@@ -83,6 +99,9 @@ class WebVacancyListService:
                 profile_ids=merge_profile_ids(member_analyses),
                 run_id=representative_analysis.run_id,
                 member_count=len(group.members),
+                application_id=current_application.id if current_application is not None else None,
+                application_status=current_application.status if current_application is not None else None,
+                application_updated_at=(self._as_utc(current_application.updated_at) if current_application is not None else None),
             )
             if self._matches_filters(
                 item,
@@ -92,6 +111,8 @@ class WebVacancyListService:
                 priorities=priorities,
                 track=track,
                 profile_id=profile_id,
+                application_status=application_status,
+                current_application=current_application,
                 run_id=run_id,
                 search=search,
             ):
@@ -109,6 +130,9 @@ class WebVacancyListService:
         group = self._find_group(presentation_key)
         member_ids = [member.id for member in group.members]
         analyses = self.analysis_repository.list_by_vacancy_ids(member_ids)
+        applications_by_vacancy_id = self._applications_by_vacancy_id(
+            self.application_repository.list_by_vacancy_ids(member_ids)
+        )
         latest_analyses: dict[int, object] = {}
         for analysis in analyses:
             latest_analyses[analysis.vacancy_id] = analysis
@@ -118,6 +142,13 @@ class WebVacancyListService:
             raise WebVacancyNotFoundError
 
         member_analyses = analyses
+        group_applications = [
+            application
+            for member in group.members
+            for application in applications_by_vacancy_id.get(member.id, [])
+        ]
+        current_application = self._current_application(group_applications)
+        member_by_id = {member.id: member for member in group.members}
         provenance = representative_analysis.provenance or {}
         snapshot = representative_analysis.vacancy_snapshot or {}
         semantic_snapshot = representative_analysis.semantic_snapshot or {}
@@ -168,6 +199,17 @@ class WebVacancyListService:
                     representative=member.id == group.representative.id,
                 )
                 for member in sorted(group.members, key=lambda member: (member.id != group.representative.id, member.id))
+            ],
+            applications=[
+                VacancyApplicationDetail(
+                    application=ApplicationService.to_read(application),
+                    source=member_by_id[application.vacancy_id].source,
+                    external_id=member_by_id[application.vacancy_id].external_id,
+                    url=member_by_id[application.vacancy_id].url,
+                    representative_member=application.vacancy_id == group.representative.id,
+                    current=application.id == current_application.id if current_application is not None else False,
+                )
+                for application in self._ordered_applications(group_applications)
             ],
         )
 
@@ -234,6 +276,8 @@ class WebVacancyListService:
         priorities: list[VacancyAnalysisPriority] | None,
         track: str | None,
         profile_id: str | None,
+        application_status: VacancyApplicationStatusFilter | None,
+        current_application: Application | None,
         run_id: str | None,
         search: str | None,
     ) -> bool:
@@ -248,6 +292,11 @@ class WebVacancyListService:
             return False
         if profile_id and profile_id not in item.profile_ids:
             return False
+        if application_status == VacancyApplicationStatusFilter.NONE and current_application is not None:
+            return False
+        if application_status not in (None, VacancyApplicationStatusFilter.NONE):
+            if current_application is None or current_application.status != application_status.value:
+                return False
         if run_id and not any(getattr(analysis, "run_id", None) == run_id for analysis in member_analyses):
             return False
         if search:
@@ -255,6 +304,22 @@ class WebVacancyListService:
             if normalized_search and normalized_search not in item.company.casefold() and normalized_search not in item.title.casefold():
                 return False
         return True
+
+    @staticmethod
+    def _applications_by_vacancy_id(applications: Iterable[Application]) -> dict[int, list[Application]]:
+        result: dict[int, list[Application]] = {}
+        for application in applications:
+            result.setdefault(application.vacancy_id, []).append(application)
+        return result
+
+    @classmethod
+    def _current_application(cls, applications: Iterable[Application]) -> Application | None:
+        ordered = cls._ordered_applications(applications)
+        return ordered[0] if ordered else None
+
+    @classmethod
+    def _ordered_applications(cls, applications: Iterable[Application]) -> list[Application]:
+        return sorted(applications, key=lambda application: (cls._as_utc(application.updated_at), application.id), reverse=True)
 
     @staticmethod
     def _sort(

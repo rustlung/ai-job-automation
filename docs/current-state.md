@@ -30,7 +30,7 @@
 ✅ n8n polling Worker pipeline workflow v12 with canonical Full Run Context
 ✅ persistent PipelineRun history and OperationalSettings
 ✅ safe Web API foundation for React UI
-✅ React + TypeScript Web UI foundation: Dashboard, запуск поиска, Runs, global grouped Vacancies list и Vacancy Detail
+✅ React + TypeScript Web UI foundation: Dashboard, запуск поиска, Runs, global grouped Vacancies list, Vacancy Detail и Applications screen
 ✅ Docker deployment Web UI со SPA fallback
 ✅ user_selectable profile contract across Worker, Orchestrator, Web UI and n8n
 ✅ Обработка ошибок интеграции Ollama
@@ -38,7 +38,7 @@
 ✅ Доступ к Local AI endpoint с homeserver
 ✅ Vacancy persistence API
 ✅ VacancyAnalysis persistence API
-✅ Application persistence API: canonical vacancy relation, multiple records and partial updates
+✅ Application CRUD UI/API: canonical vacancy relation, multiple records, partial updates, status in grouped Vacancy list and status filter
 ✅ Idempotent vacancy upsert
 ✅ Idempotent analysis upsert
 ✅ Alembic migrations на homeserver
