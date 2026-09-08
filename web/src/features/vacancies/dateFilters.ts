@@ -15,3 +15,15 @@ export function dateRangeForPreset(preset: DatePreset, now = new Date()): { date
   dateFrom.setDate(dateFrom.getDate() - days + 1);
   return { date_from: localDateValue(dateFrom), date_to: dateTo };
 }
+
+export function activeDatePreset(
+  dateFrom: string | undefined,
+  dateTo: string | undefined,
+  now = new Date()
+): DatePreset | undefined {
+  if (!dateFrom && !dateTo) return "all";
+  return (["today", "3d", "7d", "14d", "30d"] as DatePreset[]).find((preset) => {
+    const range = dateRangeForPreset(preset, now);
+    return range.date_from === dateFrom && range.date_to === dateTo;
+  });
+}

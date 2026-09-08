@@ -1,6 +1,6 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { VacanciesPage } from "./VacanciesPage";
 
@@ -26,9 +26,10 @@ const vacancy = {
 };
 
 const useVacancies = vi.fn();
+const useSearchProfiles = vi.fn();
 vi.mock("../hooks/useOrchestrator", () => ({
   useVacancies: (...args: unknown[]) => useVacancies(...args),
-  useSearchProfiles: () => ({ data: { profiles: [{ id: "ai_automation_keywords", name: "AI Automation", enabled: true, user_selectable: true }] } })
+  useSearchProfiles: () => useSearchProfiles()
 }));
 
 function LocationProbe() {
@@ -39,41 +40,126 @@ function renderPage(initialEntry = "/vacancies") {
   return render(<MemoryRouter initialEntries={[initialEntry]}><LocationProbe /><Routes><Route path="/vacancies" element={<VacanciesPage />} /><Route path="/vacancies/:presentationKey" element={<p>Detail route</p>} /></Routes></MemoryRouter>);
 }
 
+function profileQuery(overrides = {}) {
+  return {
+    data: { profiles: [
+      { id: "ai_automation_keywords", name: "AI Automation", enabled: true, user_selectable: true },
+      { id: "legacy_profile", name: "Legacy profile", enabled: true, user_selectable: false },
+      { id: "disabled_profile", name: "Disabled profile", enabled: false, user_selectable: false }
+    ] },
+    isLoading: false,
+    isError: false,
+    ...overrides
+  };
+}
+
 describe("VacanciesPage", () => {
+  beforeEach(() => {
+    useVacancies.mockReturnValue({ data: { items: [vacancy], total: 1, limit: 25, offset: 0 }, isLoading: false, isError: false });
+    useSearchProfiles.mockReturnValue(profileQuery());
+  });
   afterEach(() => cleanup());
 
-  it("renders grouped rows with profile display names and preserves URL filters", () => {
-    useVacancies.mockReturnValue({ data: { items: [vacancy], total: 1, limit: 25, offset: 0 }, isLoading: false, isError: false });
+  it("renders grouped rows, profile display names and detail links", () => {
     renderPage("/vacancies?priority=P1");
 
     expect(screen.getByText("Example Company")).toBeInTheDocument();
     expect(screen.getAllByText("AI Automation")).toHaveLength(2);
     expect(screen.getByRole("checkbox", { name: "P1" })).toBeChecked();
-    fireEvent.click(screen.getByRole("button", { name: "7 дней" }));
-    expect(screen.getByTestId("location")).toHaveTextContent("date_from=");
     fireEvent.click(screen.getByText("Python Developer"));
     expect(screen.getByText("Detail route")).toBeInTheDocument();
   });
 
-  it("renders an empty state and resets filters", () => {
-    useVacancies.mockReturnValue({ data: { items: [], total: 0, limit: 25, offset: 0 }, isLoading: false, isError: false });
-    renderPage("/vacancies?search=none");
+  it("clears both dates and activates all time", () => {
+    renderPage("/vacancies?date_from=2026-09-01&date_to=2026-09-08");
 
-    expect(screen.getByText("Вакансий не найдено")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Сбросить фильтры" }));
-    expect(screen.getByTestId("location")).toHaveTextContent("");
+    fireEvent.click(screen.getByRole("button", { name: "Всё время" }));
+    expect(screen.getByTestId("location")).not.toHaveTextContent("date_from");
+    expect(screen.getByTestId("location")).not.toHaveTextContent("date_to");
+    expect(screen.getByRole("button", { name: "Всё время" })).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("renders loading and error states without hiding pagination behavior", () => {
+  it("activates matching presets and leaves custom date ranges unselected", () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "3 дня" }));
+    expect(screen.getByRole("button", { name: "3 дня" })).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.change(screen.getByLabelText("С даты"), { target: { value: "2020-01-01" } });
+    expect(screen.getByRole("button", { name: "3 дня" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Всё время" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("uses enabled API profiles and synchronizes their ids with the URL", () => {
+    renderPage();
+    const dropdown = screen.getByRole("combobox", { name: "Профиль поиска" });
+
+    expect(screen.getByRole("option", { name: "AI Automation" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Legacy profile" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Disabled profile" })).not.toBeInTheDocument();
+    fireEvent.change(dropdown, { target: { value: "ai_automation_keywords" } });
+    expect(screen.getByTestId("location")).toHaveTextContent("profile_id=ai_automation_keywords");
+    fireEvent.change(dropdown, { target: { value: "" } });
+    expect(screen.getByTestId("location")).not.toHaveTextContent("profile_id");
+  });
+
+  it("restores valid profile ids and safely clears invalid ones", async () => {
+    renderPage("/vacancies?profile_id=ai_automation_keywords");
+    expect(screen.getByRole("combobox", { name: "Профиль поиска" })).toHaveValue("ai_automation_keywords");
+    cleanup();
+
+    renderPage("/vacancies?profile_id=missing_profile");
+    await waitFor(() => expect(screen.getByTestId("location")).not.toHaveTextContent("missing_profile"));
+    expect(screen.getByRole("combobox", { name: "Профиль поиска" })).toHaveValue("");
+  });
+
+  it("keeps the list available when profile metadata is loading or unavailable", () => {
+    useSearchProfiles.mockReturnValue(profileQuery({ data: undefined, isLoading: true }));
+    renderPage();
+    expect(screen.getByText("Example Company")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Профиль поиска" })).toBeDisabled();
+    cleanup();
+
+    useSearchProfiles.mockReturnValue(profileQuery({ isError: true }));
+    renderPage();
+    expect(screen.getByText("Example Company")).toBeInTheDocument();
+    expect(screen.getByText("Фильтр профилей недоступен.")).toBeInTheDocument();
+    expect(useVacancies).toHaveBeenLastCalledWith(expect.objectContaining({ profile_id: undefined }));
+  });
+
+  it("resets pagination for first page, filters and page size", () => {
+    useVacancies.mockReturnValue({ data: { items: [vacancy], total: 100, limit: 25, offset: 50 }, isLoading: false, isError: false });
+    renderPage("/vacancies?offset=50");
+
+    expect(screen.getByRole("button", { name: "На первую страницу" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "На первую страницу" }));
+    expect(screen.getByTestId("location")).not.toHaveTextContent("offset");
+    cleanup();
+
+    renderPage("/vacancies?offset=50");
+    fireEvent.click(screen.getByRole("checkbox", { name: "P1" }));
+    expect(screen.getByTestId("location")).not.toHaveTextContent("offset");
+    cleanup();
+
+    renderPage("/vacancies?offset=50");
+    fireEvent.change(screen.getByRole("combobox", { name: "На странице" }), { target: { value: "50" } });
+    expect(screen.getByTestId("location")).not.toHaveTextContent("offset");
+  });
+
+  it("disables first and previous page controls on the first page", () => {
+    renderPage();
+    expect(screen.getByRole("button", { name: "На первую страницу" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Предыдущая страница" })).toBeDisabled();
+  });
+
+  it("renders loading, empty and error states", () => {
     useVacancies.mockReturnValue({ data: undefined, isLoading: true, isError: false });
     const { unmount } = renderPage();
     expect(screen.getByText("Загрузка…")).toBeInTheDocument();
     unmount();
 
-    useVacancies.mockReturnValue({ data: { items: [vacancy], total: 50, limit: 25, offset: 0 }, isLoading: false, isError: false });
+    useVacancies.mockReturnValue({ data: { items: [], total: 0, limit: 25, offset: 0 }, isLoading: false, isError: false });
     renderPage();
-    fireEvent.click(screen.getByRole("button", { name: "Следующая страница" }));
-    expect(screen.getByTestId("location")).toHaveTextContent("offset=25");
+    expect(screen.getByText("Вакансий не найдено")).toBeInTheDocument();
     cleanup();
 
     useVacancies.mockReturnValue({ data: undefined, isLoading: false, isError: true });
