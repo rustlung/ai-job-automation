@@ -4,6 +4,9 @@
 
 ### Added
 
+- Historical Applications import tooling: local CSV dry-run by default,
+  conservative canonical HH matching and idempotent explicit DB apply, followed
+  by a separately invoked existing CRM-sync batch;
 - Application CRM mirror: DB-first create/update now invokes a narrow retryable
   n8n adapter after commit, records a persistent safe sync state, and updates
   only J--M/Y--AD on an existing CRM row; historical import remains out of scope;

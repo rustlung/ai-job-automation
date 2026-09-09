@@ -90,7 +90,13 @@ first, then Orchestrator calls a narrow n8n Google-Sheets adapter. Its persisten
 `ApplicationCrmSyncState` records `pending`, `synced`, or `failed` without
 rolling back Application data. The adapter updates only J--M and Y--AD on an
 already reconciled business/canonical CRM row; it never appends a vacancy row.
-Historical import remains a separate future step.
+Historical Application import is a one-time operational path, not a daily
+workflow concern. It reads local CSV exports of `Отклики` and `Вакансии`,
+matches only canonical `hh:<external_id>` records, and creates Applications
+only after an explicit CLI `--apply`. The technical source status fields are
+ignored; the main CRM J/K/L/M fields provide conservative lifecycle hints.
+The subsequent CRM batch uses the existing Application CRM sync service rather
+than a second Sheets mapping.
 
 The Web UI aggregates Applications only on the Orchestrator side: a logical
 Vacancy Detail returns every application of its canonical group members, while

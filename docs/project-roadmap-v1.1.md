@@ -1442,6 +1442,12 @@ sync state. Adapter обновляет только J--M и Y--AD уже най�
 canonical CRM row, без append. `POST /api/applications/{id}/crm-sync/retry`
 повторяет только secondary sync. Historical import остаётся отдельным 004.4.
 
+Подэтап 004.4 подготовлен как одноразовый operational utility: локальные CSV
+экспорты `Отклики` и `Вакансии` сначала проходят dry-run, затем после ручной
+проверки могут создать только новые canonical HH Applications. Повторная
+синхронизация выполняется отдельным batch command через существующий CRM sync;
+import не меняет ежедневные n8n workflows и не удаляет технический лист.
+
 Фильтры «Отклик отправлен», «Ответ получен» и «Интервью» используют reached
 facts, а не только текущий enum. Эта reusable semantics подготовлена для
 будущего CRM J/K/L sync; exact current-status filters сохранены для screening,

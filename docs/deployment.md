@@ -981,3 +981,42 @@ Email digest includes:
 - risks;
 - vacancy links;
 - CRM link if configured.
+
+## Historical Applications Import
+
+This is a one-time, two-phase operation. Export both Google Sheets tabs as CSV
+files first: technical `Отклики` and main CRM `Вакансии`. Do not use the
+technical `Статус` or `Следующий шаг` columns as lifecycle input.
+
+On the homeserver, after deploying the Orchestrator code:
+
+```bash
+cd ~/services/ai-job-automation/orchestrator
+cp data/app.db "data/app.db.backup-before-historical-applications-$(date +%Y%m%d-%H%M%S)"
+docker compose run --rm -v /path/to/exports:/imports api \
+  python -m app.scripts.import_historical_applications \
+  --applications-csv /imports/otkliki.csv \
+  --crm-csv /imports/vacancies.csv \
+  --report /imports/historical-applications-dry-run.json
+```
+
+Inspect the report before any write. `--apply` is deliberately required and
+must be run manually after approval; it creates only planned Applications and
+writes an apply report with `created_application_ids`.
+
+```bash
+docker compose run --rm -v /path/to/exports:/imports api \
+  python -m app.scripts.import_historical_applications \
+  --applications-csv /imports/otkliki.csv \
+  --crm-csv /imports/vacancies.csv \
+  --apply --report /imports/historical-applications-apply.json
+
+docker compose run --rm -v /path/to/exports:/imports api \
+  python -m app.scripts.sync_historical_applications \
+  --import-report /imports/historical-applications-apply.json
+```
+
+The final command is a CRM batch dry-run. After DB verification, add `--apply`
+to it to call the existing Application CRM sync adapter. Keep the `Отклики`
+sheet until the CRM update has been verified manually; the tooling never
+deletes it.

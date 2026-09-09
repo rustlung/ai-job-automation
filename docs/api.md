@@ -240,7 +240,8 @@ secondary `crm_sync` state. The Application DB commit completes before the
 server calls the narrow n8n CRM-sync adapter, so a Sheets failure is reported
 as `crm_sync.status=failed`, not as an Application write failure. `POST
 /api/applications/{application_id}/crm-sync/retry` retries only this secondary
-effect. Historical import remains out of scope.
+effect. Historical import is an operational CLI, not a Web API: it consumes
+local CSV exports and is dry-run by default.
 
 `GET /api/applications` is the paginated Applications-screen endpoint. It
 filters by `status`, `date_from`, `date_to`, `platform` and optional
