@@ -357,11 +357,15 @@ def test_vacancy_list_and_detail_use_latest_application_across_regional_members(
     )
 
     with make_client(db_session) as client:
+        applied = client.get("/api/vacancies?application_status=submitted")
+        response_received = client.get("/api/vacancies?application_status=response_received")
         listed = client.get("/api/vacancies?application_status=rejected")
         none = client.get("/api/vacancies?application_status=none")
         detail = client.get(f"/api/vacancies/business:{'d' * 64}")
 
     assert listed.status_code == 200
+    assert applied.json()["total"] == 1
+    assert response_received.json()["total"] == 1
     assert listed.json()["total"] == 1
     assert listed.json()["items"][0]["application_id"] == current_application.id
     assert listed.json()["items"][0]["application_status"] == "rejected"

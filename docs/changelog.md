@@ -4,6 +4,10 @@
 
 ### Added
 
+- grouped Vacancy application filters now distinguish reached facts from exact
+  current status: submitted means any existing Application, response received
+  uses response evidence, and interview uses interview evidence; this is shared
+  domain logic prepared for future CRM J/K/L mapping;
 - Applications Web UI: create/edit forms in Vacancy Detail, an `/applications`
   list, a shared readable status badge, and backend-owned grouped navigation;
   grouped Vacancy list now displays and filters by the deterministic latest

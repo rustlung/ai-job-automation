@@ -1436,6 +1436,11 @@ records current определяется детерминированно по `
 detail при этом показывает все записи canonical members. Google Sheets sync и
 historical import остаются следующими подэтапами.
 
+Фильтры «Отклик отправлен», «Ответ получен» и «Интервью» используют reached
+facts, а не только текущий enum. Эта reusable semantics подготовлена для
+будущего CRM J/K/L sync; exact current-status filters сохранены для screening,
+test task, offer, rejected и withdrawn.
+
 ---
 
 # Правила разработки

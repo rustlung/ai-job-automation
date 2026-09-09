@@ -134,12 +134,25 @@ describe("VacanciesPage", () => {
     renderPage("/vacancies?offset=50");
     const dropdown = screen.getByRole("combobox", { name: "Статус отклика" });
 
-    fireEvent.change(dropdown, { target: { value: "rejected" } });
-    expect(screen.getByTestId("location")).toHaveTextContent("application_status=rejected");
+    fireEvent.change(dropdown, { target: { value: "submitted" } });
+    expect(screen.getByTestId("location")).toHaveTextContent("application_status=submitted");
     expect(screen.getByTestId("location")).not.toHaveTextContent("offset");
+    expect(useVacancies).toHaveBeenLastCalledWith(expect.objectContaining({ application_status: "submitted" }));
+
+    fireEvent.change(dropdown, { target: { value: "response_received" } });
+    expect(screen.getByTestId("location")).toHaveTextContent("application_status=response_received");
+
+    fireEvent.change(dropdown, { target: { value: "interview" } });
+    expect(screen.getByTestId("location")).toHaveTextContent("application_status=interview");
 
     fireEvent.change(dropdown, { target: { value: "" } });
     expect(screen.getByTestId("location")).not.toHaveTextContent("application_status");
+  });
+
+  it("restores an application status filter from the URL without local expansion", () => {
+    renderPage("/vacancies?application_status=response_received");
+    expect(screen.getByRole("combobox", { name: "Статус отклика" })).toHaveValue("response_received");
+    expect(useVacancies).toHaveBeenLastCalledWith(expect.objectContaining({ application_status: "response_received" }));
   });
 
   it("resets pagination for first page, filters and page size", () => {

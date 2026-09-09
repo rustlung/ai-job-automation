@@ -191,9 +191,16 @@ the representative remains subject to the Samara preference. `date_from` and
 the system first found the logical vacancy rather than HH publication time.
 Filters apply after grouping, followed by whitelist sorting and offset/limit
 pagination. The endpoint supports priority, track, profile provenance union,
-current application status (including `application_status=none` for groups with
-no Application), run id, company/title text search, `first_seen`/`final_score`/`priority` sort
+application filter (including `application_status=none` for groups with no
+Application), run id, company/title text search, `first_seen`/`final_score`/`priority` sort
 and `asc`/`desc` direction. It does not return full descriptions.
+
+`application_status=submitted`, `response_received`, and `interview` are
+reached-stage facts, not exact current statuses: respectively any Application,
+employer-response evidence or an implied response stage, and interview-date
+evidence or `interview`/`offer`. `screening`, `test_task`, `offer`, `rejected`,
+and `withdrawn` remain exact current-status filters. This preserves the stable
+URL contract while making the labels useful after a process advances.
 
 `GET /api/vacancies/{presentation_key}` returns one logical presentation group
 for the Vacancy Detail page. It reads the selected representative and canonical

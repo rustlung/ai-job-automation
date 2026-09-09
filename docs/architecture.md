@@ -96,6 +96,13 @@ keeps regional grouping in one backend implementation and avoids React N+1
 requests. Google Sheets synchronization and historical import remain separate
 future milestones.
 
+Application filtering distinguishes reached facts from the editable current
+status. The reusable `application_stage` helper defines applied, employer
+response, and interview facts for the grouped Vacancy list; later CRM mapping
+will use the same semantics for J (application exists), K (response fact), and
+L (interview fact). Exact current-status filters remain available for
+screening, test task, offer, rejected, and withdrawn.
+
 For a full run, Manual and Web entries converge before Worker start into one
 n8n `Build Full Run Context`. Shared Worker polling reads only that normalized
 context, while `existing_run_id` replay deliberately bypasses it and continues

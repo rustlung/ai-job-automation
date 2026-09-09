@@ -22,6 +22,7 @@ from app.schemas.web import (
     VacancyApplicationStatusFilter,
 )
 from app.services.application import ApplicationService
+from app.services.application_stage import matches_application_filter
 from app.services.business_vacancy_grouping import group_business_vacancies, merge_profile_ids
 
 
@@ -292,11 +293,11 @@ class WebVacancyListService:
             return False
         if profile_id and profile_id not in item.profile_ids:
             return False
-        if application_status == VacancyApplicationStatusFilter.NONE and current_application is not None:
+        if not matches_application_filter(
+            current_application,
+            application_status.value if application_status is not None else None,
+        ):
             return False
-        if application_status not in (None, VacancyApplicationStatusFilter.NONE):
-            if current_application is None or current_application.status != application_status.value:
-                return False
         if run_id and not any(getattr(analysis, "run_id", None) == run_id for analysis in member_analyses):
             return False
         if search:
