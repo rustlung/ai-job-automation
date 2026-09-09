@@ -235,8 +235,12 @@ members. Multiple applications per vacancy are allowed. The status enum is
 `submitted`, `response_received`, `screening`, `test_task`, `interview`,
 `offer`, `rejected`, `withdrawn`; lack of an Application record means no
 application. PATCH is partial: omitted fields are unchanged and explicit
-`null` clears nullable fields. Google Sheets sync and historical import are not
-part of this API foundation.
+`null` clears nullable fields. Successful create and PATCH responses include a
+secondary `crm_sync` state. The Application DB commit completes before the
+server calls the narrow n8n CRM-sync adapter, so a Sheets failure is reported
+as `crm_sync.status=failed`, not as an Application write failure. `POST
+/api/applications/{application_id}/crm-sync/retry` retries only this secondary
+effect. Historical import remains out of scope.
 
 `GET /api/applications` is the paginated Applications-screen endpoint. It
 filters by `status`, `date_from`, `date_to`, `platform` and optional

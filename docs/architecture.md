@@ -85,7 +85,12 @@ reporting mirror; it is not a source of truth for user-owned application data.
 canonical `Vacancy.id`, rather than to a business presentation key. A canonical
 vacancy may have multiple applications. Its absence means no application has
 been recorded; `not_applied` is deliberately not an application status. Google
-Sheets sync and historical import are separate future steps.
+Sheets sync is a secondary, retryable operation: the Application commit happens
+first, then Orchestrator calls a narrow n8n Google-Sheets adapter. Its persistent
+`ApplicationCrmSyncState` records `pending`, `synced`, or `failed` without
+rolling back Application data. The adapter updates only J--M and Y--AD on an
+already reconciled business/canonical CRM row; it never appends a vacancy row.
+Historical import remains a separate future step.
 
 The Web UI aggregates Applications only on the Orchestrator side: a logical
 Vacancy Detail returns every application of its canonical group members, while
@@ -98,9 +103,9 @@ future milestones.
 
 Application filtering distinguishes reached facts from the editable current
 status. The reusable `application_stage` helper defines applied, employer
-response, and interview facts for the grouped Vacancy list; later CRM mapping
-will use the same semantics for J (application exists), K (response fact), and
-L (interview fact). Exact current-status filters remain available for
+response, and interview facts for the grouped Vacancy list and CRM mapping:
+J is application existence, K is the response fact, and L is the interview
+fact. Exact current-status filters remain available for
 screening, test task, offer, rejected, and withdrawn.
 
 For a full run, Manual and Web entries converge before Worker start into one

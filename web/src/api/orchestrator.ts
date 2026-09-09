@@ -1,11 +1,11 @@
 import { request } from "./client";
 import type {
   PipelineRunDetail,
-  Application,
+  ApplicationCrmSync,
   ApplicationCreateRequest,
   ApplicationFilters,
   ApplicationListResponse,
-  ApplicationPatchRequest,
+  ApplicationPatchRequest, ApplicationWriteResponse,
   RunCreateRequest,
   RunCreateResponse,
   RunsResponse,
@@ -58,9 +58,10 @@ export const orchestratorApi = {
   getVacancyDetail: (presentationKey: string) => request<VacancyDetail>(`/api/vacancies/${encodeURIComponent(presentationKey)}`),
   getApplications: (filters: ApplicationFilters) => request<ApplicationListResponse>(`/api/applications?${applicationQuery(filters)}`),
   createApplication: (vacancyId: number, payload: ApplicationCreateRequest) =>
-    request<Application>(`/api/vacancies/${vacancyId}/applications`, { method: "POST", body: JSON.stringify(payload) }),
+    request<ApplicationWriteResponse>(`/api/vacancies/${vacancyId}/applications`, { method: "POST", body: JSON.stringify(payload) }),
   updateApplication: (applicationId: number, payload: ApplicationPatchRequest) =>
-    request<Application>(`/api/applications/${applicationId}`, { method: "PATCH", body: JSON.stringify(payload) }),
+    request<ApplicationWriteResponse>(`/api/applications/${applicationId}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  retryApplicationCrmSync: (applicationId: number) => request<ApplicationCrmSync>(`/api/applications/${applicationId}/crm-sync/retry`, { method: "POST" }),
   startRun: (payload: RunCreateRequest) =>
     request<RunCreateResponse>("/api/runs", { method: "POST", body: JSON.stringify(payload) })
 };

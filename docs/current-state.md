@@ -39,6 +39,7 @@
 ✅ Vacancy persistence API
 ✅ VacancyAnalysis persistence API
 ✅ Application CRUD UI/API: canonical vacancy relation, multiple records, partial updates, status in grouped Vacancy list and status filter
+✅ Application CRM mirror: DB-first sync state, retryable narrow n8n adapter, and J--M/Y--AD mapping without historical import
 ✅ Idempotent vacancy upsert
 ✅ Idempotent analysis upsert
 ✅ Alembic migrations на homeserver

@@ -1436,6 +1436,12 @@ records current определяется детерминированно по `
 detail при этом показывает все записи canonical members. Google Sheets sync и
 historical import остаются следующими подэтапами.
 
+Подэтап 004.3 завершен: Orchestrator сохраняет Application до внешнего вызова
+узкого n8n CRM adapter и возвращает persistent `pending`/`synced`/`failed`
+sync state. Adapter обновляет только J--M и Y--AD уже найденной business или
+canonical CRM row, без append. `POST /api/applications/{id}/crm-sync/retry`
+повторяет только secondary sync. Historical import остаётся отдельным 004.4.
+
 Фильтры «Отклик отправлен», «Ответ получен» и «Интервью» используют reached
 facts, а не только текущий enum. Эта reusable semantics подготовлена для
 будущего CRM J/K/L sync; exact current-status filters сохранены для screening,

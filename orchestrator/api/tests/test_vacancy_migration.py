@@ -27,6 +27,7 @@ def test_vacancy_migration_upgrade_and_downgrade(tmp_path, monkeypatch) -> None:
     assert "vacancy_analyses" in inspector.get_table_names()
     assert "vacancy_processing_events" in inspector.get_table_names()
     assert "applications" in inspector.get_table_names()
+    assert "application_crm_sync_states" in inspector.get_table_names()
     indexes = {index["name"] for index in inspector.get_indexes("vacancies")}
     assert "ix_vacancies_source" in indexes
     assert "ix_vacancies_external_id" in indexes
@@ -74,6 +75,11 @@ def test_vacancy_migration_upgrade_and_downgrade(tmp_path, monkeypatch) -> None:
     application_foreign_keys = inspector.get_foreign_keys("applications")
     assert application_foreign_keys[0]["referred_table"] == "vacancies"
     assert application_foreign_keys[0]["options"]["ondelete"] == "CASCADE"
+    sync_state_indexes = {index["name"] for index in inspector.get_indexes("application_crm_sync_states")}
+    assert {"ix_application_crm_sync_states_application_id", "ix_application_crm_sync_states_status"} <= sync_state_indexes
+    sync_state_foreign_keys = inspector.get_foreign_keys("application_crm_sync_states")
+    assert sync_state_foreign_keys[0]["referred_table"] == "applications"
+    assert sync_state_foreign_keys[0]["options"]["ondelete"] == "CASCADE"
 
     command.downgrade(make_alembic_config(database_url), "20260810_0001")
     inspector = inspect(engine)
@@ -81,6 +87,7 @@ def test_vacancy_migration_upgrade_and_downgrade(tmp_path, monkeypatch) -> None:
     assert "vacancy_analyses" in inspector.get_table_names()
     assert "vacancy_processing_events" in inspector.get_table_names()
     assert "applications" not in inspector.get_table_names()
+    assert "application_crm_sync_states" not in inspector.get_table_names()
     downgraded_vacancy_columns = {column["name"] for column in inspector.get_columns("vacancies")}
     assert "business_fingerprint" not in downgraded_vacancy_columns
     downgraded_analysis_columns = {column["name"] for column in inspector.get_columns("vacancy_analyses")}
@@ -98,6 +105,7 @@ def test_vacancy_migration_upgrade_and_downgrade(tmp_path, monkeypatch) -> None:
     assert "vacancy_analyses" in inspector.get_table_names()
     assert "vacancy_processing_events" in inspector.get_table_names()
     assert "applications" in inspector.get_table_names()
+    assert "application_crm_sync_states" in inspector.get_table_names()
     engine.dispose()
 
 
@@ -178,7 +186,7 @@ def test_application_migration_preserves_existing_vacancies_and_is_reversible(tm
                 )
             )
 
-    command.downgrade(config, "-1")
+    command.downgrade(config, "20260907_0001")
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT COUNT(*) FROM vacancies")) == 1
     assert "applications" not in inspect(engine).get_table_names()

@@ -16,6 +16,12 @@ class ApplicationStatus(str, Enum):
     WITHDRAWN = "withdrawn"
 
 
+class ApplicationCrmSyncStatus(str, Enum):
+    PENDING = "pending"
+    SYNCED = "synced"
+    FAILED = "failed"
+
+
 OptionalApplicationText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=20_000)]
 OptionalPlatform = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
 
@@ -80,6 +86,22 @@ class ApplicationRead(BaseModel):
     platform: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class ApplicationCrmSyncRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    application_id: int
+    status: ApplicationCrmSyncStatus
+    last_attempt_at: datetime | None
+    synced_at: datetime | None
+    error_code: str | None
+    error_message_safe: str | None
+
+
+class ApplicationWriteResponse(BaseModel):
+    application: ApplicationRead
+    crm_sync: ApplicationCrmSyncRead
 
 
 class ApplicationListItem(ApplicationRead):

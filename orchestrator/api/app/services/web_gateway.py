@@ -17,6 +17,12 @@ class N8nWebhookError(Exception):
     pass
 
 
+class ApplicationCrmSyncGatewayError(Exception):
+    def __init__(self, error_code: str = "crm_sync_failed") -> None:
+        self.error_code = error_code
+        super().__init__(error_code)
+
+
 class WorkerGateway:
     def __init__(self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None) -> None:
         self.settings = settings
@@ -88,3 +94,27 @@ class N8nWebhookClient:
                 raise N8nWebhookError("N8n webhook rejected run start")
         except httpx.RequestError as exc:
             raise N8nWebhookError("N8n webhook is unavailable") from exc
+
+
+class ApplicationCrmSyncWebhookClient:
+    """Narrow n8n adapter for Application-only Sheets updates."""
+
+    def __init__(self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None) -> None:
+        self.settings = settings
+        self.transport = transport
+
+    async def sync(self, payload: dict[str, Any]) -> None:
+        if not self.settings.n8n_application_crm_sync_webhook_url:
+            raise ApplicationCrmSyncGatewayError("crm_sync_not_configured")
+        headers = {"X-AI-Job-Automation-Webhook-Secret": self.settings.n8n_webhook_secret}
+        try:
+            async with httpx.AsyncClient(timeout=self.settings.n8n_webhook_timeout_seconds, transport=self.transport) as client:
+                response = await client.post(self.settings.n8n_application_crm_sync_webhook_url, json=payload, headers=headers)
+        except httpx.TimeoutException as exc:
+            raise ApplicationCrmSyncGatewayError("crm_sync_timeout") from exc
+        except httpx.RequestError as exc:
+            raise ApplicationCrmSyncGatewayError("crm_sync_unavailable") from exc
+        if response.status_code == 404:
+            raise ApplicationCrmSyncGatewayError("crm_row_not_found")
+        if response.status_code >= 400:
+            raise ApplicationCrmSyncGatewayError("crm_sync_failed")

@@ -69,6 +69,11 @@ export function useUpdateApplication() {
   });
 }
 
+export function useRetryApplicationCrmSync() {
+  const invalidate = useApplicationInvalidation();
+  return useMutation({ mutationFn: orchestratorApi.retryApplicationCrmSync, onSuccess: invalidate });
+}
+
 export function useStartRun() {
   return useMutation({ mutationFn: (payload: RunCreateRequest) => orchestratorApi.startRun(payload) });
 }

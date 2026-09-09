@@ -93,6 +93,7 @@ export interface ApiErrorBody {
 
 export type VacancyPriority = "P1" | "P2" | "P3" | "ALT";
 export type ApplicationStatus = "submitted" | "response_received" | "screening" | "test_task" | "interview" | "offer" | "rejected" | "withdrawn";
+export type ApplicationCrmSyncStatus = "pending" | "synced" | "failed";
 export type VacancyApplicationStatusFilter = ApplicationStatus | "none";
 export type VacancyListSort = "first_seen" | "final_score" | "priority";
 export type SortDirection = "asc" | "desc";
@@ -190,6 +191,20 @@ export interface ApplicationListItem extends Application {
   vacancy_url: string;
 }
 
+export interface ApplicationCrmSync {
+  application_id: number;
+  status: ApplicationCrmSyncStatus;
+  last_attempt_at: string | null;
+  synced_at: string | null;
+  error_code: string | null;
+  error_message_safe: string | null;
+}
+
+export interface ApplicationWriteResponse {
+  application: Application;
+  crm_sync: ApplicationCrmSync;
+}
+
 export interface ApplicationListResponse {
   items: ApplicationListItem[];
   total: number;
@@ -214,6 +229,7 @@ export interface VacancyApplicationDetail {
   url: string;
   representative_member: boolean;
   current: boolean;
+  crm_sync: ApplicationCrmSync;
 }
 
 export interface VacancyAnalysisDetail {

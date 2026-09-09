@@ -4,6 +4,9 @@
 
 ### Added
 
+- Application CRM mirror: DB-first create/update now invokes a narrow retryable
+  n8n adapter after commit, records a persistent safe sync state, and updates
+  only J--M/Y--AD on an existing CRM row; historical import remains out of scope;
 - grouped Vacancy application filters now distinguish reached facts from exact
   current status: submitted means any existing Application, response received
   uses response evidence, and interview uses interview evidence; this is shared

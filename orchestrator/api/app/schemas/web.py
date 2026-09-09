@@ -3,7 +3,7 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.schemas.application import ApplicationRead, ApplicationStatus
+from app.schemas.application import ApplicationCrmSyncRead, ApplicationRead, ApplicationStatus
 from app.schemas.pipeline_run import PipelineRunRead
 from app.schemas.vacancy_analysis import VacancyAnalysisPriority
 
@@ -136,6 +136,7 @@ class VacancyApplicationDetail(BaseModel):
     url: str
     representative_member: bool
     current: bool
+    crm_sync: ApplicationCrmSyncRead
 
 
 class VacancyAnalysisDetail(BaseModel):

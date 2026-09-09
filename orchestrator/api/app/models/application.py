@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database.base import Base
 
 if TYPE_CHECKING:
+    from app.models.application_crm_sync_state import ApplicationCrmSyncState
     from app.models.vacancy import Vacancy
 
 
@@ -49,3 +50,6 @@ class Application(Base):
     )
 
     vacancy: Mapped["Vacancy"] = relationship(back_populates="applications")
+    crm_sync_state: Mapped["ApplicationCrmSyncState | None"] = relationship(
+        back_populates="application", cascade="all, delete-orphan", passive_deletes=True, uselist=False
+    )

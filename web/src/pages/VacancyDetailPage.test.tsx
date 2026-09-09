@@ -41,11 +41,13 @@ const useVacancyDetail = vi.fn();
 const useSearchProfiles = vi.fn();
 const useCreateApplication = vi.fn();
 const useUpdateApplication = vi.fn();
+const useRetryApplicationCrmSync = vi.fn();
 vi.mock("../hooks/useOrchestrator", () => ({
   useVacancyDetail: (...args: unknown[]) => useVacancyDetail(...args),
   useSearchProfiles: () => useSearchProfiles(),
   useCreateApplication: () => useCreateApplication(),
-  useUpdateApplication: () => useUpdateApplication()
+  useUpdateApplication: () => useUpdateApplication(),
+  useRetryApplicationCrmSync: () => useRetryApplicationCrmSync()
 }));
 
 function renderPage(entry: string | { pathname: string; state?: unknown } = "/vacancies/business%3Aabc123") {
@@ -58,6 +60,7 @@ describe("VacancyDetailPage", () => {
     useSearchProfiles.mockReturnValue({ data: { profiles: [{ id: "ai_automation_keywords", name: "AI Automation" }] }, isError: false });
     useCreateApplication.mockReturnValue({ isPending: false, error: null, mutateAsync: vi.fn() });
     useUpdateApplication.mockReturnValue({ isPending: false, error: null, mutateAsync: vi.fn() });
+    useRetryApplicationCrmSync.mockReturnValue({ isPending: false, mutate: vi.fn() });
   });
   afterEach(() => cleanup());
 
@@ -100,6 +103,25 @@ describe("VacancyDetailPage", () => {
     renderPage();
 
     expect(screen.getByText("ai_automation_keywords")).toBeInTheDocument();
+  });
+
+  it("shows failed CRM sync for the current application and retries without hiding data", () => {
+    const retry = vi.fn();
+    useRetryApplicationCrmSync.mockReturnValue({ isPending: false, mutate: retry });
+    useVacancyDetail.mockReturnValue({ data: {
+      ...vacancy,
+      applications: [{
+        application: { id: 2, vacancy_id: 1, status: "submitted", applied_at: null, application_text: "Текст", employer_response: null, response_received_at: null, interview_at: null, offer_at: null, notes: null, platform: "hh", created_at: "2026-09-04T10:00:00Z", updated_at: "2026-09-05T10:00:00Z" },
+        source: "hh", external_id: "102", url: vacancy.url, representative_member: true, current: true,
+        crm_sync: { application_id: 2, status: "failed", last_attempt_at: "2026-09-05T10:00:00Z", synced_at: null, error_code: "crm_sync_timeout", error_message_safe: "Google CRM sync failed" }
+      }]
+    }, isLoading: false, isError: false });
+    renderPage();
+
+    expect(screen.getByText("Ошибка синхронизации CRM")).toBeInTheDocument();
+    expect(screen.getByText("Текст")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Повторить синхронизацию" }));
+    expect(retry).toHaveBeenCalledWith(2);
   });
 
   it("does not execute description HTML", () => {

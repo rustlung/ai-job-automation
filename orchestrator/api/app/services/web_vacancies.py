@@ -7,9 +7,11 @@ from sqlalchemy.orm import Session
 
 from app.models.application import Application
 from app.repositories.application import ApplicationRepository
+from app.repositories.application_crm_sync_state import ApplicationCrmSyncStateRepository
 from app.repositories.vacancy import VacancyRepository
 from app.repositories.vacancy_analysis import VacancyAnalysisRepository
 from app.schemas.vacancy_analysis import VacancyAnalysisPriority
+from app.schemas.application import ApplicationCrmSyncRead, ApplicationCrmSyncStatus
 from app.schemas.web import (
     SortDirection,
     VacancyAnalysisDetail,
@@ -33,6 +35,7 @@ class WebVacancyListService:
         self.vacancy_repository = VacancyRepository(session)
         self.analysis_repository = VacancyAnalysisRepository(session)
         self.application_repository = ApplicationRepository(session)
+        self.application_crm_sync_state_repository = ApplicationCrmSyncStateRepository(session)
 
     def list(
         self,
@@ -149,6 +152,10 @@ class WebVacancyListService:
             for application in applications_by_vacancy_id.get(member.id, [])
         ]
         current_application = self._current_application(group_applications)
+        states_by_application_id = {
+            state.application_id: state
+            for state in self.application_crm_sync_state_repository.list_by_application_ids([application.id for application in group_applications])
+        }
         member_by_id = {member.id: member for member in group.members}
         provenance = representative_analysis.provenance or {}
         snapshot = representative_analysis.vacancy_snapshot or {}
@@ -209,6 +216,11 @@ class WebVacancyListService:
                     url=member_by_id[application.vacancy_id].url,
                     representative_member=application.vacancy_id == group.representative.id,
                     current=application.id == current_application.id if current_application is not None else False,
+                    crm_sync=(
+                        ApplicationCrmSyncRead.model_validate(states_by_application_id[application.id])
+                        if application.id in states_by_application_id
+                        else ApplicationCrmSyncRead(application_id=application.id, status=ApplicationCrmSyncStatus.PENDING, last_attempt_at=None, synced_at=None, error_code=None, error_message_safe=None)
+                    ),
                 )
                 for application in self._ordered_applications(group_applications)
             ],
