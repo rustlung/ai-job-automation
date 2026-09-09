@@ -4,6 +4,8 @@
 
 ### Added
 
+- Safe historical Vacancy backfill tooling: dry-run-first exact HH URL matching
+  creates only missing canonical records needed by historical Applications;
 - Historical Applications import tooling: local CSV dry-run by default,
   conservative canonical HH matching and idempotent explicit DB apply, followed
   by a separately invoked existing CRM-sync batch;

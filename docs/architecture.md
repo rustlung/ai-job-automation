@@ -98,6 +98,14 @@ ignored; the main CRM J/K/L/M fields provide conservative lifecycle hints.
 The subsequent CRM batch uses the existing Application CRM sync service rather
 than a second Sheets mapping.
 
+When an historical Application references an HH vacancy predating Orchestrator
+persistence, a separate dry-run-first backfill creates only that missing
+canonical `Vacancy`. The CRM row supplies company, title, URL and optional
+salary; it does not reconstruct description, analyses, provenance or a business
+fingerprint. Empty `description` explicitly represents unavailable historical
+content, while Orchestrator first-seen/created timestamps record backfill time,
+not the ambiguous legacy CRM date.
+
 The Web UI aggregates Applications only on the Orchestrator side: a logical
 Vacancy Detail returns every application of its canonical group members, while
 the grouped Vacancy list exposes the deterministic current record selected by

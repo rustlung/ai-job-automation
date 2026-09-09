@@ -5,7 +5,7 @@ import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, time, timezone
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -19,6 +19,7 @@ from app.services.business_vacancy_grouping import group_business_vacancies
 
 SAMARA = ZoneInfo("Europe/Samara")
 HH_VACANCY_URL = re.compile(r"(?:https?://)?(?:[^/]+\.)?hh\.ru/vacancy/(\d+)", re.IGNORECASE)
+HH_BACK_URL_PATH = re.compile(r"(?:[?&]backUrl=)/vacancy/(\d+)", re.IGNORECASE)
 YES_VALUES = {"да", "yes", "y", "1", "true"}
 HISTORICAL_APPLICATION_URL_HEADERS = ("Ссылка на вакансию", "Ссылка", "URL", "Vacancy URL", "vacancy_url")
 MAIN_CRM_URL_HEADERS = ("Ссылка", "URL", "Vacancy URL", "vacancy_url")
@@ -70,6 +71,11 @@ def extract_hh_external_id(url: str | None) -> str | None:
         match = HH_VACANCY_URL.search(decoded)
         if match:
             return match.group(1)
+        parsed = urlparse(decoded)
+        if (parsed.hostname or "").casefold().endswith("hh.ru"):
+            back_url_match = HH_BACK_URL_PATH.search(decoded)
+            if back_url_match:
+                return back_url_match.group(1)
         next_decoded = unquote(decoded)
         if next_decoded == decoded:
             break

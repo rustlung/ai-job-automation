@@ -41,6 +41,7 @@
 ✅ Application CRUD UI/API: canonical vacancy relation, multiple records, partial updates, status in grouped Vacancy list and status filter
 ✅ Application CRM mirror: DB-first sync state, retryable narrow n8n adapter, and J--M/Y--AD mapping without historical import
 ✅ Historical Application import tooling: local CSV dry-run, explicit DB apply, and separate CRM batch command
+✅ Historical Vacancy backfill tooling: required-HH-only CSV planning before Application import, with explicit DB apply
 ✅ Idempotent vacancy upsert
 ✅ Idempotent analysis upsert
 ✅ Alembic migrations на homeserver

@@ -1448,6 +1448,11 @@ canonical CRM row, без append. `POST /api/applications/{id}/crm-sync/retry`
 синхронизация выполняется отдельным batch command через существующий CRM sync;
 import не меняет ежедневные n8n workflows и не удаляет технический лист.
 
+Для historical Application, чья canonical HH Vacancy появилась до Orchestrator
+DB, добавлен отдельный dry-run-first backfill. Он создаёт только exact missing
+`(hh, external_id)` из `Отклики`, найденные по exact HH URL в `Вакансии`, и не
+восстанавливает description, analysis, provenance или business fingerprint.
+
 Фильтры «Отклик отправлен», «Ответ получен» и «Интервью» используют reached
 facts, а не только текущий enum. Эта reusable semantics подготовлена для
 будущего CRM J/K/L sync; exact current-status filters сохранены для screening,

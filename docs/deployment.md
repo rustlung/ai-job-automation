@@ -994,15 +994,32 @@ On the homeserver, after deploying the Orchestrator code:
 cd ~/services/ai-job-automation/orchestrator
 cp data/app.db "data/app.db.backup-before-historical-applications-$(date +%Y%m%d-%H%M%S)"
 docker compose run --rm -v /path/to/exports:/imports api \
+  python -m app.scripts.backfill_historical_vacancies \
+  --applications-csv /imports/otkliki.csv \
+  --crm-csv /imports/vacancies.csv \
+  --report /imports/historical-vacancy-backfill-dry-run.json
+```
+
+Inspect the vacancy backfill report first. It creates no records without
+`--apply`; verify that the backup exists before the manually approved apply:
+
+```bash
+docker compose run --rm -v /path/to/exports:/imports api \
+  python -m app.scripts.backfill_historical_vacancies \
+  --applications-csv /imports/otkliki.csv \
+  --crm-csv /imports/vacancies.csv \
+  --apply --report /imports/historical-vacancy-backfill-apply.json
+
+docker compose run --rm -v /path/to/exports:/imports api \
   python -m app.scripts.import_historical_applications \
   --applications-csv /imports/otkliki.csv \
   --crm-csv /imports/vacancies.csv \
   --report /imports/historical-applications-dry-run.json
 ```
 
-Inspect the report before any write. `--apply` is deliberately required and
-must be run manually after approval; it creates only planned Applications and
-writes an apply report with `created_application_ids`.
+Inspect the Application import report before any write. `--apply` is
+deliberately required and must be run manually after approval; it creates only
+planned Applications and writes an apply report with `created_application_ids`.
 
 ```bash
 docker compose run --rm -v /path/to/exports:/imports api \
