@@ -479,6 +479,7 @@ def test_group_user_state_is_stable_across_regional_members_and_filters(db_sessi
     assert listed.json()["total"] == 1
     assert listed.json()["items"][0]["external_id"] == representative.external_id
     assert listed.json()["items"][0]["user_priority"] == "P3"
+    assert listed.json()["items"][0]["user_comment"] == "manual feedback"
     assert detail.json()["user_state"]["comment"] == "manual feedback"
     assert updated.status_code == 200
     assert updated.json()["user_priority"] is None

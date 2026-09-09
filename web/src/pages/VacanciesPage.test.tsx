@@ -27,14 +27,17 @@ const vacancy = {
   application_status: null,
   application_updated_at: null,
   vacancy_status: "active" as const,
-  user_priority: null
+  user_priority: null,
+  user_comment: null
 };
 
 const useVacancies = vi.fn();
 const useSearchProfiles = vi.fn();
+const useUpdateVacancyUserState = vi.fn();
 vi.mock("../hooks/useOrchestrator", () => ({
   useVacancies: (...args: unknown[]) => useVacancies(...args),
-  useSearchProfiles: () => useSearchProfiles()
+  useSearchProfiles: () => useSearchProfiles(),
+  useUpdateVacancyUserState: () => useUpdateVacancyUserState()
 }));
 
 function LocationProbe() {
@@ -62,6 +65,7 @@ describe("VacanciesPage", () => {
   beforeEach(() => {
     useVacancies.mockReturnValue({ data: { items: [vacancy], total: 1, limit: 25, offset: 0 }, isLoading: false, isError: false });
     useSearchProfiles.mockReturnValue(profileQuery());
+    useUpdateVacancyUserState.mockReturnValue({ isPending: false, isError: false, mutate: vi.fn() });
   });
   afterEach(() => cleanup());
 
@@ -165,7 +169,43 @@ describe("VacanciesPage", () => {
     useVacancies.mockReturnValue({ data: { items: [{ ...vacancy, priority: "P1", user_priority: "P3", vacancy_status: "closed" }], total: 1, limit: 25, offset: 0 }, isLoading: false, isError: false });
     renderPage();
     expect(screen.getAllByText("Закрыта")).toHaveLength(2);
-    expect(screen.getByText("Мой: P3")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Изменить мой приоритет" })).toHaveValue("P3");
+  });
+
+  it("updates status and priority inline through the shared user-state mutation", () => {
+    const mutate = vi.fn();
+    useUpdateVacancyUserState.mockReturnValue({ isPending: false, isError: false, mutate });
+    renderPage();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Изменить статус вакансии" }), { target: { value: "archived" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Изменить мой приоритет" }), { target: { value: "P2" } });
+    expect(mutate).toHaveBeenNthCalledWith(1, { presentationKey: "business:abc123", payload: { vacancy_status: "archived" } });
+    expect(mutate).toHaveBeenNthCalledWith(2, { presentationKey: "business:abc123", payload: { user_priority: "P2" } });
+  });
+
+  it("clears priority and saves only a changed inline comment", () => {
+    const mutate = vi.fn();
+    useVacancies.mockReturnValue({ data: { items: [{ ...vacancy, user_priority: "P3", user_comment: "Existing note" }], total: 1, limit: 25, offset: 0 }, isLoading: false, isError: false });
+    useUpdateVacancyUserState.mockReturnValue({ isPending: false, isError: false, mutate });
+    renderPage();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Изменить мой приоритет" }), { target: { value: "" } });
+    expect(mutate).toHaveBeenCalledWith({ presentationKey: "business:abc123", payload: { user_priority: null } });
+    fireEvent.click(screen.getByRole("button", { name: "Изменить комментарий" }));
+    fireEvent.click(screen.getByRole("button", { name: "Сохранить комментарий" }));
+    expect(mutate).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Изменить комментарий" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Мой комментарий" }), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Сохранить комментарий" }));
+    expect(mutate).toHaveBeenLastCalledWith(expect.objectContaining({ payload: { comment: null } }), expect.any(Object));
+  });
+
+  it("keeps the previous visible values and shows failure without a false success state", () => {
+    useVacancies.mockReturnValue({ data: { items: [{ ...vacancy, vacancy_status: "closed", user_comment: "Existing note" }], total: 1, limit: 25, offset: 0 }, isLoading: false, isError: false });
+    useUpdateVacancyUserState.mockReturnValue({ isPending: false, isError: true, mutate: vi.fn() });
+    renderPage();
+    expect(screen.getByRole("combobox", { name: "Изменить статус вакансии" })).toHaveValue("closed");
+    expect(screen.getByText("Не сохранено")).toBeInTheDocument();
   });
 
   it("restores an application status filter from the URL without local expansion", () => {

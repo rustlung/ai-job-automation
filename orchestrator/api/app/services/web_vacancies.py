@@ -121,6 +121,7 @@ class WebVacancyListService:
                 application_updated_at=(self._as_utc(current_application.updated_at) if current_application is not None else None),
                 vacancy_status=user_state.vacancy_status if user_state is not None else VacancyStatus.ACTIVE,
                 user_priority=user_state.user_priority if user_state is not None else None,
+                user_comment=user_state.comment if user_state is not None else None,
             )
             if self._matches_filters(
                 item,

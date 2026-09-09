@@ -126,6 +126,7 @@ export interface VacancyListItem {
   application_updated_at: string | null;
   vacancy_status: VacancyStatus;
   user_priority: VacancyUserPriority | null;
+  user_comment: string | null;
 }
 
 export interface VacancyListResponse {

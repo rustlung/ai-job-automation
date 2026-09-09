@@ -120,6 +120,7 @@ class VacancyListItem(BaseModel):
     application_updated_at: datetime | None
     vacancy_status: VacancyStatus
     user_priority: VacancyUserPriority | None
+    user_comment: str | None
 
 
 class VacancyListResponse(BaseModel):
