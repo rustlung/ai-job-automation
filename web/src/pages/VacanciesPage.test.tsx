@@ -80,6 +80,23 @@ describe("VacanciesPage", () => {
     expect(screen.getByText("Detail route")).toBeInTheDocument();
   });
 
+  it("keeps table headers and row values in the same semantic column order", () => {
+    const { container } = renderPage();
+    const headers = Array.from(container.querySelectorAll("thead th")).map((header) => header.textContent);
+    const cells = Array.from(container.querySelectorAll("tbody tr:first-child > td"));
+    const vacancyStatusSelect = cells[4]?.querySelector("select") as HTMLSelectElement | null;
+    const userPrioritySelect = cells[7]?.querySelector("select") as HTMLSelectElement | null;
+
+    expect(headers).toEqual(["Дата", "Компания", "Вакансия", "Зарплата", "Статус вакансии", "Статус отклика", "AI Priority", "Мой приоритет", "Мой комментарий", "Score", "Track", "Профили поиска"]);
+    expect(cells).toHaveLength(headers.length);
+    expect(vacancyStatusSelect).toHaveValue("active");
+    expect(cells[5]).toHaveTextContent("Без отклика");
+    expect(cells[6]).toHaveTextContent("P1");
+    expect(userPrioritySelect).toHaveValue("");
+    expect(cells[8]).toHaveTextContent("Добавить комментарий");
+    expect(cells[9]).toHaveTextContent("95");
+  });
+
   it("clears both dates and activates all time", () => {
     renderPage("/vacancies?date_from=2026-09-01&date_to=2026-09-08");
 
@@ -205,7 +222,7 @@ describe("VacanciesPage", () => {
     useUpdateVacancyUserState.mockReturnValue({ isPending: false, isError: true, mutate: vi.fn() });
     renderPage();
     expect(screen.getByRole("combobox", { name: "Изменить статус вакансии" })).toHaveValue("closed");
-    expect(screen.getByText("Не сохранено")).toBeInTheDocument();
+    expect(screen.getAllByText("Не сохранено")).not.toHaveLength(0);
   });
 
   it("restores an application status filter from the URL without local expansion", () => {
