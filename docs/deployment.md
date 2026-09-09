@@ -1037,3 +1037,25 @@ The final command is a CRM batch dry-run. After DB verification, add `--apply`
 to it to call the existing Application CRM sync adapter. Keep the `Отклики`
 sheet until the CRM update has been verified manually; the tooling never
 deletes it.
+
+### Historical CRM Rows Without a CRM Key
+
+Import and activate `AI Job Automation — Application CRM Sync v2.json` in n8n
+without changing the main daily workflow. Configure its production webhook path
+and set `N8N_APPLICATION_CRM_SYNC_WEBHOOK_URL` in the Orchestrator deployment to
+the v2 webhook URL, then restart only the Orchestrator API. v2 keeps normal
+business and canonical-key reconciliation first; for a missing historical HH
+row it finally compares the exact vacancy ID parsed from `Ссылка`. A single
+match is updated in place and repaired to `hh:<external_id>`; duplicate exact
+links fail safely as `crm_row_ambiguous`.
+
+To retry the already imported historical Application IDs after the v2 endpoint
+is configured, reuse the existing apply report; this does not import new
+Applications:
+
+```bash
+cd ~/services/ai-job-automation/orchestrator
+docker compose run --rm -v /path/to/exports:/imports api \
+  python -m app.scripts.sync_historical_applications \
+  --apply --import-report /imports/historical-applications-apply.json
+```

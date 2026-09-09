@@ -243,6 +243,14 @@ as `crm_sync.status=failed`, not as an Application write failure. `POST
 effect. Historical import is an operational CLI, not a Web API: it consumes
 local CSV exports and is dry-run by default.
 
+Application CRM reconciliation remains key-first: `business:<fingerprint>`,
+then a canonical member key such as `hh:<external_id>`. For historical
+backfilled HH vacancies only, the v2 adapter finally compares the exact HH
+external ID parsed from the CRM `Ссылка` column. One exact match is updated and
+repaired to `hh:<external_id>`; zero matches return `crm_row_not_found`, and
+multiple exact matches return `crm_row_ambiguous`. This compatibility fallback
+never uses company/title matching and does not create a CRM row.
+
 `GET /api/applications` is the paginated Applications-screen endpoint. It
 filters by `status`, `date_from`, `date_to`, `platform` and optional
 company/title `search`; each row includes a backend-generated grouped

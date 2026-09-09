@@ -116,5 +116,7 @@ class ApplicationCrmSyncWebhookClient:
             raise ApplicationCrmSyncGatewayError("crm_sync_unavailable") from exc
         if response.status_code == 404:
             raise ApplicationCrmSyncGatewayError("crm_row_not_found")
+        if response.status_code == 409:
+            raise ApplicationCrmSyncGatewayError("crm_row_ambiguous")
         if response.status_code >= 400:
             raise ApplicationCrmSyncGatewayError("crm_sync_failed")

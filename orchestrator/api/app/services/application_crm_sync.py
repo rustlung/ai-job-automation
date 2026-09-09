@@ -55,10 +55,22 @@ class ApplicationCrmSyncService:
             )
         if not settings.google_crm_sync_enabled:
             return self._record(current.id, ApplicationCrmSyncStatus.PENDING, None, None, "crm_sync_disabled", "CRM sync is disabled")
+        canonical_vacancy = self.vacancy_repository.get_by_id(current.vacancy_id)
+        if canonical_vacancy is None:
+            return self._record(
+                current.id,
+                ApplicationCrmSyncStatus.FAILED,
+                None,
+                None,
+                "crm_presentation_not_found",
+                "CRM presentation context is unavailable",
+            )
         payload = {
             "application_id": current.id,
             "presentation_key": group.presentation_key,
             "canonical_member_keys": sorted(f"{member.source}:{member.external_id}" for member in group.members),
+            "source": canonical_vacancy.source,
+            "external_id": canonical_vacancy.external_id,
             "sheet_name": settings.sheet_name,
             "columns": self._columns(current),
         }

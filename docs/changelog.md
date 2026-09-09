@@ -4,6 +4,10 @@
 
 ### Added
 
+- Application CRM Sync v2: after business and canonical CRM-key reconciliation,
+  the historical compatibility path resolves one exact HH ID from `Ссылка` and
+  repairs that row's key to `hh:<external_id>`; ambiguous URL matches remain a
+  controlled conflict and no row is appended;
 - Safe historical Vacancy backfill tooling: dry-run-first exact HH URL matching
   creates only missing canonical records needed by historical Applications;
 - Historical Applications import tooling: local CSV dry-run by default,
