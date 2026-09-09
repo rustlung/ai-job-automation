@@ -39,7 +39,7 @@
 ✅ Vacancy persistence API
 ✅ VacancyAnalysis persistence API
 ✅ Application CRUD UI/API: canonical vacancy relation, multiple records, partial updates, status in grouped Vacancy list and status filter
-✅ Application CRM mirror: DB-first sync state, retryable narrow n8n v2 adapter, J--M/Y--AD mapping, and an exact-HH-ID historical fallback that repairs missing canonical CRM keys
+✅ Application CRM mirror: DB-first sync state, retryable narrow n8n v3 adapter, J--M/Y--AD mapping, and an exact-HH-ID historical fallback for raw or Markdown-wrapped HH links that repairs missing canonical CRM keys
 ✅ Historical Application import tooling: local CSV dry-run, explicit DB apply, and separate CRM batch command
 ✅ Historical Vacancy backfill tooling: required-HH-only CSV planning before Application import, with explicit DB apply
 ✅ Idempotent vacancy upsert

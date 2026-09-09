@@ -1040,16 +1040,16 @@ deletes it.
 
 ### Historical CRM Rows Without a CRM Key
 
-Import and activate `AI Job Automation — Application CRM Sync v2.json` in n8n
+Import and activate `AI Job Automation — Application CRM Sync v3.json` in n8n
 without changing the main daily workflow. Configure its production webhook path
 and set `N8N_APPLICATION_CRM_SYNC_WEBHOOK_URL` in the Orchestrator deployment to
-the v2 webhook URL, then restart only the Orchestrator API. v2 keeps normal
+the v3 webhook URL, then restart only the Orchestrator API. v3 keeps normal
 business and canonical-key reconciliation first; for a missing historical HH
 row it finally compares the exact vacancy ID parsed from `Ссылка`. A single
 match is updated in place and repaired to `hh:<external_id>`; duplicate exact
 links fail safely as `crm_row_ambiguous`.
 
-To retry the already imported historical Application IDs after the v2 endpoint
+To retry the already imported historical Application IDs after the v3 endpoint
 is configured, reuse the existing apply report; this does not import new
 Applications:
 

@@ -245,12 +245,13 @@ local CSV exports and is dry-run by default.
 
 Application CRM reconciliation remains key-first: `business:<fingerprint>`,
 then a canonical member key such as `hh:<external_id>`. For historical
-backfilled HH vacancies only, the v2 adapter finally compares the exact HH
+backfilled HH vacancies only, the v3 adapter finally compares the exact HH
 external ID parsed from the CRM `Ссылка` column. One exact match is updated and
 repaired to `hh:<external_id>`; zero matches return `crm_row_not_found`, and
 multiple exact matches return `crm_row_ambiguous`. This compatibility fallback
-never uses company/title matching and does not create a CRM row.
-The internal v2 webhook contract requires `source` and `external_id` from the
+accepts raw HH URLs or a whole Markdown link wrapper around an HH URL; it never
+uses company/title matching and does not create a CRM row.
+The internal v3 webhook contract requires `source` and `external_id` from the
 latest selected Application's canonical group member; it never derives them
 from the presentation key or the group's representative.
 

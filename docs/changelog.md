@@ -4,6 +4,9 @@
 
 ### Added
 
+- Application CRM Sync v3: exact historical HH reconciliation now safely unwraps
+  a whole Markdown hyperlink before the existing strict HH URL parser; primary
+  CRM-key reconciliation and duplicate-conflict behavior are unchanged;
 - Application CRM Sync v2: after business and canonical CRM-key reconciliation,
   the historical compatibility path resolves one exact HH ID from `Ссылка` and
   repairs that row's key to `hh:<external_id>`; ambiguous URL matches remain a

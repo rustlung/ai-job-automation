@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 WORKFLOW = ROOT / "workflows" / "n8n" / "AI Job Automation — Application CRM Sync v1.json"
 WORKFLOW_V2 = ROOT / "workflows" / "n8n" / "AI Job Automation — Application CRM Sync v2.json"
+WORKFLOW_V3 = ROOT / "workflows" / "n8n" / "AI Job Automation — Application CRM Sync v3.json"
 
 
 def load(path: Path = WORKFLOW) -> dict:
@@ -96,6 +97,83 @@ def test_application_crm_sync_v2_normalizes_required_canonical_identity() -> Non
 
     assert normalized["source"] == "hh"
     assert normalized["external_id"] == "134482249"
+
+
+def test_application_crm_sync_v3_normalizes_markdown_wrapped_hh_url_for_production_case() -> None:
+    workflow = load(WORKFLOW_V3)
+    request = {
+        "application_id": 3,
+        "presentation_key": "hh:134482249",
+        "canonical_member_keys": ["hh:134482249"],
+        "source": "hh",
+        "external_id": "134482249",
+        "sheet_name": "Вакансии",
+        "columns": {},
+    }
+    rows = [
+        {"№": 26, "row_number": 26, "Компания": "ЭОС", "Ссылка": "https://samara.hh.ru/vacancy/134683242", "CRM Key": ""},
+        {
+            "№": 14,
+            "row_number": 14,
+            "Компания": "beoma",
+            "Ссылка": "[https://samara.hh.ru/vacancy/134482249](https://samara.hh.ru/vacancy/134482249)",
+            "CRM Key": "",
+        },
+        {"№": 40, "row_number": 40, "Компания": "Other", "Ссылка": "https://hh.ru/vacancy/134000000", "CRM Key": ""},
+    ]
+
+    resolved = prepare_update(request, rows, WORKFLOW_V3)
+
+    assert workflow["name"] == "AI Job Automation — Application CRM Sync v3"
+    assert node(workflow, "Application CRM Sync Webhook")["parameters"]["path"] == "ai-job-automation-application-crm-sync-v3"
+    assert "function normalizeUrl" in node(workflow, "Prepare Application CRM Update")["parameters"]["jsCode"]
+    assert resolved["found"] is True
+    assert resolved["match_strategy"] == "exact_hh_url_fallback"
+    assert resolved["№"] == 14
+    assert resolved["CRM Key"] == "hh:134482249"
+
+
+def test_application_crm_sync_v3_accepts_only_raw_or_whole_markdown_hh_links() -> None:
+    request = {
+        "presentation_key": "hh:134060247",
+        "canonical_member_keys": ["hh:134060247"],
+        "source": "hh",
+        "external_id": "134060247",
+        "columns": {},
+    }
+    supported_urls = [
+        "https://hh.ru/vacancy/134060247",
+        "https://samara.hh.ru/vacancy/134060247?hhtmFrom=vacancy_search_list",
+        "https://kazan.hh.ru/vpncheeck?backUrl=%2Fvacancy%2F134060247",
+        "[vacancy](https://samara.hh.ru/vacancy/134060247)",
+        "[https://samara.hh.ru/vacancy/134060247](https://samara.hh.ru/vacancy/134060247?hhtmFrom=vacancy_search_list)",
+    ]
+    unsupported_urls = [
+        "[vacancy](not-a-url)",
+        "[vacancy](https://example.com/vacancy/134060247)",
+        "see [vacancy](https://hh.ru/vacancy/134060247)",
+    ]
+
+    for url in supported_urls:
+        assert prepare_update(request, [{"№": 1, "Ссылка": url, "CRM Key": ""}], WORKFLOW_V3)["found"] is True
+    for url in unsupported_urls:
+        assert prepare_update(request, [{"№": 1, "Ссылка": url, "CRM Key": ""}], WORKFLOW_V3) == {"found": False, "error_code": "crm_row_not_found"}
+
+
+def test_application_crm_sync_v3_rejects_duplicate_exact_markdown_links() -> None:
+    request = {
+        "presentation_key": "hh:134482249",
+        "canonical_member_keys": ["hh:134482249"],
+        "source": "hh",
+        "external_id": "134482249",
+        "columns": {},
+    }
+    rows = [
+        {"№": 14, "Ссылка": "[beoma](https://samara.hh.ru/vacancy/134482249)", "CRM Key": ""},
+        {"№": 15, "Ссылка": "[beoma copy](https://hh.ru/vacancy/134482249)", "CRM Key": ""},
+    ]
+
+    assert prepare_update(request, rows, WORKFLOW_V3) == {"found": False, "error_code": "crm_row_ambiguous"}
 
 
 def test_main_daily_crm_workflow_v12_is_not_changed_by_application_adapter() -> None:

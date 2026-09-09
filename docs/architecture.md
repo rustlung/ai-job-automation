@@ -90,10 +90,12 @@ first, then Orchestrator calls a narrow n8n Google-Sheets adapter. Its persisten
 `ApplicationCrmSyncState` records `pending`, `synced`, or `failed` without
 rolling back Application data. The adapter updates only J--M and Y--AD on an
 already reconciled business/canonical CRM row; it never appends a vacancy row.
-Application CRM Sync v2 is key-first (`business:<fingerprint>`, then canonical
+Application CRM Sync v3 is key-first (`business:<fingerprint>`, then canonical
 member key). Only when both miss for an HH Application with a known external ID,
 it performs one exact `Ссылка` URL-ID lookup for a historical/backfilled row.
-One match is repaired to `hh:<external_id>`; zero or multiple matches remain
+The compatibility parser accepts a raw HH URL or a whole Markdown hyperlink
+whose destination is an HH URL. One match is repaired to `hh:<external_id>`;
+zero or multiple matches remain
 controlled failures. This is a compatibility fallback, not a second grouping or
 fuzzy matching algorithm.
 Historical Application import is a one-time operational path, not a daily
