@@ -250,6 +250,9 @@ external ID parsed from the CRM `Ссылка` column. One exact match is update
 repaired to `hh:<external_id>`; zero matches return `crm_row_not_found`, and
 multiple exact matches return `crm_row_ambiguous`. This compatibility fallback
 never uses company/title matching and does not create a CRM row.
+The internal v2 webhook contract requires `source` and `external_id` from the
+latest selected Application's canonical group member; it never derives them
+from the presentation key or the group's representative.
 
 `GET /api/applications` is the paginated Applications-screen endpoint. It
 filters by `status`, `date_from`, `date_to`, `platform` and optional

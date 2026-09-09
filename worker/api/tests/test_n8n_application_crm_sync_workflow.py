@@ -30,6 +30,20 @@ console.log(JSON.stringify(result));
     return json.loads(result.stdout)[0]["json"]
 
 
+def normalize_request(request: dict) -> dict:
+    code = node(load(WORKFLOW_V2), "Validate and Normalize Application CRM Sync")["parameters"]["jsCode"]
+    harness = f"""
+const execute = new Function('$input', '$env', {json.dumps(code)});
+const result = execute(
+  {{ first: () => ({{ json: {json.dumps({'headers': {'x-ai-job-automation-webhook-secret': 'test-secret'}, 'body': request})} }}) }},
+  {{ N8N_WEBHOOK_SECRET: 'test-secret' }},
+);
+console.log(JSON.stringify(result));
+"""
+    result = subprocess.run(["node", "-e", harness], capture_output=True, text=True, encoding="utf-8", check=True)
+    return json.loads(result.stdout)[0]["json"]
+
+
 def test_application_crm_sync_workflow_is_a_narrow_existing_row_adapter() -> None:
     workflow = load()
     update = node(workflow, "Update Application CRM Row")
@@ -60,9 +74,28 @@ def test_application_crm_sync_v2_preserves_v1_and_adds_exact_hh_url_fallback() -
     assert "exact_hh_url_fallback" in prepare_code
     assert "crm_row_ambiguous" in prepare_code
     assert "candidate['Ссылка']" in prepare_code
+    assert "!request.source" in node(workflow, "Validate and Normalize Application CRM Sync")["parameters"]["jsCode"]
+    assert "!request.external_id" in node(workflow, "Validate and Normalize Application CRM Sync")["parameters"]["jsCode"]
     assert len(positions) == len(set(positions))
     assert workflow["connections"]["Application CRM Row Ambiguous?"]["main"][0][0]["node"] == "Respond Application CRM Row Ambiguous"
     assert workflow["connections"]["Application CRM Row Ambiguous?"]["main"][1][0]["node"] == "Respond Application CRM Row Missing"
+
+
+def test_application_crm_sync_v2_normalizes_required_canonical_identity() -> None:
+    request = {
+        "application_id": 3,
+        "presentation_key": "hh:134482249",
+        "canonical_member_keys": ["hh:134482249"],
+        "source": "hh",
+        "external_id": "134482249",
+        "sheet_name": "Вакансии",
+        "columns": {},
+    }
+
+    normalized = normalize_request(request)
+
+    assert normalized["source"] == "hh"
+    assert normalized["external_id"] == "134482249"
 
 
 def test_main_daily_crm_workflow_v12_is_not_changed_by_application_adapter() -> None:

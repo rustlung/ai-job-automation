@@ -6,11 +6,13 @@ import pytest
 
 from app.core.config import Settings
 from app.models.application import Application
+from app.models.vacancy import Vacancy
 from app.repositories.application_crm_sync_state import ApplicationCrmSyncStateRepository
 from app.schemas.application import ApplicationCreate, ApplicationCrmSyncStatus
 from app.schemas.vacancy import VacancyCreate
 from app.services.application import ApplicationService
 from app.services.application_crm_sync import ApplicationCrmSyncService
+from app.services.business_vacancy_grouping import BusinessVacancyGroup
 from app.services.vacancy import VacancyService
 from app.services.web_gateway import ApplicationCrmSyncGatewayError, ApplicationCrmSyncWebhookClient
 
@@ -100,3 +102,67 @@ def test_application_crm_sync_gateway_preserves_ambiguous_row_error(monkeypatch)
         asyncio.run(gateway.sync({"application_id": 1}))
 
     assert exc_info.value.error_code == "crm_row_ambiguous"
+
+
+def test_application_crm_sync_uses_latest_regional_member_not_samara_representative(db_session, vacancy_payload: dict[str, object]) -> None:
+    class CapturingGateway:
+        def __init__(self) -> None:
+            self.payload: dict[str, object] | None = None
+
+        async def sync(self, payload: dict[str, object]) -> None:
+            self.payload = payload
+
+    samara = VacancyService(db_session).upsert(
+        VacancyCreate(**{**vacancy_payload, "source": "hh", "external_id": "134000001", "url": "https://samara.hh.ru/vacancy/134000001"})
+    ).vacancy
+    kazan = VacancyService(db_session).upsert(
+        VacancyCreate(**{**vacancy_payload, "source": "hh", "external_id": "134000002", "url": "https://kazan.hh.ru/vacancy/134000002"})
+    ).vacancy
+    db_session.get(Vacancy, samara.id).business_fingerprint = "regional-business"
+    db_session.get(Vacancy, kazan.id).business_fingerprint = "regional-business"
+    db_session.commit()
+
+    applications = ApplicationService(db_session)
+    applications.create(samara.id, ApplicationCreate(status="submitted"))
+    latest = applications.create(kazan.id, ApplicationCreate(status="response_received"))
+    gateway = CapturingGateway()
+
+    sync = asyncio.run(ApplicationCrmSyncService(db_session, gateway).sync(latest.id))
+
+    assert sync.status == ApplicationCrmSyncStatus.SYNCED
+    assert gateway.payload is not None
+    assert gateway.payload["presentation_key"] == "business:regional-business"
+    assert gateway.payload["source"] == "hh"
+    assert gateway.payload["external_id"] == "134000002"
+
+
+def test_application_crm_sync_fails_safely_when_current_member_is_missing(db_session, vacancy_payload: dict[str, object], monkeypatch) -> None:
+    class CapturingGateway:
+        def __init__(self) -> None:
+            self.called = False
+
+        async def sync(self, payload: dict[str, object]) -> None:
+            self.called = True
+
+    first = VacancyService(db_session).upsert(VacancyCreate(**vacancy_payload)).vacancy
+    second = VacancyService(db_session).upsert(
+        VacancyCreate(**{**vacancy_payload, "external_id": "test-python-002", "url": "https://example.com/vacancies/test-python-002"})
+    ).vacancy
+    application = ApplicationService(db_session).create(first.id, ApplicationCreate(status="submitted"))
+    current = db_session.get(Application, application.id)
+    other = db_session.get(Vacancy, second.id)
+    group = BusinessVacancyGroup(
+        presentation_key="hh:test-python-002",
+        business_fingerprint=None,
+        representative=other,
+        members=[other],
+    )
+    gateway = CapturingGateway()
+    service = ApplicationCrmSyncService(db_session, gateway)
+    monkeypatch.setattr(service, "_current_application_group", lambda _: (current, group))
+
+    sync = asyncio.run(service.sync(application.id))
+
+    assert sync.status == ApplicationCrmSyncStatus.FAILED
+    assert sync.error_code == "crm_presentation_not_found"
+    assert gateway.called is False

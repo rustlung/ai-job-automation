@@ -55,7 +55,7 @@ class ApplicationCrmSyncService:
             )
         if not settings.google_crm_sync_enabled:
             return self._record(current.id, ApplicationCrmSyncStatus.PENDING, None, None, "crm_sync_disabled", "CRM sync is disabled")
-        canonical_vacancy = self.vacancy_repository.get_by_id(current.vacancy_id)
+        canonical_vacancy = next((member for member in group.members if member.id == current.vacancy_id), None)
         if canonical_vacancy is None:
             return self._record(
                 current.id,
