@@ -172,6 +172,8 @@ GET /api/vacancies/{vacancy_id}/applications
 GET /api/applications
 GET /api/applications/{application_id}
 PATCH /api/applications/{application_id}
+GET /api/vacancies/{presentation_key}/user-state
+PATCH /api/vacancies/{presentation_key}/user-state
 ```
 
 `OperationalSettings` is a typed singleton for editable operational values,
@@ -209,6 +211,17 @@ The response includes saved full description, representative analysis, profile
 and provenance unions, compact regional-member metadata, and every Application
 attached to a canonical member. The latest Application is marked deterministically
 by `updated_at DESC, id DESC`. It is independent of Worker availability.
+
+`VacancyUserState` belongs to that same logical presentation key rather than a
+canonical regional member. The read endpoint returns lazy defaults when no row
+has been stored: `vacancy_status=active`, `user_priority=null`, and
+`comment=null`. `PATCH` creates a row on first change; omitted fields remain
+unchanged, while explicit `null` clears `user_priority` or `comment`.
+`vacancy_status` is required whenever supplied and accepts only `active`,
+`archived`, or `closed`. `GET /api/vacancies` exposes group-level
+`vacancy_status` and `user_priority`, with backend filters
+`vacancy_status=active|archived|closed` and `user_priority=P1|P2|P3|none`.
+`none` means a null user priority, not a domain priority.
 
 `GET /api/system/health` is lightweight: it does not call the Worker compute
 preflight or warm an Ollama model. Internal n8n lifecycle endpoints live under

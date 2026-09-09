@@ -31,6 +31,7 @@ const vacancy = {
   provenance_tracks: ["main"],
   run_ids: ["run-1"],
   applications: [],
+  user_state: { id: null, presentation_key: "business:abc123", user_priority: null, comment: null, vacancy_status: "active" as const, created_at: null, updated_at: null },
   members: [
     { source: "hh", external_id: "102", url: "https://samara.hh.ru/vacancy/102", title: "Python Developer", company: "Example Company", location: "Самара", representative: true },
     { source: "hh", external_id: "101", url: "https://kazan.hh.ru/vacancy/101", title: "Python Developer", company: "Example Company", location: "Казань", representative: false }
@@ -42,12 +43,14 @@ const useSearchProfiles = vi.fn();
 const useCreateApplication = vi.fn();
 const useUpdateApplication = vi.fn();
 const useRetryApplicationCrmSync = vi.fn();
+const useUpdateVacancyUserState = vi.fn();
 vi.mock("../hooks/useOrchestrator", () => ({
   useVacancyDetail: (...args: unknown[]) => useVacancyDetail(...args),
   useSearchProfiles: () => useSearchProfiles(),
   useCreateApplication: () => useCreateApplication(),
   useUpdateApplication: () => useUpdateApplication(),
   useRetryApplicationCrmSync: () => useRetryApplicationCrmSync()
+  , useUpdateVacancyUserState: () => useUpdateVacancyUserState()
 }));
 
 function renderPage(entry: string | { pathname: string; state?: unknown } = "/vacancies/business%3Aabc123") {
@@ -61,6 +64,7 @@ describe("VacancyDetailPage", () => {
     useCreateApplication.mockReturnValue({ isPending: false, error: null, mutateAsync: vi.fn() });
     useUpdateApplication.mockReturnValue({ isPending: false, error: null, mutateAsync: vi.fn() });
     useRetryApplicationCrmSync.mockReturnValue({ isPending: false, mutate: vi.fn() });
+    useUpdateVacancyUserState.mockReturnValue({ isPending: false, isError: false, mutateAsync: vi.fn().mockResolvedValue({}) });
   });
   afterEach(() => cleanup());
 
@@ -76,7 +80,20 @@ describe("VacancyDetailPage", () => {
     expect(screen.getByText("Региональные копии: 2")).toBeInTheDocument();
     expect(screen.getByText("Представитель")).toBeInTheDocument();
     expect(screen.getByText("Отклик не отправлен")).toBeInTheDocument();
+    expect(screen.getByText("Не оценено")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Открыть оригинал" })).toHaveAttribute("href", vacancy.url);
+  });
+
+  it("edits user state independently from AI priority", async () => {
+    const updateUserState = vi.fn().mockResolvedValue({});
+    useUpdateVacancyUserState.mockReturnValue({ isPending: false, isError: false, mutateAsync: updateUserState });
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Изменить" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Мой приоритет" }), { target: { value: "P3" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Статус вакансии" }), { target: { value: "archived" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Комментарий" }), { target: { value: "Слишком высокий уровень требований" } });
+    fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+    await waitFor(() => expect(updateUserState).toHaveBeenCalledWith({ presentationKey: "business:abc123", payload: { user_priority: "P3", vacancy_status: "archived", comment: "Слишком высокий уровень требований" } }));
   });
 
   it("shows all group applications and creates a canonical application", async () => {

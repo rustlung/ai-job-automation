@@ -7,12 +7,15 @@ from typing import Generator
 from fastapi.testclient import TestClient
 
 from app.api.routes.web import get_web_vacancy_list_service
+from app.api.routes.vacancy_user_states import get_vacancy_user_state_service
 from app.api.routes.applications import get_web_application_list_service
 from app.main import app
 from app.models.application import Application
 from app.models.vacancy import Vacancy
 from app.models.vacancy_analysis import VacancyAnalysis
+from app.models.vacancy_user_state import VacancyUserState
 from app.services.web_vacancies import WebVacancyListService
+from app.services.vacancy_user_state import VacancyUserStateService
 from app.services.web_applications import WebApplicationListService
 
 
@@ -20,6 +23,7 @@ from app.services.web_applications import WebApplicationListService
 def make_client(db_session) -> Generator[TestClient, None, None]:
     app.dependency_overrides[get_web_vacancy_list_service] = lambda: WebVacancyListService(db_session)
     app.dependency_overrides[get_web_application_list_service] = lambda: WebApplicationListService(db_session)
+    app.dependency_overrides[get_vacancy_user_state_service] = lambda: VacancyUserStateService(db_session)
     try:
         with TestClient(app) as client:
             yield client
@@ -450,3 +454,50 @@ def test_application_list_paginates_multiple_canonical_records(db_session) -> No
     assert first_page.json()["total"] == 2
     assert first_page.json()["items"][0]["id"] == second.id
     assert second_page.json()["items"][0]["id"] == first.id
+
+
+def test_group_user_state_is_stable_across_regional_members_and_filters(db_session) -> None:
+    historical = add_vacancy(
+        db_session, external_id="901", company="Stateful", title="AI Engineer", fingerprint="e" * 64,
+        url="https://kazan.hh.ru/vacancy/901", first_seen_at=datetime(2026, 9, 1, 8, tzinfo=timezone.utc), run_id="run-kazan",
+    )
+    representative = add_vacancy(
+        db_session, external_id="902", company="Stateful", title="AI Engineer", fingerprint="e" * 64,
+        url="https://samara.hh.ru/vacancy/902", first_seen_at=datetime(2026, 9, 2, 8, tzinfo=timezone.utc), run_id="run-samara",
+    )
+    key = f"business:{'e' * 64}"
+    db_session.add(VacancyUserState(presentation_key=key, user_priority="P3", comment="manual feedback", vacancy_status="archived"))
+    db_session.commit()
+
+    with make_client(db_session) as client:
+        listed = client.get("/api/vacancies?vacancy_status=archived&user_priority=P3")
+        detail = client.get(f"/api/vacancies/{key}")
+        updated = client.patch(f"/api/vacancies/{key}/user-state", json={"user_priority": None, "comment": None, "vacancy_status": "closed"})
+        none = client.get("/api/vacancies?user_priority=none")
+
+    assert historical.id != representative.id
+    assert listed.json()["total"] == 1
+    assert listed.json()["items"][0]["external_id"] == representative.external_id
+    assert listed.json()["items"][0]["user_priority"] == "P3"
+    assert detail.json()["user_state"]["comment"] == "manual feedback"
+    assert updated.status_code == 200
+    assert updated.json()["user_priority"] is None
+    assert updated.json()["comment"] is None
+    assert updated.json()["vacancy_status"] == "closed"
+    assert none.json()["total"] == 1
+
+
+def test_lazy_user_state_defaults_and_rejects_invalid_values(db_session) -> None:
+    vacancy = add_vacancy(
+        db_session, external_id="903", company="Defaults", title="Backend", fingerprint=None,
+        url="https://hh.ru/vacancy/903", first_seen_at=datetime(2026, 9, 1, 8, tzinfo=timezone.utc), run_id="run-default",
+    )
+    with make_client(db_session) as client:
+        state = client.get("/api/vacancies/hh:903/user-state")
+        invalid_priority = client.patch("/api/vacancies/hh:903/user-state", json={"user_priority": "ALT"})
+        invalid_status = client.patch("/api/vacancies/hh:903/user-state", json={"vacancy_status": None})
+
+    assert vacancy.id
+    assert state.json() == {"id": None, "presentation_key": "hh:903", "user_priority": None, "comment": None, "vacancy_status": "active", "created_at": None, "updated_at": None}
+    assert invalid_priority.status_code == 422
+    assert invalid_status.status_code == 422

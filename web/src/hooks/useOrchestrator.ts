@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { orchestratorApi } from "../api/orchestrator";
 import { runPollingInterval } from "../lib/format";
-import type { ApplicationCreateRequest, ApplicationFilters, ApplicationPatchRequest, RunCreateRequest, VacancyFilters } from "../types/api";
+import type { ApplicationCreateRequest, ApplicationFilters, ApplicationPatchRequest, RunCreateRequest, VacancyFilters, VacancyUserStatePatchRequest } from "../types/api";
 
 export function useSystemHealth() {
   return useQuery({ queryKey: ["system-health"], queryFn: orchestratorApi.getSystemHealth, refetchInterval: 30_000 });
@@ -72,6 +72,17 @@ export function useUpdateApplication() {
 export function useRetryApplicationCrmSync() {
   const invalidate = useApplicationInvalidation();
   return useMutation({ mutationFn: orchestratorApi.retryApplicationCrmSync, onSuccess: invalidate });
+}
+
+export function useUpdateVacancyUserState() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ presentationKey, payload }: { presentationKey: string; payload: VacancyUserStatePatchRequest }) => orchestratorApi.updateVacancyUserState(presentationKey, payload),
+    onSuccess: () => Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["vacancy"] }),
+      queryClient.invalidateQueries({ queryKey: ["vacancies"] })
+    ])
+  });
 }
 
 export function useStartRun() {

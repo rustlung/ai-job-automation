@@ -79,6 +79,15 @@ by Vacancy Detail, Vacancies, and `/applications`. The special text `Без
 application filters and pagination are query state, while the API returns a
 backend-owned `presentation_key` for navigation to the grouped vacancy detail.
 
+## Vacancy user state
+
+`VacancyUserStateSection` is another controlled detail form, but its values
+belong to the logical `presentation_key`, not to a regional representative or
+an Application. `useUpdateVacancyUserState` uses one mutation and invalidates
+both the detail and grouped list queries. Vacancy status and user-priority
+filters remain URL search params, so a copied link preserves the user-facing
+view; `none` is the explicit query value for an unscored user priority.
+
 ## Build-time environment
 
 `VITE_API_BASE_URL` is read by `src/api/client.ts`. Vite puts it into the
@@ -91,3 +100,5 @@ Potential patterns for a later extraction: typed API client, `HealthCard`,
 filters, entity detail header, metadata sidebar, safe rich-text renderer,
 back navigation with preserved filters, CRUD detail form, shared status badge,
 mutation plus invalidation, URL enum filter and entity-list-to-detail navigation.
+Additional candidates: logical entity user state, user-state detail form,
+independent priority badge and group-level feedback filters.

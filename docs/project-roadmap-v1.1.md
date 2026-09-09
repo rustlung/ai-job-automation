@@ -1458,6 +1458,12 @@ facts, а не только текущий enum. Эта reusable semantics по�
 будущего CRM J/K/L sync; exact current-status filters сохранены для screening,
 test task, offer, rejected и withdrawn.
 
+Milestone 005 завершает permanent foundation пользовательского состояния
+logical vacancy: отдельный `VacancyUserState` хранит независимые user priority,
+comment и status active/archived/closed по stable presentation key. Следующий
+milestone может добавить CRM mirror этих значений; текущая задача не меняет
+Google Sheets, n8n, Worker или AI scoring.
+
 ---
 
 # Правила разработки

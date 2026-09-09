@@ -92,6 +92,10 @@ export interface ApiErrorBody {
 }
 
 export type VacancyPriority = "P1" | "P2" | "P3" | "ALT";
+export type VacancyUserPriority = "P1" | "P2" | "P3";
+export type VacancyStatus = "active" | "archived" | "closed";
+export type VacancyStatusFilter = VacancyStatus;
+export type VacancyUserPriorityFilter = VacancyUserPriority | "none";
 export type ApplicationStatus = "submitted" | "response_received" | "screening" | "test_task" | "interview" | "offer" | "rejected" | "withdrawn";
 export type ApplicationCrmSyncStatus = "pending" | "synced" | "failed";
 export type VacancyApplicationStatusFilter = ApplicationStatus | "none";
@@ -120,6 +124,8 @@ export interface VacancyListItem {
   application_id: number | null;
   application_status: ApplicationStatus | null;
   application_updated_at: string | null;
+  vacancy_status: VacancyStatus;
+  user_priority: VacancyUserPriority | null;
 }
 
 export interface VacancyListResponse {
@@ -138,6 +144,8 @@ export interface VacancyFilters {
   run_id?: string;
   search?: string;
   application_status?: VacancyApplicationStatusFilter;
+  vacancy_status?: VacancyStatusFilter;
+  user_priority?: VacancyUserPriorityFilter;
   limit: number;
   offset: number;
   sort: VacancyListSort;
@@ -270,4 +278,21 @@ export interface VacancyDetail {
   run_ids: string[];
   members: VacancyCanonicalMember[];
   applications: VacancyApplicationDetail[];
+  user_state: VacancyUserState;
+}
+
+export interface VacancyUserState {
+  id: number | null;
+  presentation_key: string;
+  user_priority: VacancyUserPriority | null;
+  comment: string | null;
+  vacancy_status: VacancyStatus;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface VacancyUserStatePatchRequest {
+  user_priority?: VacancyUserPriority | null;
+  comment?: string | null;
+  vacancy_status?: VacancyStatus;
 }

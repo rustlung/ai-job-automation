@@ -13,7 +13,7 @@ import type {
   SystemHealth,
   VacancyDetail,
   VacancyFilters,
-  VacancyListResponse
+  VacancyListResponse, VacancyUserState, VacancyUserStatePatchRequest
 } from "../types/api";
 
 function vacancyQuery(filters: VacancyFilters): string {
@@ -26,6 +26,8 @@ function vacancyQuery(filters: VacancyFilters): string {
     ["run_id", filters.run_id],
     ["search", filters.search],
     ["application_status", filters.application_status]
+    , ["vacancy_status", filters.vacancy_status]
+    , ["user_priority", filters.user_priority]
   ];
   optionalFilters.forEach(([key, value]) => {
     if (value) params.set(key, value);
@@ -56,6 +58,8 @@ export const orchestratorApi = {
   getRun: (runId: string) => request<PipelineRunDetail>(`/api/runs/${encodeURIComponent(runId)}`),
   getVacancies: (filters: VacancyFilters) => request<VacancyListResponse>(`/api/vacancies?${vacancyQuery(filters)}`),
   getVacancyDetail: (presentationKey: string) => request<VacancyDetail>(`/api/vacancies/${encodeURIComponent(presentationKey)}`),
+  getVacancyUserState: (presentationKey: string) => request<VacancyUserState>(`/api/vacancies/${encodeURIComponent(presentationKey)}/user-state`),
+  updateVacancyUserState: (presentationKey: string, payload: VacancyUserStatePatchRequest) => request<VacancyUserState>(`/api/vacancies/${encodeURIComponent(presentationKey)}/user-state`, { method: "PATCH", body: JSON.stringify(payload) }),
   getApplications: (filters: ApplicationFilters) => request<ApplicationListResponse>(`/api/applications?${applicationQuery(filters)}`),
   createApplication: (vacancyId: number, payload: ApplicationCreateRequest) =>
     request<ApplicationWriteResponse>(`/api/vacancies/${vacancyId}/applications`, { method: "POST", body: JSON.stringify(payload) }),

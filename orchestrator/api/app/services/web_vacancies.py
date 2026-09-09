@@ -10,6 +10,7 @@ from app.repositories.application import ApplicationRepository
 from app.repositories.application_crm_sync_state import ApplicationCrmSyncStateRepository
 from app.repositories.vacancy import VacancyRepository
 from app.repositories.vacancy_analysis import VacancyAnalysisRepository
+from app.repositories.vacancy_user_state import VacancyUserStateRepository
 from app.schemas.vacancy_analysis import VacancyAnalysisPriority
 from app.schemas.application import ApplicationCrmSyncRead, ApplicationCrmSyncStatus
 from app.schemas.web import (
@@ -22,7 +23,10 @@ from app.schemas.web import (
     VacancyListSort,
     VacancyApplicationDetail,
     VacancyApplicationStatusFilter,
+    VacancyStatusFilter,
+    VacancyUserPriorityFilter,
 )
+from app.schemas.vacancy_user_state import VacancyStatus, VacancyUserStateRead
 from app.services.application import ApplicationService
 from app.services.application_stage import matches_application_filter
 from app.services.business_vacancy_grouping import group_business_vacancies, merge_profile_ids
@@ -36,6 +40,7 @@ class WebVacancyListService:
         self.analysis_repository = VacancyAnalysisRepository(session)
         self.application_repository = ApplicationRepository(session)
         self.application_crm_sync_state_repository = ApplicationCrmSyncStateRepository(session)
+        self.vacancy_user_state_repository = VacancyUserStateRepository(session)
 
     def list(
         self,
@@ -46,6 +51,8 @@ class WebVacancyListService:
         track: str | None,
         profile_id: str | None,
         application_status: VacancyApplicationStatusFilter | None,
+        vacancy_status: VacancyStatusFilter | None,
+        user_priority: VacancyUserPriorityFilter | None,
         run_id: str | None,
         search: str | None,
         limit: int,
@@ -58,6 +65,11 @@ class WebVacancyListService:
         applications_by_vacancy_id = self._applications_by_vacancy_id(
             self.application_repository.list_by_vacancy_ids([vacancy.id for vacancy in vacancies])
         )
+        groups = group_business_vacancies(vacancies)
+        user_states_by_key = {
+            state.presentation_key: state
+            for state in self.vacancy_user_state_repository.list_by_presentation_keys([group.presentation_key for group in groups])
+        }
         analyses_by_vacancy_id: dict[int, list] = {}
         latest_analyses: dict[int, object] = {}
         for analysis in analyses:
@@ -65,7 +77,7 @@ class WebVacancyListService:
             latest_analyses[analysis.vacancy_id] = analysis
 
         items: list[VacancyListItem] = []
-        for group in group_business_vacancies(vacancies):
+        for group in groups:
             representative_analysis = latest_analyses.get(group.representative.id)
             if representative_analysis is None:
                 continue
@@ -81,6 +93,7 @@ class WebVacancyListService:
                 for application in applications_by_vacancy_id.get(member.id, [])
             ]
             current_application = self._current_application(group_applications)
+            user_state = user_states_by_key.get(group.presentation_key)
             first_seen_at = min(self._as_utc(member.first_seen_at) for member in group.members)
             semantic_snapshot = representative_analysis.semantic_snapshot or {}
             track_value = semantic_snapshot.get("target_track")
@@ -106,6 +119,8 @@ class WebVacancyListService:
                 application_id=current_application.id if current_application is not None else None,
                 application_status=current_application.status if current_application is not None else None,
                 application_updated_at=(self._as_utc(current_application.updated_at) if current_application is not None else None),
+                vacancy_status=user_state.vacancy_status if user_state is not None else VacancyStatus.ACTIVE,
+                user_priority=user_state.user_priority if user_state is not None else None,
             )
             if self._matches_filters(
                 item,
@@ -116,6 +131,8 @@ class WebVacancyListService:
                 track=track,
                 profile_id=profile_id,
                 application_status=application_status,
+                vacancy_status=vacancy_status,
+                user_priority=user_priority,
                 current_application=current_application,
                 run_id=run_id,
                 search=search,
@@ -131,7 +148,7 @@ class WebVacancyListService:
         )
 
     def get(self, presentation_key: str) -> VacancyDetail:
-        group = self._find_group(presentation_key)
+        group = self.find_group(presentation_key)
         member_ids = [member.id for member in group.members]
         analyses = self.analysis_repository.list_by_vacancy_ids(member_ids)
         applications_by_vacancy_id = self._applications_by_vacancy_id(
@@ -157,6 +174,7 @@ class WebVacancyListService:
             for state in self.application_crm_sync_state_repository.list_by_application_ids([application.id for application in group_applications])
         }
         member_by_id = {member.id: member for member in group.members}
+        user_state = self.vacancy_user_state_repository.get_by_presentation_key(group.presentation_key)
         provenance = representative_analysis.provenance or {}
         snapshot = representative_analysis.vacancy_snapshot or {}
         semantic_snapshot = representative_analysis.semantic_snapshot or {}
@@ -224,9 +242,18 @@ class WebVacancyListService:
                 )
                 for application in self._ordered_applications(group_applications)
             ],
+            user_state=VacancyUserStateRead(
+                id=user_state.id if user_state is not None else None,
+                presentation_key=group.presentation_key,
+                user_priority=user_state.user_priority if user_state is not None else None,
+                comment=user_state.comment if user_state is not None else None,
+                vacancy_status=user_state.vacancy_status if user_state is not None else VacancyStatus.ACTIVE,
+                created_at=self._as_utc(user_state.created_at) if user_state is not None else None,
+                updated_at=self._as_utc(user_state.updated_at) if user_state is not None else None,
+            ),
         )
 
-    def _find_group(self, presentation_key: str):
+    def find_group(self, presentation_key: str):
         if presentation_key.startswith("business:"):
             fingerprint = presentation_key.removeprefix("business:")
             if not fingerprint:
@@ -290,6 +317,8 @@ class WebVacancyListService:
         track: str | None,
         profile_id: str | None,
         application_status: VacancyApplicationStatusFilter | None,
+        vacancy_status: VacancyStatusFilter | None,
+        user_priority: VacancyUserPriorityFilter | None,
         current_application: Application | None,
         run_id: str | None,
         search: str | None,
@@ -310,6 +339,13 @@ class WebVacancyListService:
             application_status.value if application_status is not None else None,
         ):
             return False
+        if vacancy_status is not None and item.vacancy_status != vacancy_status:
+            return False
+        if user_priority is not None:
+            if user_priority == VacancyUserPriorityFilter.NONE and item.user_priority is not None:
+                return False
+            if user_priority != VacancyUserPriorityFilter.NONE and item.user_priority != user_priority.value:
+                return False
         if run_id and not any(getattr(analysis, "run_id", None) == run_id for analysis in member_analyses):
             return False
         if search:

@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.schemas.application import ApplicationCrmSyncRead, ApplicationRead, ApplicationStatus
 from app.schemas.pipeline_run import PipelineRunRead
 from app.schemas.vacancy_analysis import VacancyAnalysisPriority
+from app.schemas.vacancy_user_state import VacancyStatus, VacancyUserPriority, VacancyUserStateRead
 
 
 class SearchProfileTrack(str, Enum):
@@ -80,6 +81,19 @@ class VacancyApplicationStatusFilter(str, Enum):
     WITHDRAWN = ApplicationStatus.WITHDRAWN.value
 
 
+class VacancyStatusFilter(str, Enum):
+    ACTIVE = VacancyStatus.ACTIVE.value
+    ARCHIVED = VacancyStatus.ARCHIVED.value
+    CLOSED = VacancyStatus.CLOSED.value
+
+
+class VacancyUserPriorityFilter(str, Enum):
+    NONE = "none"
+    P1 = VacancyUserPriority.P1.value
+    P2 = VacancyUserPriority.P2.value
+    P3 = VacancyUserPriority.P3.value
+
+
 class VacancyListItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -104,6 +118,8 @@ class VacancyListItem(BaseModel):
     application_id: int | None
     application_status: ApplicationStatus | None
     application_updated_at: datetime | None
+    vacancy_status: VacancyStatus
+    user_priority: VacancyUserPriority | None
 
 
 class VacancyListResponse(BaseModel):
@@ -181,3 +197,4 @@ class VacancyDetail(BaseModel):
     run_ids: list[str]
     members: list[VacancyCanonicalMember]
     applications: list[VacancyApplicationDetail]
+    user_state: VacancyUserStateRead

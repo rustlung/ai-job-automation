@@ -4,6 +4,11 @@
 
 ### Added
 
+- Vacancy user state: persistent logical-presentation feedback with independent
+  user priority, comment and active/archived/closed status; the React Vacancy
+  Detail and grouped Vacancies list expose editable state and URL-synchronised
+  backend filters. Google Sheets synchronization remains a later milestone;
+
 - Application CRM Sync v3: exact historical HH reconciliation now safely unwraps
   a whole Markdown hyperlink before the existing strict HH URL parser; primary
   CRM-key reconciliation and duplicate-conflict behavior are unchanged;

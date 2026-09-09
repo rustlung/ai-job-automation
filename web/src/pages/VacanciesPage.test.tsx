@@ -25,7 +25,9 @@ const vacancy = {
   member_count: 2,
   application_id: null,
   application_status: null,
-  application_updated_at: null
+  application_updated_at: null,
+  vacancy_status: "active" as const,
+  user_priority: null
 };
 
 const useVacancies = vi.fn();
@@ -147,6 +149,23 @@ describe("VacanciesPage", () => {
 
     fireEvent.change(dropdown, { target: { value: "" } });
     expect(screen.getByTestId("location")).not.toHaveTextContent("application_status");
+  });
+
+  it("synchronizes vacancy status and user priority filters and resets pagination", () => {
+    renderPage("/vacancies?offset=50");
+    fireEvent.change(screen.getByRole("combobox", { name: "Статус вакансии" }), { target: { value: "archived" } });
+    expect(screen.getByTestId("location")).toHaveTextContent("vacancy_status=archived");
+    expect(screen.getByTestId("location")).not.toHaveTextContent("offset");
+    fireEvent.change(screen.getByRole("combobox", { name: "Мой приоритет" }), { target: { value: "P3" } });
+    expect(screen.getByTestId("location")).toHaveTextContent("user_priority=P3");
+    expect(useVacancies).toHaveBeenLastCalledWith(expect.objectContaining({ vacancy_status: "archived", user_priority: "P3" }));
+  });
+
+  it("shows independent vacancy and user priority values", () => {
+    useVacancies.mockReturnValue({ data: { items: [{ ...vacancy, priority: "P1", user_priority: "P3", vacancy_status: "closed" }], total: 1, limit: 25, offset: 0 }, isLoading: false, isError: false });
+    renderPage();
+    expect(screen.getAllByText("Закрыта")).toHaveLength(2);
+    expect(screen.getByText("Мой: P3")).toBeInTheDocument();
   });
 
   it("restores an application status filter from the URL without local expansion", () => {

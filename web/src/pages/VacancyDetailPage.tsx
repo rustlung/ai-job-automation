@@ -3,6 +3,7 @@ import { Link, useLocation, useParams } from "react-router-dom";
 
 import { VacancyDescription } from "../components/VacancyDescription";
 import { ApplicationSection } from "../components/ApplicationSection";
+import { VacancyUserStateSection } from "../components/VacancyUserStateSection";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { ApiError } from "../api/client";
 import { useSearchProfiles, useVacancyDetail } from "../hooks/useOrchestrator";
@@ -60,7 +61,7 @@ export function VacancyDetailPage() {
     </header>
 
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-      <main className="min-w-0 space-y-6"><VacancyDescription description={vacancy.description} /><ApplicationSection applications={vacancy.applications} vacancyId={vacancy.vacancy_id} />
+      <main className="min-w-0 space-y-6"><VacancyDescription description={vacancy.description} /><ApplicationSection applications={vacancy.applications} vacancyId={vacancy.vacancy_id} /><VacancyUserStateSection state={vacancy.user_state} />
         {vacancy.member_count > 1 && <section className="border border-line bg-white p-5"><h2 className="text-lg font-semibold">Региональные копии: {vacancy.member_count}</h2><ul className="mt-4 divide-y divide-line">{vacancy.members.map((member) => <li key={`${member.source}:${member.external_id}`} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"><div><p className="font-medium">{member.location ?? "Локация не указана"}{member.representative && <span className="ml-2 bg-zinc-900 px-2 py-0.5 text-xs font-semibold text-white">Представитель</span>}</p><p className="mt-1 font-mono text-xs text-zinc-500">{member.source}:{member.external_id}</p></div><a href={member.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-zinc-700 underline decoration-zinc-300 underline-offset-4 hover:decoration-zinc-900">Открыть</a></li>)}</ul></section>}
         <details className="border border-line bg-white p-5"><summary className="cursor-pointer text-sm font-semibold">Техническая информация</summary><dl className="mt-4 grid gap-3 text-sm md:grid-cols-2"><div><dt className="text-zinc-500">Presentation key</dt><dd className="mt-1 break-all font-mono text-xs">{vacancy.presentation_key}</dd></div><div><dt className="text-zinc-500">Run IDs</dt><dd className="mt-1 break-all font-mono text-xs">{vacancy.run_ids.join(", ") || "—"}</dd></div>{vacancy.query_variant_ids.length > 0 && <div><dt className="text-zinc-500">Query variants</dt><dd className="mt-1 break-all font-mono text-xs">{vacancy.query_variant_ids.join(", ")}</dd></div>}{vacancy.provenance_tracks.length > 0 && <div><dt className="text-zinc-500">Provenance tracks</dt><dd className="mt-1">{vacancy.provenance_tracks.join(", ")}</dd></div>}</dl></details>
       </main>
