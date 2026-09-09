@@ -20,6 +20,8 @@ from app.services.business_vacancy_grouping import group_business_vacancies
 SAMARA = ZoneInfo("Europe/Samara")
 HH_VACANCY_URL = re.compile(r"(?:https?://)?(?:[^/]+\.)?hh\.ru/vacancy/(\d+)", re.IGNORECASE)
 YES_VALUES = {"да", "yes", "y", "1", "true"}
+HISTORICAL_APPLICATION_URL_HEADERS = ("Ссылка на вакансию", "Ссылка", "URL", "Vacancy URL", "vacancy_url")
+MAIN_CRM_URL_HEADERS = ("Ссылка", "URL", "Vacancy URL", "vacancy_url")
 
 
 @dataclass(frozen=True)
@@ -132,7 +134,7 @@ class HistoricalApplicationImportService:
         planned_identities: set[tuple[int, str | None, str]] = set()
 
         for row_number, row in enumerate(historical_rows, start=2):
-            url = _first_value(row, "Ссылка", "URL", "Vacancy URL", "Вакансия", "vacancy_url")
+            url = _first_value(row, *HISTORICAL_APPLICATION_URL_HEADERS)
             external_id = extract_hh_external_id(url)
             if external_id is None:
                 report.skipped += 1
@@ -208,7 +210,7 @@ class HistoricalApplicationImportService:
             crm_key = _normalized(row.get("CRM Key"))
             if crm_key:
                 by_key.setdefault(crm_key, row)
-            external_id = extract_hh_external_id(_first_value(row, "Ссылка", "URL", "Vacancy URL", "Вакансия", "vacancy_url"))
+            external_id = extract_hh_external_id(_first_value(row, *MAIN_CRM_URL_HEADERS))
             if external_id:
                 by_external_id.setdefault(external_id, row)
         return by_key, by_external_id

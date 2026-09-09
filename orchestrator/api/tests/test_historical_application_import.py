@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime, timezone
+from pathlib import Path
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -13,6 +14,7 @@ from app.services.historical_application_import import (
     derive_historical_status,
     extract_hh_external_id,
     parse_historical_datetime,
+    read_csv_rows,
 )
 from app.services.vacancy import VacancyService
 
@@ -39,6 +41,37 @@ def test_hh_url_parser_handles_regional_query_and_encoded_redirect_urls() -> Non
     assert extract_hh_external_id("https://hh.ru/applicant/vacancy_response?backUrl=https%3A%2F%2Fkazan.hh.ru%2Fvacancy%2F789%3FhhtmFrom%3Dvacancy") == "789"
     assert extract_hh_external_id("https://career.habr.com/vacancies/1") is None
     assert extract_hh_external_id("not a URL") is None
+
+
+def test_real_google_sheets_headers_use_explicit_vacancy_links(tmp_path: Path, db_session, vacancy_payload: dict[str, object]) -> None:
+    vacancy = create_hh_vacancy(db_session, vacancy_payload)
+    applications_csv = tmp_path / "otkliki.csv"
+    applications_csv.write_text(
+        "Дата,Компания,Вакансия,Статус,Следующий шаг,Ссылка на вакансию,Текст отклика,Ответ\n"
+        f"01.09.2026,Test Company,Название а не URL,ignored,ignored,{vacancy.url},Текст,Получили\n",
+        encoding="utf-8-sig",
+    )
+    crm_csv = tmp_path / "vacancies.csv"
+    crm_csv.write_text(
+        "№,Компания,Должность,Тип,Приоритет,ЗП,Формат,Стек,Дата,Отклик,Ответ,Интервью,Итог,Ссылка\n"
+        f"1,Test Company,Python Backend,main,P1,,,Python,01.09.2026,Да,Да,Нет,,{vacancy.url}\n",
+        encoding="utf-8-sig",
+    )
+
+    source_rows = read_csv_rows(applications_csv)
+    crm_rows = read_csv_rows(crm_csv)
+    service = HistoricalApplicationImportService(db_session)
+    report = service.run(source_rows, crm_rows)
+    applied = service.run(source_rows, crm_rows, apply=True)
+
+    assert source_rows[0]["Вакансия"] == "Название а не URL"
+    assert source_rows[0]["Ссылка на вакансию"] == vacancy.url
+    assert report.supported_rows == 1
+    assert report.matched_vacancies == 1
+    assert report.skipped == 0
+    assert report.would_create == 1
+    assert applied.created_application_ids
+    assert ApplicationService(db_session).list_for_vacancy(vacancy.id)[0].status.value == "response_received"
 
 
 def test_status_derivation_is_conservative_and_ignores_technical_status() -> None:
