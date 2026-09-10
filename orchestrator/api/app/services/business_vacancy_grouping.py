@@ -49,10 +49,10 @@ def merge_profile_ids(analyses: Iterable[VacancyAnalysis]) -> list[str]:
 
 
 def _representative_sort_key(vacancy: Vacancy) -> tuple[int, int, str, str]:
-    hostname = (urlparse(vacancy.url).hostname or "").casefold()
+    hostname = (urlparse(vacancy.url or "").hostname or "").casefold()
     samara_priority = 0 if hostname == "samara.hh.ru" else 1
     try:
         numeric_external_id = int(vacancy.external_id)
     except ValueError:
         numeric_external_id = 10**30
-    return samara_priority, numeric_external_id, vacancy.url, vacancy.external_id
+    return samara_priority, numeric_external_id, vacancy.url or "", vacancy.external_id

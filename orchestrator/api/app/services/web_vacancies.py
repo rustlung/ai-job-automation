@@ -79,8 +79,6 @@ class WebVacancyListService:
         items: list[VacancyListItem] = []
         for group in groups:
             representative_analysis = latest_analyses.get(group.representative.id)
-            if representative_analysis is None:
-                continue
 
             member_analyses = [
                 analysis
@@ -95,7 +93,7 @@ class WebVacancyListService:
             current_application = self._current_application(group_applications)
             user_state = user_states_by_key.get(group.presentation_key)
             first_seen_at = min(self._as_utc(member.first_seen_at) for member in group.members)
-            semantic_snapshot = representative_analysis.semantic_snapshot or {}
+            semantic_snapshot = representative_analysis.semantic_snapshot if representative_analysis is not None else {}
             track_value = semantic_snapshot.get("target_track")
             item = VacancyListItem(
                 presentation_key=group.presentation_key,
@@ -109,12 +107,12 @@ class WebVacancyListService:
                 published_at=group.representative.published_at,
                 first_seen_at=first_seen_at,
                 url=group.representative.url,
-                priority=representative_analysis.priority,
-                final_score=representative_analysis.final_score,
+                priority=representative_analysis.priority if representative_analysis is not None else None,
+                final_score=representative_analysis.final_score if representative_analysis is not None else None,
                 track=track_value if isinstance(track_value, str) and track_value else None,
-                summary=representative_analysis.summary,
+                summary=representative_analysis.summary if representative_analysis is not None else "",
                 profile_ids=merge_profile_ids(member_analyses),
-                run_id=representative_analysis.run_id,
+                run_id=representative_analysis.run_id if representative_analysis is not None else None,
                 member_count=len(group.members),
                 application_id=current_application.id if current_application is not None else None,
                 application_status=current_application.status if current_application is not None else None,
@@ -160,8 +158,6 @@ class WebVacancyListService:
             latest_analyses[analysis.vacancy_id] = analysis
 
         representative_analysis = latest_analyses.get(group.representative.id)
-        if representative_analysis is None:
-            raise WebVacancyNotFoundError
 
         member_analyses = analyses
         group_applications = [
@@ -176,10 +172,10 @@ class WebVacancyListService:
         }
         member_by_id = {member.id: member for member in group.members}
         user_state = self.vacancy_user_state_repository.get_by_presentation_key(group.presentation_key)
-        provenance = representative_analysis.provenance or {}
-        snapshot = representative_analysis.vacancy_snapshot or {}
-        semantic_snapshot = representative_analysis.semantic_snapshot or {}
-        deterministic_features = representative_analysis.deterministic_features or {}
+        provenance = representative_analysis.provenance if representative_analysis is not None else {}
+        snapshot = representative_analysis.vacancy_snapshot if representative_analysis is not None else {}
+        semantic_snapshot = representative_analysis.semantic_snapshot if representative_analysis is not None else {}
+        deterministic_features = representative_analysis.deterministic_features if representative_analysis is not None else {}
         track = semantic_snapshot.get("target_track")
         return VacancyDetail(
             presentation_key=group.presentation_key,
@@ -202,14 +198,14 @@ class WebVacancyListService:
             description=group.representative.description,
             skills=self._string_list(snapshot, "skills"),
             analysis=VacancyAnalysisDetail(
-                priority=representative_analysis.priority,
-                final_score=representative_analysis.final_score,
-                relevance=representative_analysis.relevance,
+                priority=representative_analysis.priority if representative_analysis is not None else None,
+                final_score=representative_analysis.final_score if representative_analysis is not None else None,
+                relevance=representative_analysis.relevance if representative_analysis is not None else 0,
                 track=track if isinstance(track, str) and track else None,
-                summary=representative_analysis.summary,
-                reason=representative_analysis.reason,
-                risks=list(representative_analysis.risks or []),
-                hard_blockers=list(representative_analysis.hard_blockers or []),
+                summary=representative_analysis.summary if representative_analysis is not None else "",
+                reason=representative_analysis.reason if representative_analysis is not None else "",
+                risks=list(representative_analysis.risks or []) if representative_analysis is not None else [],
+                hard_blockers=list(representative_analysis.hard_blockers or []) if representative_analysis is not None else [],
             ),
             profile_ids=merge_profile_ids(member_analyses),
             query_variant_ids=self._merge_provenance_values(member_analyses, "query_variant_ids"),

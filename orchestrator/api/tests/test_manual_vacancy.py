@@ -5,6 +5,9 @@ from app.schemas.vacancy import VacancyCreate
 from app.services.business_vacancy_grouping import group_business_vacancies
 from app.services.manual_vacancy import ManualVacancyService
 from app.services.vacancy import VacancyService
+from app.services.web_vacancies import WebVacancyListService
+from app.services.application import ApplicationService
+from app.schemas.application import ApplicationCreate, ApplicationStatus
 
 
 def payload(**changes):
@@ -38,3 +41,14 @@ def test_hh_duplicate_returns_existing_group_without_creating_manual(db_session,
 def test_unparseable_hh_url_still_creates_manual_vacancy(db_session):
     result = ManualVacancyService(db_session).create(payload(origin="hh", url="https://hh.ru/search"))
     assert result.created
+
+
+def test_manual_presentation_key_opens_detail_list_user_state_and_application(db_session):
+    result = ManualVacancyService(db_session).create(payload())
+    web = WebVacancyListService(db_session)
+    detail = web.get(result.presentation_key)
+    listed = web.list(date_from=None, date_to=None, priorities=None, track=None, profile_id=None, application_status=None, vacancy_status=None, user_priority=None, run_id=None, search=None, limit=25, offset=0, sort="first_seen", sort_direction="desc")
+    application = ApplicationService(db_session).create(detail.vacancy_id, ApplicationCreate(status=ApplicationStatus.SUBMITTED))
+    assert detail.presentation_key == result.presentation_key
+    assert any(item.presentation_key == result.presentation_key for item in listed.items)
+    assert application.vacancy_id == detail.vacancy_id
