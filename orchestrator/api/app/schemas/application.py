@@ -108,7 +108,7 @@ class ApplicationListItem(ApplicationRead):
     presentation_key: str
     company: str
     title: str
-    vacancy_url: str
+    vacancy_url: str | None
 
 
 class ApplicationListResponse(BaseModel):

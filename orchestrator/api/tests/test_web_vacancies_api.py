@@ -5,6 +5,7 @@ import inspect
 from typing import Generator
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.api.routes.web import get_web_vacancy_list_service
 from app.api.routes.vacancy_user_states import get_vacancy_user_state_crm_sync_service, get_vacancy_user_state_service
@@ -14,9 +15,11 @@ from app.models.application import Application
 from app.models.vacancy import Vacancy
 from app.models.vacancy_analysis import VacancyAnalysis
 from app.models.vacancy_user_state import VacancyUserState
+from app.schemas.manual_vacancy import ManualVacancyCreate
 from app.services.web_vacancies import WebVacancyListService
 from app.services.vacancy_user_state import VacancyUserStateService
 from app.schemas.vacancy_user_state import VacancyUserStateCrmSyncRead, VacancyUserStateCrmSyncStatus
+from app.services.manual_vacancy import ManualVacancyService
 from app.services.web_applications import WebApplicationListService
 
 
@@ -251,6 +254,64 @@ def test_non_groupable_vacancy_uses_canonical_presentation_key_and_priority_filt
     assert response.json()["items"][0]["presentation_key"] == "hh:301"
 
 
+def test_vacancy_list_accepts_nullable_analysis_semantic_snapshot(db_session) -> None:
+    vacancy = add_vacancy(
+        db_session,
+        external_id="302",
+        company="Nullable Analysis",
+        title="Backend Developer",
+        fingerprint=None,
+        url="https://hh.ru/vacancy/302",
+        first_seen_at=datetime(2026, 9, 5, 8, tzinfo=timezone.utc),
+        run_id="run-nullable-analysis",
+    )
+    analysis = db_session.scalar(select(VacancyAnalysis).where(VacancyAnalysis.vacancy_id == vacancy.id))
+    analysis.semantic_snapshot = None
+    db_session.commit()
+
+    with make_client(db_session) as client:
+        response = client.get("/api/vacancies?limit=25&offset=0&sort=first_seen&sort_direction=desc")
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["presentation_key"] == "hh:302"
+    assert response.json()["items"][0]["track"] is None
+
+
+def test_manual_vacancy_without_url_or_analysis_supports_list_filters_detail_and_user_state(db_session) -> None:
+    created = ManualVacancyService(db_session).create(
+        ManualVacancyCreate(
+            company="Manual Co",
+            title="Manual role",
+            description="Useful manual description",
+            origin="telegram",
+            user_priority="P2",
+            vacancy_status="archived",
+            user_comment="Keep",
+        )
+    )
+    encoded_key = created.presentation_key.replace(":", "%3A")
+
+    with make_client(db_session) as client:
+        listed = client.get("/api/vacancies?limit=25&offset=0&sort=first_seen&sort_direction=desc")
+        by_status = client.get("/api/vacancies?vacancy_status=archived")
+        by_priority = client.get("/api/vacancies?user_priority=P2")
+        detail = client.get(f"/api/vacancies/{encoded_key}")
+        user_state = client.get(f"/api/vacancies/{encoded_key}/user-state")
+
+    assert listed.status_code == 200
+    assert listed.json()["items"][0]["presentation_key"] == created.presentation_key
+    assert listed.json()["items"][0]["url"] is None
+    assert listed.json()["items"][0]["priority"] is None
+    assert by_status.status_code == 200
+    assert by_status.json()["total"] == 1
+    assert by_priority.status_code == 200
+    assert by_priority.json()["total"] == 1
+    assert detail.status_code == 200
+    assert detail.json()["presentation_key"] == created.presentation_key
+    assert user_state.status_code == 200
+    assert user_state.json()["presentation_key"] == created.presentation_key
+
+
 def test_business_vacancy_detail_uses_samara_representative_and_group_provenance(db_session) -> None:
     add_vacancy(
         db_session,
@@ -415,6 +476,32 @@ def test_application_list_uses_grouped_presentation_keys_and_filters(db_session)
     assert listed.json()["items"][0]["presentation_key"] == "hh:701"
     assert listed.json()["items"][0]["company"] == "Gamma"
     assert empty.json()["items"] == []
+
+
+def test_application_list_accepts_manual_vacancy_without_url(db_session) -> None:
+    created = ManualVacancyService(db_session).create(
+        ManualVacancyCreate(
+            company="Manual Co",
+            title="Manual role",
+            description="Useful manual description",
+            origin="direct_contact",
+        )
+    )
+    application = add_application(
+        db_session,
+        vacancy_id=created.vacancy_id,
+        status="submitted",
+        updated_at=datetime(2026, 9, 6, 8, tzinfo=timezone.utc),
+        platform=None,
+    )
+
+    with make_client(db_session) as client:
+        response = client.get("/api/applications?limit=25&offset=0")
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["id"] == application.id
+    assert response.json()["items"][0]["presentation_key"] == created.presentation_key
+    assert response.json()["items"][0]["vacancy_url"] is None
 
 
 def test_application_list_paginates_multiple_canonical_records(db_session) -> None:

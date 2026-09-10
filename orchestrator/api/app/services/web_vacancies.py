@@ -93,7 +93,7 @@ class WebVacancyListService:
             current_application = self._current_application(group_applications)
             user_state = user_states_by_key.get(group.presentation_key)
             first_seen_at = min(self._as_utc(member.first_seen_at) for member in group.members)
-            semantic_snapshot = representative_analysis.semantic_snapshot if representative_analysis is not None else {}
+            semantic_snapshot = representative_analysis.semantic_snapshot or {} if representative_analysis is not None else {}
             track_value = semantic_snapshot.get("target_track")
             item = VacancyListItem(
                 presentation_key=group.presentation_key,
