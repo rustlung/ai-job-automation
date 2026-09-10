@@ -40,6 +40,9 @@ def test_manual_vacancy_workflow_has_narrow_exact_key_topology() -> None:
     assert node(workflow, "Manual Vacancy CRM Create Webhook")["parameters"]["path"] == "ai-job-automation-manual-vacancy-crm-create-v1"
     assert read["alwaysOutputData"] is True
     assert append["parameters"]["operation"] == "append"
+    assert append["parameters"]["columns"]["mappingMode"] == "autoMapInputData"
+    assert "schema" not in append["parameters"]["columns"]
+    assert "value" not in append["parameters"]["columns"]
     assert "['CRM Key']" in prepare_code
     assert "Компания" not in prepare_code
     assert "Ссылка" not in prepare_code
@@ -59,9 +62,7 @@ def test_exact_manual_key_controls_append_existing_and_ambiguous() -> None:
     assert ambiguous == {"action": "ambiguous", "error_code": "crm_row_ambiguous"}
 
 
-def test_append_mapping_contains_only_expected_crm_values_and_empty_ai_fields() -> None:
-    workflow = load()
-    mapping = node(workflow, "Append Manual Vacancy CRM Row")["parameters"]["columns"]["value"]
+def test_append_mapping_uses_exact_input_keys_and_preserves_empty_values() -> None:
     columns = {
         "Компания": "Manual Co", "Должность": "Manual role", "Тип": "Manual", "Приоритет": "",
         "ЗП": "", "Формат": "", "Стек": "", "Дата": "10.09.2026", "Отклик": "Нет",
@@ -72,7 +73,7 @@ def test_append_mapping_contains_only_expected_crm_values_and_empty_ai_fields() 
     prepared = prepare({"presentation_key": "manual:uuid-1", "sheet_name": "Вакансии", "columns": columns}, [])
 
     assert prepared == {"action": "append", **columns}
-    assert set(mapping) == set(columns)
+    assert prepared["CRM Key"] == "manual:uuid-1"
     assert all(columns[name] == "" for name in ["Приоритет", "Score", "AI причина", "Риски", "Hard blockers", "Run ID", "Анализ обновлён", "Профили поиска"])
 
 
