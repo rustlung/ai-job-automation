@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from typing import Annotated
+from enum import Enum
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
@@ -74,7 +75,7 @@ class VacancyRead(BaseModel):
     id: int
     source: str
     external_id: str
-    url: str
+    url: str | None
     title: str
     company: str
     location: str | None

@@ -94,6 +94,7 @@ export interface ApiErrorBody {
 export type VacancyPriority = "P1" | "P2" | "P3" | "ALT";
 export type VacancyUserPriority = "P1" | "P2" | "P3";
 export type VacancyStatus = "active" | "archived" | "closed";
+export type ManualVacancyOrigin = "hh" | "company_site" | "habr" | "telegram" | "direct_contact" | "other";
 export type VacancyStatusFilter = VacancyStatus;
 export type VacancyUserPriorityFilter = VacancyUserPriority | "none";
 export type ApplicationStatus = "submitted" | "response_received" | "screening" | "test_task" | "interview" | "offer" | "rejected" | "withdrawn";
@@ -113,7 +114,7 @@ export interface VacancyListItem {
   location: string | null;
   published_at: string | null;
   first_seen_at: string;
-  url: string;
+  url: string | null;
   priority: VacancyPriority | null;
   final_score: number | null;
   track: string | null;
@@ -156,7 +157,7 @@ export interface VacancyFilters {
 export interface VacancyCanonicalMember {
   source: string;
   external_id: string;
-  url: string;
+  url: string | null;
   title: string;
   company: string;
   location: string | null;
@@ -197,7 +198,7 @@ export interface ApplicationListItem extends Application {
   presentation_key: string;
   company: string;
   title: string;
-  vacancy_url: string;
+  vacancy_url: string | null;
 }
 
 export interface ApplicationCrmSync {
@@ -235,7 +236,7 @@ export interface VacancyApplicationDetail {
   application: Application;
   source: string;
   external_id: string;
-  url: string;
+  url: string | null;
   representative_member: boolean;
   current: boolean;
   crm_sync: ApplicationCrmSync;
@@ -269,7 +270,7 @@ export interface VacancyDetail {
   published_at: string | null;
   first_seen_at: string;
   last_seen_at: string;
-  url: string;
+  url: string | null;
   description: string;
   skills: string[];
   analysis: VacancyAnalysisDetail;
@@ -311,3 +312,6 @@ export interface VacancyUserStateWriteResponse {
   user_state: VacancyUserState;
   crm_sync: VacancyUserStateCrmSync;
 }
+
+export interface ManualVacancyCreateRequest { company: string; title: string; description: string; origin: ManualVacancyOrigin; url?: string | null; salary_text?: string | null; work_format?: string | null; location?: string | null; stack?: string | null; user_priority?: VacancyUserPriority | null; vacancy_status?: VacancyStatus; user_comment?: string | null; }
+export interface ManualVacancyCreateResponse { created: boolean; presentation_key: string | null; vacancy_id: number | null; user_state: VacancyUserState | null; duplicate: { presentation_key: string; vacancy_id: number } | null; }

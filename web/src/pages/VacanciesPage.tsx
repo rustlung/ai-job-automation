@@ -1,11 +1,12 @@
 import { ChevronLeft, ChevronRight, ChevronsLeft, RotateCcw, SlidersHorizontal } from "lucide-react";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { ApplicationStatusBadge } from "../components/ApplicationStatusBadge";
 import { vacancyStatusLabels } from "../lib/vacancyStatus";
 import { VacancyListUserCommentControl, VacancyListUserPriorityControl, VacancyListVacancyStatusControl } from "../components/VacancyListUserStateControls";
+import { ManualVacancyForm } from "../components/ManualVacancyForm";
 import { applicationStatusLabels } from "../lib/applicationStatus";
 import { useSearchProfiles, useVacancies } from "../hooks/useOrchestrator";
 import { formatDate } from "../lib/format";
@@ -58,6 +59,7 @@ function profileLabel(profileId: string, profiles: Array<{ id: string; name: str
 
 export function VacanciesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const [manualFormOpen, setManualFormOpen] = useState(false);
   const location = useLocation();
   const filters = readFilters(searchParams);
   const profiles = useSearchProfiles();
@@ -103,7 +105,7 @@ export function VacanciesPage() {
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div><p className="text-sm font-medium text-zinc-500">Логические вакансии</p><h1 className="mt-1 text-2xl font-semibold">Vacancies</h1></div>
-        <button type="button" onClick={() => setSearchParams(new URLSearchParams())} className="inline-flex items-center gap-2 border border-line bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"><RotateCcw size={16} />Сбросить фильтры</button>
+        <div className="flex gap-2"><button type="button" onClick={() => setManualFormOpen(true)} className="bg-zinc-900 px-3 py-2 text-sm font-medium text-white">Добавить вакансию</button><button type="button" onClick={() => setSearchParams(new URLSearchParams())} className="inline-flex items-center gap-2 border border-line bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"><RotateCcw size={16} />Сбросить фильтры</button></div>
       </header>
 
       <section className="space-y-4 border border-line bg-white p-4">
@@ -122,6 +124,7 @@ export function VacanciesPage() {
       </section>
 
       {vacancies.isLoading ? <LoadingState /> : vacancies.isError ? <ErrorState message="Не удалось загрузить список вакансий." /> : !vacancies.data?.items.length ? <EmptyState title="Вакансий не найдено" detail="За выбранный период или с указанными фильтрами вакансий нет." /> : <><section className="overflow-x-auto border border-line bg-white"><table className="w-full min-w-[1440px] text-left text-sm"><thead className="border-b border-line bg-zinc-50 text-xs uppercase text-zinc-500"><tr><th className="px-4 py-3 font-medium">Дата</th><th className="px-4 py-3 font-medium">Компания</th><th className="px-4 py-3 font-medium">Вакансия</th><th className="px-4 py-3 font-medium">Зарплата</th><th className="px-4 py-3 font-medium">Статус вакансии</th><th className="px-4 py-3 font-medium">Статус отклика</th><th className="px-4 py-3 font-medium">AI Priority</th><th className="px-4 py-3 font-medium">Мой приоритет</th><th className="px-4 py-3 font-medium">Мой комментарий</th><th className="px-4 py-3 font-medium">Score</th><th className="px-4 py-3 font-medium">Track</th><th className="px-4 py-3 font-medium">Профили поиска</th></tr></thead><tbody>{vacancies.data.items.map((vacancy) => <tr key={vacancy.presentation_key} className="border-b border-line last:border-0 hover:bg-zinc-50 focus-within:bg-zinc-50"><td className="whitespace-nowrap px-4 py-3 text-zinc-600">{formatDate(vacancy.first_seen_at)}</td><td className="px-4 py-3 font-medium">{vacancy.company}</td><td className="max-w-80 px-4 py-3"><Link className="font-medium text-zinc-900 underline decoration-zinc-300 underline-offset-4 hover:decoration-zinc-900" to={`/vacancies/${encodeURIComponent(vacancy.presentation_key)}`} state={{ from: { pathname: location.pathname, search: location.search } }}>{vacancy.title}</Link>{vacancy.member_count > 1 && <span className="ml-2 text-xs text-zinc-500">{vacancy.member_count} copies</span>}</td><td className="px-4 py-3 text-zinc-600">{vacancy.salary_text ?? "—"}</td><VacancyListVacancyStatusControl presentationKey={vacancy.presentation_key} vacancyStatus={vacancy.vacancy_status} /><td className="px-4 py-3"><ApplicationStatusBadge status={vacancy.application_status} /></td><td className="px-4 py-3">{vacancy.priority ?? "—"}</td><VacancyListUserPriorityControl presentationKey={vacancy.presentation_key} userPriority={vacancy.user_priority} /><VacancyListUserCommentControl presentationKey={vacancy.presentation_key} comment={vacancy.user_comment} /><td className="px-4 py-3">{vacancy.final_score ?? "—"}</td><td className="px-4 py-3 text-zinc-600">{vacancy.track ?? "—"}</td><td className="max-w-64 px-4 py-3 text-zinc-600">{vacancy.profile_ids.map((id) => profileLabel(id, enabledProfiles)).join(", ") || "—"}</td></tr>)}</tbody></table></section><div className="flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-500"><span>Показано {filters.offset + 1}-{filters.offset + vacancies.data.items.length} из {vacancies.data.total}</span><div className="flex items-center gap-2"><label className="inline-flex items-center gap-2">На странице<select value={filters.limit} onChange={(event) => updateFilters({ limit: event.target.value })} className="border border-line bg-white px-2 py-1"><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></label><button type="button" title="На первую страницу" onClick={() => updateFilters({ offset: undefined }, false)} disabled={!hasPreviousPage} className="inline-flex size-8 items-center justify-center border border-line bg-white disabled:text-zinc-300" aria-label="На первую страницу"><ChevronsLeft size={16} /></button><button type="button" onClick={() => updateFilters({ offset: filters.offset - filters.limit > 0 ? String(filters.offset - filters.limit) : undefined }, false)} disabled={!hasPreviousPage} className="inline-flex size-8 items-center justify-center border border-line bg-white disabled:text-zinc-300" aria-label="Предыдущая страница"><ChevronLeft size={16} /></button><button type="button" onClick={() => updateFilters({ offset: String(filters.offset + filters.limit) }, false)} disabled={!hasNextPage} className="inline-flex size-8 items-center justify-center border border-line bg-white disabled:text-zinc-300" aria-label="Следующая страница"><ChevronRight size={16} /></button></div></div></>}
+      {manualFormOpen && <ManualVacancyForm onClose={() => setManualFormOpen(false)} />}
     </div>
   );
 }

@@ -107,7 +107,7 @@ class VacancyListItem(BaseModel):
     location: str | None
     published_at: datetime | None
     first_seen_at: datetime
-    url: str
+    url: str | None
     priority: VacancyAnalysisPriority | None
     final_score: int | None
     track: str | None
@@ -137,7 +137,7 @@ class VacancyCanonicalMember(BaseModel):
 
     source: str
     external_id: str
-    url: str
+    url: str | None
     title: str
     company: str
     location: str | None
@@ -150,7 +150,7 @@ class VacancyApplicationDetail(BaseModel):
     application: ApplicationRead
     source: str
     external_id: str
-    url: str
+    url: str | None
     representative_member: bool
     current: bool
     crm_sync: ApplicationCrmSyncRead
@@ -188,7 +188,7 @@ class VacancyDetail(BaseModel):
     published_at: datetime | None
     first_seen_at: datetime
     last_seen_at: datetime
-    url: str
+    url: str | None
     description: str
     skills: list[str]
     analysis: VacancyAnalysisDetail

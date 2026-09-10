@@ -32,6 +32,8 @@ from app.services.pipeline_run import PipelineRunDatabaseError, PipelineRunNotFo
 from app.services.web_gateway import N8nWebhookClient, N8nWebhookError, WorkerGateway, WorkerGatewayError
 from app.services.web_runs import WebRunService, WebRunValidationError
 from app.services.web_vacancies import WebVacancyListService, WebVacancyNotFoundError
+from app.schemas.manual_vacancy import ManualVacancyCreate, ManualVacancyCreateResponse
+from app.services.manual_vacancy import ManualVacancyDatabaseError, ManualVacancyService
 
 router = APIRouter(prefix="/api", tags=["web api"])
 
@@ -46,6 +48,10 @@ def get_pipeline_run_service(db: Session = Depends(get_db_session)) -> PipelineR
 
 def get_web_vacancy_list_service(db: Session = Depends(get_db_session)) -> WebVacancyListService:
     return WebVacancyListService(db)
+
+
+def get_manual_vacancy_service(db: Session = Depends(get_db_session)) -> ManualVacancyService:
+    return ManualVacancyService(db)
 
 
 def get_worker_gateway(settings: Settings = Depends(get_settings)) -> WorkerGateway:
@@ -174,6 +180,17 @@ def list_vacancies(
         sort=sort,
         sort_direction=sort_direction,
     )
+
+
+@router.post("/vacancies/manual", response_model=ManualVacancyCreateResponse, status_code=status.HTTP_201_CREATED)
+def create_manual_vacancy(payload: ManualVacancyCreate, service: ManualVacancyService = Depends(get_manual_vacancy_service)) -> ManualVacancyCreateResponse:
+    try:
+        result = service.create(payload)
+        if not result.created:
+            return result
+        return result
+    except ManualVacancyDatabaseError as exc:
+        raise HTTPException(status_code=500, detail={"error_code": "manual_vacancy_storage_failed"}) from exc
 
 
 @router.get("/vacancies/{presentation_key}", response_model=VacancyDetail)
