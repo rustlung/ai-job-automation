@@ -1460,9 +1460,11 @@ test task, offer, rejected и withdrawn.
 
 Milestone 005 завершает permanent foundation пользовательского состояния
 logical vacancy: отдельный `VacancyUserState` хранит независимые user priority,
-comment и status active/archived/closed по stable presentation key. Следующий
-milestone может добавить CRM mirror этих значений; текущая задача не меняет
-Google Sheets, n8n, Worker или AI scoring.
+comment и status active/archived/closed по current presentation key. В 006.1
+pipeline ingestion переносит state только при однозначной смене presentation
+identity; ambiguous merge/split сохраняются как reconciliation conflicts без
+silent overwrite. Следующий milestone может добавить CRM mirror этих значений;
+текущая задача не меняет Google Sheets, n8n, Worker или AI scoring.
 
 ---
 

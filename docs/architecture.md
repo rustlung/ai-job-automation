@@ -131,14 +131,18 @@ fact. Exact current-status filters remain available for
 screening, test task, offer, rejected, and withdrawn.
 
 `VacancyUserState` is a separate permanent, user-owned entity keyed by the
-stable grouped `presentation_key`, never by a representative canonical vacancy.
+current grouped `presentation_key`, never by a representative canonical vacancy.
 For groupable records that key is `business:<fingerprint>`; for non-groupable
 records it is `source:<external_id>`. It stores nullable user priority
 (`P1`--`P3`), nullable comment, and vacancy status (`active`, `archived`, or
 `closed`, defaulting to `active`). This keeps user feedback stable when a
 regional representative changes and independent from both AI priority and
-Application lifecycle. CRM synchronization is intentionally not part of this
-milestone; the persisted backend contract is the future sync boundary.
+Application lifecycle. Pipeline ingestion reconciles state across an
+unambiguous one-to-one presentation-key transition. Ambiguous merges and splits
+are retained without copying or overwriting state and recorded in
+`vacancy_user_state_reconciliation_conflicts` for diagnosis. CRM synchronization
+is intentionally not part of this milestone; the persisted backend contract is
+the future sync boundary.
 
 For a full run, Manual and Web entries converge before Worker start into one
 n8n `Build Full Run Context`. Shared Worker polling reads only that normalized

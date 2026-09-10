@@ -6,5 +6,6 @@ from app.models.vacancy import Vacancy
 from app.models.vacancy_analysis import VacancyAnalysis
 from app.models.vacancy_processing_event import VacancyProcessingEvent
 from app.models.vacancy_user_state import VacancyUserState
+from app.models.vacancy_user_state_reconciliation_conflict import VacancyUserStateReconciliationConflict
 
-__all__ = ["Application", "ApplicationCrmSyncState", "OperationalSettings", "PipelineRun", "Vacancy", "VacancyAnalysis", "VacancyProcessingEvent", "VacancyUserState"]
+__all__ = ["Application", "ApplicationCrmSyncState", "OperationalSettings", "PipelineRun", "Vacancy", "VacancyAnalysis", "VacancyProcessingEvent", "VacancyUserState", "VacancyUserStateReconciliationConflict"]

@@ -4,6 +4,10 @@
 
 ### Added
 
+- Vacancy user-state reconciliation: pipeline ingestion preserves feedback for
+  an unambiguous presentation-key transition and records ambiguous merge/split
+  cases without silently copying or overwriting data;
+
 - Vacancy user state: persistent logical-presentation feedback with independent
   user priority, comment and active/archived/closed status; the React Vacancy
   Detail and grouped Vacancies list expose editable state and URL-synchronised

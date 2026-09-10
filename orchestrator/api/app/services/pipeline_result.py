@@ -32,6 +32,7 @@ from app.schemas.vacancy_processing_event import (
     VacancyProcessingStatus,
 )
 from app.services.business_vacancy_grouping import group_business_vacancies, merge_profile_ids
+from app.services.vacancy_user_state_reconciliation import VacancyUserStateReconciliationService
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,7 @@ class PipelineResultService:
         self.vacancy_repository = VacancyRepository(session)
         self.analysis_repository = VacancyAnalysisRepository(session)
         self.event_repository = VacancyProcessingEventRepository(session)
+        self.user_state_reconciliation = VacancyUserStateReconciliationService(session)
 
     def persist(self, payload: PipelineResultsCreate) -> PipelineResultsCreateResponse:
         started_at = time.perf_counter()
@@ -247,12 +249,14 @@ class PipelineResultService:
                 business_fingerprint=self._business_fingerprint(item),
             )
         else:
+            before_presentation = self.user_state_reconciliation.snapshot_before_change(vacancy)
             self.vacancy_repository.update_from_input(
                 vacancy,
                 vacancy_input,
                 item.vacancy.collected_at.astimezone(timezone.utc),
                 business_fingerprint=self._business_fingerprint(item),
             )
+            self.user_state_reconciliation.reconcile_after_change(before_presentation, vacancy)
 
         analysis = self.analysis_repository.create(vacancy.id, self._analysis_create(run_id, item))
         self._create_processing_events(vacancy.id, analysis.id, run_id, item)

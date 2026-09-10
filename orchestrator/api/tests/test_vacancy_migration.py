@@ -28,6 +28,8 @@ def test_vacancy_migration_upgrade_and_downgrade(tmp_path, monkeypatch) -> None:
     assert "vacancy_processing_events" in inspector.get_table_names()
     assert "applications" in inspector.get_table_names()
     assert "application_crm_sync_states" in inspector.get_table_names()
+    assert "vacancy_user_states" in inspector.get_table_names()
+    assert "vacancy_user_state_reconciliation_conflicts" in inspector.get_table_names()
     indexes = {index["name"] for index in inspector.get_indexes("vacancies")}
     assert "ix_vacancies_source" in indexes
     assert "ix_vacancies_external_id" in indexes
@@ -106,6 +108,29 @@ def test_vacancy_migration_upgrade_and_downgrade(tmp_path, monkeypatch) -> None:
     assert "vacancy_processing_events" in inspector.get_table_names()
     assert "applications" in inspector.get_table_names()
     assert "application_crm_sync_states" in inspector.get_table_names()
+    assert "vacancy_user_states" in inspector.get_table_names()
+    assert "vacancy_user_state_reconciliation_conflicts" in inspector.get_table_names()
+    engine.dispose()
+
+
+def test_vacancy_user_state_reconciliation_conflict_migration_round_trip(tmp_path, monkeypatch) -> None:
+    database_url = f"sqlite:///{tmp_path / 'user-state-reconciliation.db'}"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    get_settings.cache_clear()
+    config = make_alembic_config(database_url)
+
+    command.upgrade(config, "head")
+    engine = create_engine(database_url)
+    inspector = inspect(engine)
+    assert "vacancy_user_state_reconciliation_conflicts" in inspector.get_table_names()
+    columns = {column["name"] for column in inspector.get_columns("vacancy_user_state_reconciliation_conflicts")}
+    assert {"conflict_key", "kind", "old_presentation_keys", "new_presentation_keys", "canonical_vacancy_ids"} <= columns
+
+    command.downgrade(config, "20260910_0001")
+    assert "vacancy_user_state_reconciliation_conflicts" not in inspect(engine).get_table_names()
+
+    command.upgrade(config, "head")
+    assert "vacancy_user_state_reconciliation_conflicts" in inspect(engine).get_table_names()
     engine.dispose()
 
 

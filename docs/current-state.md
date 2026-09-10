@@ -549,6 +549,12 @@ Read API для следующих фаз:
 - `GET /vacancies/{vacancy_id}/analyses` читает историю конкретной вакансии;
 - `GET /processing-runs/{run_id}/events` читает processing history.
 
+`VacancyUserState` принадлежит текущему `presentation_key`, а не региональному
+representative. При однозначной смене canonical/business presentation key во
+время pipeline ingestion backend переносит state внутри DB. Неоднозначные
+merge/split не разрешаются автоматически: исходные state rows сохраняются, а
+конфликт фиксируется в отдельном reconciliation log.
+
 Acceptance read API:
 `GET /pipeline-results/analyses/latest?priority=P1&limit=3` успешно вернул
 последние P1 analyses с `vacancy_id`, `analysis id`, `run_id`, `priority`,
