@@ -174,6 +174,7 @@ GET /api/applications/{application_id}
 PATCH /api/applications/{application_id}
 GET /api/vacancies/{presentation_key}/user-state
 PATCH /api/vacancies/{presentation_key}/user-state
+POST /api/vacancies/{presentation_key}/user-state/crm-sync/retry
 ```
 
 `OperationalSettings` is a typed singleton for editable operational values,

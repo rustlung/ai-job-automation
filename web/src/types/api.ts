@@ -297,3 +297,17 @@ export interface VacancyUserStatePatchRequest {
   comment?: string | null;
   vacancy_status?: VacancyStatus;
 }
+
+export interface VacancyUserStateCrmSync {
+  presentation_key: string;
+  status: "pending" | "synced" | "failed";
+  last_attempt_at: string | null;
+  synced_at: string | null;
+  error_code: string | null;
+  error_message_safe: string | null;
+}
+
+export interface VacancyUserStateWriteResponse {
+  user_state: VacancyUserState;
+  crm_sync: VacancyUserStateCrmSync;
+}

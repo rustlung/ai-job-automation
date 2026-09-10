@@ -144,6 +144,11 @@ are retained without copying or overwriting state and recorded in
 is intentionally not part of this milestone; the persisted backend contract is
 the future sync boundary.
 
+Vacancy user-state writes are also DB-first. After a successful state commit,
+the separate `VacancyUserStateCrmSyncState` records the secondary CRM mirror
+attempt; Sheets failure never rolls back `user_priority`, `vacancy_status`, or
+`comment`.
+
 The one-time historical `VacancyUserState` importer reads a local `Вакансии`
 CSV export only. It resolves an exact current group through CRM key, canonical
 identity, or an exact HH ID from `Ссылка`, writes only the current presentation

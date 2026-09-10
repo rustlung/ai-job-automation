@@ -23,6 +23,12 @@ class ApplicationCrmSyncGatewayError(Exception):
         super().__init__(error_code)
 
 
+class VacancyUserStateCrmSyncGatewayError(Exception):
+    def __init__(self, error_code: str = "crm_sync_failed") -> None:
+        self.error_code = error_code
+        super().__init__(error_code)
+
+
 class WorkerGateway:
     def __init__(self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None) -> None:
         self.settings = settings
@@ -120,3 +126,26 @@ class ApplicationCrmSyncWebhookClient:
             raise ApplicationCrmSyncGatewayError("crm_row_ambiguous")
         if response.status_code >= 400:
             raise ApplicationCrmSyncGatewayError("crm_sync_failed")
+
+
+class VacancyUserStateCrmSyncWebhookClient:
+    def __init__(self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None) -> None:
+        self.settings = settings
+        self.transport = transport
+
+    async def sync(self, payload: dict[str, Any]) -> None:
+        if not self.settings.n8n_vacancy_user_state_crm_sync_webhook_url:
+            raise VacancyUserStateCrmSyncGatewayError("crm_sync_not_configured")
+        try:
+            async with httpx.AsyncClient(timeout=self.settings.n8n_webhook_timeout_seconds, transport=self.transport) as client:
+                response = await client.post(self.settings.n8n_vacancy_user_state_crm_sync_webhook_url, json=payload, headers={"X-AI-Job-Automation-Webhook-Secret": self.settings.n8n_webhook_secret})
+        except httpx.TimeoutException as exc:
+            raise VacancyUserStateCrmSyncGatewayError("crm_sync_timeout") from exc
+        except httpx.RequestError as exc:
+            raise VacancyUserStateCrmSyncGatewayError("crm_sync_unavailable") from exc
+        if response.status_code == 404:
+            raise VacancyUserStateCrmSyncGatewayError("crm_row_not_found")
+        if response.status_code == 409:
+            raise VacancyUserStateCrmSyncGatewayError("crm_row_ambiguous")
+        if response.status_code >= 400:
+            raise VacancyUserStateCrmSyncGatewayError("crm_sync_failed")

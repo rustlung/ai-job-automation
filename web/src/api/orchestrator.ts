@@ -13,7 +13,7 @@ import type {
   SystemHealth,
   VacancyDetail,
   VacancyFilters,
-  VacancyListResponse, VacancyUserState, VacancyUserStatePatchRequest
+  VacancyListResponse, VacancyUserState, VacancyUserStateCrmSync, VacancyUserStatePatchRequest, VacancyUserStateWriteResponse
 } from "../types/api";
 
 function vacancyQuery(filters: VacancyFilters): string {
@@ -59,7 +59,8 @@ export const orchestratorApi = {
   getVacancies: (filters: VacancyFilters) => request<VacancyListResponse>(`/api/vacancies?${vacancyQuery(filters)}`),
   getVacancyDetail: (presentationKey: string) => request<VacancyDetail>(`/api/vacancies/${encodeURIComponent(presentationKey)}`),
   getVacancyUserState: (presentationKey: string) => request<VacancyUserState>(`/api/vacancies/${encodeURIComponent(presentationKey)}/user-state`),
-  updateVacancyUserState: (presentationKey: string, payload: VacancyUserStatePatchRequest) => request<VacancyUserState>(`/api/vacancies/${encodeURIComponent(presentationKey)}/user-state`, { method: "PATCH", body: JSON.stringify(payload) }),
+  updateVacancyUserState: (presentationKey: string, payload: VacancyUserStatePatchRequest) => request<VacancyUserStateWriteResponse>(`/api/vacancies/${encodeURIComponent(presentationKey)}/user-state`, { method: "PATCH", body: JSON.stringify(payload) }),
+  retryVacancyUserStateCrmSync: (presentationKey: string) => request<VacancyUserStateCrmSync>(`/api/vacancies/${encodeURIComponent(presentationKey)}/user-state/crm-sync/retry`, { method: "POST" }),
   getApplications: (filters: ApplicationFilters) => request<ApplicationListResponse>(`/api/applications?${applicationQuery(filters)}`),
   createApplication: (vacancyId: number, payload: ApplicationCreateRequest) =>
     request<ApplicationWriteResponse>(`/api/vacancies/${vacancyId}/applications`, { method: "POST", body: JSON.stringify(payload) }),
