@@ -172,10 +172,10 @@ class WebVacancyListService:
         }
         member_by_id = {member.id: member for member in group.members}
         user_state = self.vacancy_user_state_repository.get_by_presentation_key(group.presentation_key)
-        provenance = representative_analysis.provenance if representative_analysis is not None else {}
-        snapshot = representative_analysis.vacancy_snapshot if representative_analysis is not None else {}
-        semantic_snapshot = representative_analysis.semantic_snapshot if representative_analysis is not None else {}
-        deterministic_features = representative_analysis.deterministic_features if representative_analysis is not None else {}
+        provenance = representative_analysis.provenance or {} if representative_analysis is not None else {}
+        snapshot = representative_analysis.vacancy_snapshot or {} if representative_analysis is not None else {}
+        semantic_snapshot = representative_analysis.semantic_snapshot or {} if representative_analysis is not None else {}
+        deterministic_features = representative_analysis.deterministic_features or {} if representative_analysis is not None else {}
         track = semantic_snapshot.get("target_track")
         return VacancyDetail(
             presentation_key=group.presentation_key,

@@ -52,3 +52,12 @@ def test_manual_presentation_key_opens_detail_list_user_state_and_application(db
     assert detail.presentation_key == result.presentation_key
     assert any(item.presentation_key == result.presentation_key for item in listed.items)
     assert application.vacancy_id == detail.vacancy_id
+
+
+def test_manual_without_analysis_keeps_first_seen_list_sorting(db_session):
+    first = ManualVacancyService(db_session).create(payload(title="First"))
+    second = ManualVacancyService(db_session).create(payload(title="Second", url=None))
+    web = WebVacancyListService(db_session)
+    listed = web.list(date_from=None, date_to=None, priorities=None, track=None, profile_id=None, application_status=None, vacancy_status=None, user_priority=None, run_id=None, search=None, limit=25, offset=0, sort="first_seen", sort_direction="desc")
+    assert {item.presentation_key for item in listed.items} >= {first.presentation_key, second.presentation_key}
+    assert web.get(second.presentation_key).presentation_key == second.presentation_key
