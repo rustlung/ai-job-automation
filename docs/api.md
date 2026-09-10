@@ -339,3 +339,16 @@ sync. Именно этот endpoint используется production workflo
 
 `GET /pipeline-results/analyses/latest` предоставляет обзорный read API с
 фильтром по priority и pagination; он не заменяет current-run sync.
+
+### Manual Vacancy CRM Create
+
+``` text
+POST /api/vacancies/manual
+POST /api/vacancies/{presentation_key}/crm-sync/retry
+```
+
+Первый endpoint атомарно создаёт manual vacancy и meaningful initial user state,
+коммитит DB, затем пытается создать строку CRM. Ответ созданной vacancy содержит
+`crm_sync` со статусом `pending`, `synced` или `failed`; внешний сбой не меняет
+успех DB-операции. Retry повторяет только идемпотентное создание строки и не
+изменяет Vacancy/UserState. Endpoint применим только к ключам `manual:<UUID>`.

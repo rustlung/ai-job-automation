@@ -1,0 +1,57 @@
+{
+  "name": "AI Job Automation — Manual Vacancy CRM Create v1",
+  "nodes": [
+    {
+      "parameters": {"httpMethod": "POST", "path": "ai-job-automation-manual-vacancy-crm-create-v1", "responseMode": "responseNode", "options": {}},
+      "id": "m1", "name": "Manual Vacancy CRM Create Webhook", "type": "n8n-nodes-base.webhook", "typeVersion": 2, "position": [0, 300]
+    },
+    {
+      "parameters": {"jsCode": "const input=$input.first().json||{}; const secret=String(input.headers?.['x-ai-job-automation-webhook-secret']||''); if(!String($env.N8N_WEBHOOK_SECRET||'')||secret!==String($env.N8N_WEBHOOK_SECRET)) throw new Error('Webhook authentication failed'); const request=input.body||input; if(!request.presentation_key||!String(request.presentation_key).startsWith('manual:')||!request.sheet_name||!request.columns) throw new Error('Invalid manual vacancy CRM create request'); return [{json:request}];"},
+      "id": "m2", "name": "Validate Manual Vacancy CRM Create", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [240, 300]
+    },
+    {
+      "parameters": {"authentication": "serviceAccount", "documentId": {"__rl": true, "value": "={{ $env.GOOGLE_SHEETS_CRM_DOCUMENT_ID }}", "mode": "id"}, "sheetName": {"__rl": true, "value": "={{ $('Validate Manual Vacancy CRM Create').first().json.sheet_name }}", "mode": "name"}, "options": {}},
+      "id": "m3", "name": "Read Manual Vacancy CRM Rows", "type": "n8n-nodes-base.googleSheets", "typeVersion": 4.6, "position": [480, 300], "alwaysOutputData": true
+    },
+    {
+      "parameters": {"jsCode": "const request=$('Validate Manual Vacancy CRM Create').first().json; const key=String(request.presentation_key).trim(); const rows=$input.all().map(item=>item.json||{}).filter(row=>Object.keys(row).length); const matches=rows.filter(row=>String(row['CRM Key']||'').trim()===key); if(matches.length>1)return [{json:{action:'ambiguous',error_code:'crm_row_ambiguous'}}]; if(matches.length===1)return [{json:{action:'already_exists',status:'synced',result:'already_exists'}}]; return [{json:{action:'append',...request.columns}}];"},
+      "id": "m4", "name": "Prepare Manual Vacancy CRM Create", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [720, 300]
+    },
+    {
+      "parameters": {"conditions": {"options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2}, "conditions": [{"leftValue": "={{ $json.action }}", "rightValue": "ambiguous", "operator": {"type": "string", "operation": "equals"}}], "combinator": "and"}, "options": {}},
+      "id": "m5", "name": "Manual Vacancy CRM Row Ambiguous?", "type": "n8n-nodes-base.if", "typeVersion": 2.2, "position": [960, 300]
+    },
+    {
+      "parameters": {"conditions": {"options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2}, "conditions": [{"leftValue": "={{ $json.action }}", "rightValue": "already_exists", "operator": {"type": "string", "operation": "equals"}}], "combinator": "and"}, "options": {}},
+      "id": "m6", "name": "Manual Vacancy CRM Row Exists?", "type": "n8n-nodes-base.if", "typeVersion": 2.2, "position": [1200, 180]
+    },
+    {
+      "parameters": {"authentication": "serviceAccount", "operation": "append", "documentId": {"__rl": true, "value": "={{ $env.GOOGLE_SHEETS_CRM_DOCUMENT_ID }}", "mode": "id"}, "sheetName": {"__rl": true, "value": "={{ $('Validate Manual Vacancy CRM Create').first().json.sheet_name }}", "mode": "name"}, "columns": {"mappingMode": "defineBelow", "value": {"Компания": "={{ $json['Компания'] }}", "Должность": "={{ $json['Должность'] }}", "Тип": "={{ $json['Тип'] }}", "Приоритет": "={{ $json['Приоритет'] }}", "ЗП": "={{ $json['ЗП'] }}", "Формат": "={{ $json['Формат'] }}", "Стек": "={{ $json['Стек'] }}", "Дата": "={{ $json['Дата'] }}", "Отклик": "={{ $json['Отклик'] }}", "Ответ": "={{ $json['Ответ'] }}", "Интервью": "={{ $json['Интервью'] }}", "Итог": "={{ $json['Итог'] }}", "Ссылка": "={{ $json['Ссылка'] }}", "Комментарий": "={{ $json['Комментарий'] }}", "Score": "={{ $json['Score'] }}", "AI причина": "={{ $json['AI причина'] }}", "Риски": "={{ $json['Риски'] }}", "Hard blockers": "={{ $json['Hard blockers'] }}", "CRM Key": "={{ $json['CRM Key'] }}", "Run ID": "={{ $json['Run ID'] }}", "Анализ обновлён": "={{ $json['Анализ обновлён'] }}", "Мой приоритет": "={{ $json['Мой приоритет'] }}", "Профили поиска": "={{ $json['Профили поиска'] }}"}, "matchingColumns": [], "schema": [], "attemptToConvertTypes": false, "convertFieldsToString": true}, "options": {}},
+      "id": "m7", "name": "Append Manual Vacancy CRM Row", "type": "n8n-nodes-base.googleSheets", "typeVersion": 4.6, "position": [1440, 420]
+    },
+    {
+      "parameters": {"respondWith": "json", "responseBody": "={{ { error_code: 'crm_row_ambiguous' } }}", "options": {"responseCode": 409}},
+      "id": "m8", "name": "Respond Manual Vacancy CRM Ambiguous", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1.1, "position": [1200, 540]
+    },
+    {
+      "parameters": {"respondWith": "json", "responseBody": "={{ { status: 'synced', result: 'already_exists' } }}", "options": {}},
+      "id": "m9", "name": "Respond Manual Vacancy CRM Exists", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1.1, "position": [1440, 60]
+    },
+    {
+      "parameters": {"respondWith": "json", "responseBody": "={{ { status: 'synced', result: 'created' } }}", "options": {}},
+      "id": "m10", "name": "Respond Manual Vacancy CRM Created", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1.1, "position": [1680, 420]
+    }
+  ],
+  "connections": {
+    "Manual Vacancy CRM Create Webhook": {"main": [[{"node": "Validate Manual Vacancy CRM Create", "type": "main", "index": 0}]]},
+    "Validate Manual Vacancy CRM Create": {"main": [[{"node": "Read Manual Vacancy CRM Rows", "type": "main", "index": 0}]]},
+    "Read Manual Vacancy CRM Rows": {"main": [[{"node": "Prepare Manual Vacancy CRM Create", "type": "main", "index": 0}]]},
+    "Prepare Manual Vacancy CRM Create": {"main": [[{"node": "Manual Vacancy CRM Row Ambiguous?", "type": "main", "index": 0}]]},
+    "Manual Vacancy CRM Row Ambiguous?": {"main": [[{"node": "Respond Manual Vacancy CRM Ambiguous", "type": "main", "index": 0}], [{"node": "Manual Vacancy CRM Row Exists?", "type": "main", "index": 0}]]},
+    "Manual Vacancy CRM Row Exists?": {"main": [[{"node": "Respond Manual Vacancy CRM Exists", "type": "main", "index": 0}], [{"node": "Append Manual Vacancy CRM Row", "type": "main", "index": 0}]]},
+    "Append Manual Vacancy CRM Row": {"main": [[{"node": "Respond Manual Vacancy CRM Created", "type": "main", "index": 0}]]}
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "manual-vacancy-crm-create-v1"
+}

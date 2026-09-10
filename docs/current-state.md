@@ -745,3 +745,9 @@ backlog, а не blockers завершенного MVP.
 ⬜ история версий description
 ⬜ закрытие и архивирование вакансий
 ⬜ автоматическая отправка откликов
+
+Milestone 006 завершён: manual vacancies создаются в DB с identity
+`manual:<UUID>`, поддерживают UserState и Applications и не проходят AI-анализ.
+Отдельный workflow `AI Job Automation — Manual Vacancy CRM Create v1` после DB
+commit идемпотентно создаёт CRM row по exact `CRM Key`; failure сохраняется как
+retryable sync-state и не откатывает Vacancy/UserState.

@@ -1093,3 +1093,28 @@ docker compose run --rm -v /path/to/exports:/imports api \
   python -m app.scripts.sync_historical_applications \
   --apply --import-report /imports/historical-applications-apply.json
 ```
+
+## Manual Vacancy CRM Create v1
+
+1. Импортируйте `workflows/n8n/AI Job Automation — Manual Vacancy CRM Create v1.json`.
+2. Назначьте Google Sheets service-account credential нодам чтения и append.
+3. Проверьте document ID из `GOOGLE_SHEETS_CRM_DOCUMENT_ID`, лист `Вакансии`
+   и secret `N8N_WEBHOOK_SECRET`, затем активируйте workflow.
+4. В `orchestrator/api/.env` задайте production webhook URL:
+
+```dotenv
+N8N_MANUAL_VACANCY_CRM_CREATE_WEBHOOK_URL=http://n8n-internal:5678/webhook/ai-job-automation-manual-vacancy-crm-create-v1
+```
+
+5. Примените migration и пересоберите API:
+
+```bash
+cd ~/services/ai-job-automation/orchestrator
+docker compose run --rm api alembic upgrade head
+docker compose up -d --build api
+```
+
+Для single-case acceptance создайте одну manual vacancy в Web UI и проверьте:
+DB/detail доступны независимо от CRM результата; при `synced` строка имеет
+`CRM Key=manual:<UUID>`; при `failed` кнопка retry повторяет только CRM append.
+Повторный retry не должен создавать вторую строку.

@@ -29,6 +29,12 @@ class VacancyUserStateCrmSyncGatewayError(Exception):
         super().__init__(error_code)
 
 
+class ManualVacancyCrmCreateGatewayError(Exception):
+    def __init__(self, error_code: str = "crm_sync_failed") -> None:
+        self.error_code = error_code
+        super().__init__(error_code)
+
+
 class WorkerGateway:
     def __init__(self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None) -> None:
         self.settings = settings
@@ -149,3 +155,33 @@ class VacancyUserStateCrmSyncWebhookClient:
             raise VacancyUserStateCrmSyncGatewayError("crm_row_ambiguous")
         if response.status_code >= 400:
             raise VacancyUserStateCrmSyncGatewayError("crm_sync_failed")
+
+
+class ManualVacancyCrmCreateWebhookClient:
+    """Narrow n8n adapter for idempotent manual vacancy row creation."""
+
+    def __init__(self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None) -> None:
+        self.settings = settings
+        self.transport = transport
+
+    async def create(self, payload: dict[str, Any]) -> None:
+        if not self.settings.n8n_manual_vacancy_crm_create_webhook_url:
+            raise ManualVacancyCrmCreateGatewayError("crm_sync_not_configured")
+        try:
+            async with httpx.AsyncClient(
+                timeout=self.settings.n8n_webhook_timeout_seconds,
+                transport=self.transport,
+            ) as client:
+                response = await client.post(
+                    self.settings.n8n_manual_vacancy_crm_create_webhook_url,
+                    json=payload,
+                    headers={"X-AI-Job-Automation-Webhook-Secret": self.settings.n8n_webhook_secret},
+                )
+        except httpx.TimeoutException as exc:
+            raise ManualVacancyCrmCreateGatewayError("crm_sync_timeout") from exc
+        except httpx.RequestError as exc:
+            raise ManualVacancyCrmCreateGatewayError("crm_sync_unavailable") from exc
+        if response.status_code == 409:
+            raise ManualVacancyCrmCreateGatewayError("crm_row_ambiguous")
+        if response.status_code >= 400:
+            raise ManualVacancyCrmCreateGatewayError("crm_sync_failed")

@@ -34,10 +34,12 @@ const vacancy = {
 const useVacancies = vi.fn();
 const useSearchProfiles = vi.fn();
 const useUpdateVacancyUserState = vi.fn();
+const useCreateManualVacancy = vi.fn();
 vi.mock("../hooks/useOrchestrator", () => ({
   useVacancies: (...args: unknown[]) => useVacancies(...args),
   useSearchProfiles: () => useSearchProfiles(),
-  useUpdateVacancyUserState: () => useUpdateVacancyUserState()
+  useUpdateVacancyUserState: () => useUpdateVacancyUserState(),
+  useCreateManualVacancy: () => useCreateManualVacancy()
 }));
 
 function LocationProbe() {
@@ -66,6 +68,7 @@ describe("VacanciesPage", () => {
     useVacancies.mockReturnValue({ data: { items: [vacancy], total: 1, limit: 25, offset: 0 }, isLoading: false, isError: false });
     useSearchProfiles.mockReturnValue(profileQuery());
     useUpdateVacancyUserState.mockReturnValue({ isPending: false, isError: false, mutate: vi.fn() });
+    useCreateManualVacancy.mockReturnValue({ isPending: false, mutateAsync: vi.fn() });
   });
   afterEach(() => cleanup());
 
@@ -78,6 +81,28 @@ describe("VacanciesPage", () => {
     expect(screen.getByRole("checkbox", { name: "P1" })).toBeChecked();
     fireEvent.click(screen.getByText("Python Developer"));
     expect(screen.getByText("Detail route")).toBeInTheDocument();
+  });
+
+  it("redirects to the DB-created manual vacancy even when CRM append failed", async () => {
+    const create = vi.fn().mockResolvedValue({
+      created: true,
+      presentation_key: "manual:uuid-1",
+      vacancy_id: 7,
+      user_state: null,
+      crm_sync: { vacancy_id: 7, presentation_key: "manual:uuid-1", status: "failed", last_attempt_at: null, synced_at: null, error_code: "crm_sync_timeout", error_message_safe: "Google CRM row creation failed" },
+      duplicate: null
+    });
+    useCreateManualVacancy.mockReturnValue({ isPending: false, mutateAsync: create });
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Добавить вакансию" }));
+    fireEvent.change(screen.getByLabelText("Компания *"), { target: { value: "Manual Co" } });
+    fireEvent.change(screen.getByLabelText("Должность *"), { target: { value: "Manual role" } });
+    fireEvent.change(screen.getByLabelText("Описание *"), { target: { value: "Описание вакансии" } });
+    fireEvent.click(screen.getByRole("button", { name: "Создать вакансию" }));
+
+    await waitFor(() => expect(screen.getByText("Detail route")).toBeInTheDocument());
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ company: "Manual Co", title: "Manual role" }));
   });
 
   it("keeps table headers and row values in the same semantic column order", () => {

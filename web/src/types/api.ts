@@ -99,6 +99,7 @@ export type VacancyStatusFilter = VacancyStatus;
 export type VacancyUserPriorityFilter = VacancyUserPriority | "none";
 export type ApplicationStatus = "submitted" | "response_received" | "screening" | "test_task" | "interview" | "offer" | "rejected" | "withdrawn";
 export type ApplicationCrmSyncStatus = "pending" | "synced" | "failed";
+export type ManualVacancyCrmSyncStatus = "pending" | "synced" | "failed";
 export type VacancyApplicationStatusFilter = ApplicationStatus | "none";
 export type VacancyListSort = "first_seen" | "final_score" | "priority";
 export type SortDirection = "asc" | "desc";
@@ -281,6 +282,7 @@ export interface VacancyDetail {
   members: VacancyCanonicalMember[];
   applications: VacancyApplicationDetail[];
   user_state: VacancyUserState;
+  manual_crm_sync: ManualVacancyCrmSync | null;
 }
 
 export interface VacancyUserState {
@@ -314,4 +316,14 @@ export interface VacancyUserStateWriteResponse {
 }
 
 export interface ManualVacancyCreateRequest { company: string; title: string; description: string; origin: ManualVacancyOrigin; url?: string | null; salary_text?: string | null; work_format?: string | null; location?: string | null; stack?: string | null; user_priority?: VacancyUserPriority | null; vacancy_status?: VacancyStatus; user_comment?: string | null; }
-export interface ManualVacancyCreateResponse { created: boolean; presentation_key: string | null; vacancy_id: number | null; user_state: VacancyUserState | null; duplicate: { presentation_key: string; vacancy_id: number } | null; }
+export interface ManualVacancyCrmSync {
+  vacancy_id: number;
+  presentation_key: string;
+  status: ManualVacancyCrmSyncStatus;
+  last_attempt_at: string | null;
+  synced_at: string | null;
+  error_code: string | null;
+  error_message_safe: string | null;
+}
+
+export interface ManualVacancyCreateResponse { created: boolean; presentation_key: string | null; vacancy_id: number | null; user_state: VacancyUserState | null; crm_sync: ManualVacancyCrmSync | null; duplicate: { presentation_key: string; vacancy_id: number } | null; }

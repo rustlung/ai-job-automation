@@ -1,3 +1,4 @@
+from datetime import datetime
 from enum import Enum
 from typing import Annotated
 from urllib.parse import urlparse
@@ -52,9 +53,28 @@ class ManualVacancyDuplicate(BaseModel):
     vacancy_id: int
 
 
+class ManualVacancyCrmSyncStatus(str, Enum):
+    PENDING = "pending"
+    SYNCED = "synced"
+    FAILED = "failed"
+
+
+class ManualVacancyCrmSyncRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    vacancy_id: int
+    presentation_key: str
+    status: ManualVacancyCrmSyncStatus
+    last_attempt_at: datetime | None
+    synced_at: datetime | None
+    error_code: str | None
+    error_message_safe: str | None
+
+
 class ManualVacancyCreateResponse(BaseModel):
     created: bool
     presentation_key: str | None = None
     vacancy_id: int | None = None
     user_state: VacancyUserStateRead | None = None
+    crm_sync: ManualVacancyCrmSyncRead | None = None
     duplicate: ManualVacancyDuplicate | None = None

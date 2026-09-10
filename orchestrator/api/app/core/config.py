@@ -12,6 +12,7 @@ class Settings:
         self.n8n_webhook_timeout_seconds = float(getenv("N8N_WEBHOOK_TIMEOUT_SECONDS", "15"))
         self.n8n_application_crm_sync_webhook_url = getenv("N8N_APPLICATION_CRM_SYNC_WEBHOOK_URL", "").strip()
         self.n8n_vacancy_user_state_crm_sync_webhook_url = getenv("N8N_VACANCY_USER_STATE_CRM_SYNC_WEBHOOK_URL", "").strip()
+        self.n8n_manual_vacancy_crm_create_webhook_url = getenv("N8N_MANUAL_VACANCY_CRM_CREATE_WEBHOOK_URL", "").strip()
         self.internal_api_token = getenv("ORCHESTRATOR_INTERNAL_API_TOKEN", "")
         self.web_ui_allowed_origins = tuple(
             origin.strip().rstrip("/")

@@ -1856,3 +1856,19 @@ Custom engine:
 
 2.  Продолжать production calibration и AI improvements как backlog, а не как
     blockers завершенного MVP.
+
+------------------------------------------------------------------------
+
+# 15. Manual Vacancy CRM row creation
+
+Ручная vacancy и начальный `VacancyUserState` фиксируются одной DB-транзакцией.
+Только после commit отдельный сервис вызывает узкий n8n workflow
+`AI Job Automation — Manual Vacancy CRM Create v1`. Ошибка Google Sheets не
+откатывает DB: отдельная таблица `manual_vacancy_crm_sync_states` хранит
+`pending`/`synced`/`failed` и безопасную диагностику.
+
+CRM identity равна `manual:<UUID>`. Workflow сверяет только точный `CRM Key`:
+нулевое число строк приводит к append, одна строка считается идемпотентным
+успехом, несколько строк дают `crm_row_ambiguous`. Application CRM Sync и
+VacancyUserState CRM Sync затем используют ту же строку по существующему
+key-based contract.

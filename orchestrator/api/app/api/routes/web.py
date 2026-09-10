@@ -32,8 +32,10 @@ from app.services.pipeline_run import PipelineRunDatabaseError, PipelineRunNotFo
 from app.services.web_gateway import N8nWebhookClient, N8nWebhookError, WorkerGateway, WorkerGatewayError
 from app.services.web_runs import WebRunService, WebRunValidationError
 from app.services.web_vacancies import WebVacancyListService, WebVacancyNotFoundError
-from app.schemas.manual_vacancy import ManualVacancyCreate, ManualVacancyCreateResponse
+from app.schemas.manual_vacancy import ManualVacancyCreate, ManualVacancyCreateResponse, ManualVacancyCrmSyncRead
 from app.services.manual_vacancy import ManualVacancyDatabaseError, ManualVacancyService
+from app.services.manual_vacancy_crm_sync import ManualVacancyCrmSyncNotFoundError, ManualVacancyCrmSyncService
+from app.services.web_gateway import ManualVacancyCrmCreateWebhookClient
 
 router = APIRouter(prefix="/api", tags=["web api"])
 
@@ -52,6 +54,13 @@ def get_web_vacancy_list_service(db: Session = Depends(get_db_session)) -> WebVa
 
 def get_manual_vacancy_service(db: Session = Depends(get_db_session)) -> ManualVacancyService:
     return ManualVacancyService(db)
+
+
+def get_manual_vacancy_crm_sync_service(
+    db: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+) -> ManualVacancyCrmSyncService:
+    return ManualVacancyCrmSyncService(db, ManualVacancyCrmCreateWebhookClient(settings))
 
 
 def get_worker_gateway(settings: Settings = Depends(get_settings)) -> WorkerGateway:
@@ -183,14 +192,30 @@ def list_vacancies(
 
 
 @router.post("/vacancies/manual", response_model=ManualVacancyCreateResponse, status_code=status.HTTP_201_CREATED)
-def create_manual_vacancy(payload: ManualVacancyCreate, service: ManualVacancyService = Depends(get_manual_vacancy_service)) -> ManualVacancyCreateResponse:
+async def create_manual_vacancy(
+    payload: ManualVacancyCreate,
+    service: ManualVacancyService = Depends(get_manual_vacancy_service),
+    crm_sync_service: ManualVacancyCrmSyncService = Depends(get_manual_vacancy_crm_sync_service),
+) -> ManualVacancyCreateResponse:
     try:
         result = service.create(payload)
         if not result.created:
             return result
-        return result
+        crm_sync = await crm_sync_service.sync(result.presentation_key)
+        return result.model_copy(update={"crm_sync": crm_sync})
     except ManualVacancyDatabaseError as exc:
         raise HTTPException(status_code=500, detail={"error_code": "manual_vacancy_storage_failed"}) from exc
+
+
+@router.post("/vacancies/{presentation_key}/crm-sync/retry", response_model=ManualVacancyCrmSyncRead)
+async def retry_manual_vacancy_crm_sync(
+    presentation_key: str,
+    service: ManualVacancyCrmSyncService = Depends(get_manual_vacancy_crm_sync_service),
+) -> ManualVacancyCrmSyncRead:
+    try:
+        return await service.sync(presentation_key, retry=True)
+    except ManualVacancyCrmSyncNotFoundError as exc:
+        raise HTTPException(status_code=404, detail={"error_code": "vacancy_not_found"}) from exc
 
 
 @router.get("/vacancies/{presentation_key}", response_model=VacancyDetail)

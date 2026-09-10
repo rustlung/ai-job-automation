@@ -1467,7 +1467,10 @@ silent overwrite. Подэтап 006.2 добавляет one-time local CSV imp
 `Мой приоритет`/`Итог`/`Комментарий`: exact identity lookup записывает state
 только в current group, а meaningful DB state не перезаписывается. Это не
 runtime Sheets-to-DB sync. Следующий milestone может добавить CRM mirror этих
-значений; текущая задача не меняет Google Sheets, n8n, Worker или AI scoring.
+значений. Подэтапы 006.3--006.5 добавляют DB-first user-state CRM update,
+manual vacancy creation и отдельный идемпотентный append manual CRM row.
+Milestone 006 закрыт: Google Sheets остаётся вторичным представлением, а Worker,
+Daily Search и AI scoring для manual vacancies не менялись.
 
 ---
 

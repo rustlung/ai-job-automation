@@ -358,6 +358,15 @@
 - invalid external URL returns 422;
 - application events appear in `docker compose logs`.
 
+## 2026-09-10
+
+### Added
+
+- DB-first создание CRM row для manual vacancy через отдельный n8n workflow;
+- persistent `ManualVacancyCrmSyncState` и retry API;
+- exact `manual:<UUID>` idempotency без fuzzy/HH fallback;
+- статус и retry создания CRM row в Vacancy Detail.
+
 ## 2026-07-28
 
 ### Added

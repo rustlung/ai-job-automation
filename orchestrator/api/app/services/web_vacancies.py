@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.models.application import Application
 from app.repositories.application import ApplicationRepository
 from app.repositories.application_crm_sync_state import ApplicationCrmSyncStateRepository
+from app.repositories.manual_vacancy_crm_sync_state import ManualVacancyCrmSyncStateRepository
 from app.repositories.vacancy import VacancyRepository
 from app.repositories.vacancy_analysis import VacancyAnalysisRepository
 from app.repositories.vacancy_user_state import VacancyUserStateRepository
@@ -27,6 +28,7 @@ from app.schemas.web import (
     VacancyUserPriorityFilter,
 )
 from app.schemas.vacancy_user_state import VacancyStatus, VacancyUserStateRead
+from app.schemas.manual_vacancy import ManualVacancyCrmSyncRead, ManualVacancyCrmSyncStatus
 from app.services.application import ApplicationService
 from app.services.application_stage import matches_application_filter
 from app.services.business_vacancy_grouping import group_business_vacancies, merge_profile_ids
@@ -40,6 +42,7 @@ class WebVacancyListService:
         self.analysis_repository = VacancyAnalysisRepository(session)
         self.application_repository = ApplicationRepository(session)
         self.application_crm_sync_state_repository = ApplicationCrmSyncStateRepository(session)
+        self.manual_vacancy_crm_sync_state_repository = ManualVacancyCrmSyncStateRepository(session)
         self.vacancy_user_state_repository = VacancyUserStateRepository(session)
 
     def list(
@@ -172,6 +175,11 @@ class WebVacancyListService:
         }
         member_by_id = {member.id: member for member in group.members}
         user_state = self.vacancy_user_state_repository.get_by_presentation_key(group.presentation_key)
+        manual_crm_sync_state = (
+            self.manual_vacancy_crm_sync_state_repository.get(group.presentation_key)
+            if group.representative.source == "manual"
+            else None
+        )
         provenance = representative_analysis.provenance or {} if representative_analysis is not None else {}
         snapshot = representative_analysis.vacancy_snapshot or {} if representative_analysis is not None else {}
         semantic_snapshot = representative_analysis.semantic_snapshot or {} if representative_analysis is not None else {}
@@ -247,6 +255,23 @@ class WebVacancyListService:
                 vacancy_status=user_state.vacancy_status if user_state is not None else VacancyStatus.ACTIVE,
                 created_at=self._as_utc(user_state.created_at) if user_state is not None else None,
                 updated_at=self._as_utc(user_state.updated_at) if user_state is not None else None,
+            ),
+            manual_crm_sync=(
+                ManualVacancyCrmSyncRead.model_validate(manual_crm_sync_state)
+                if manual_crm_sync_state is not None
+                else (
+                    ManualVacancyCrmSyncRead(
+                        vacancy_id=group.representative.id,
+                        presentation_key=group.presentation_key,
+                        status=ManualVacancyCrmSyncStatus.PENDING,
+                        last_attempt_at=None,
+                        synced_at=None,
+                        error_code=None,
+                        error_message_safe=None,
+                    )
+                    if group.representative.source == "manual"
+                    else None
+                )
             ),
         )
 
