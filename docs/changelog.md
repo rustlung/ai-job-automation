@@ -4,6 +4,11 @@
 
 ### Added
 
+- Historical VacancyUserState import tooling: local `Вакансии` CSV is
+  dry-run-first, resolves only exact current logical groups, and applies
+  priority/comment/status only when existing meaningful DB feedback is absent
+  or equivalent; Google Sheets remains a one-time input, not a source of truth;
+
 - Vacancy user-state reconciliation: pipeline ingestion preserves feedback for
   an unambiguous presentation-key transition and records ambiguous merge/split
   cases without silently copying or overwriting data;

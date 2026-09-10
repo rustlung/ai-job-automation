@@ -1463,8 +1463,11 @@ logical vacancy: отдельный `VacancyUserState` хранит незави
 comment и status active/archived/closed по current presentation key. В 006.1
 pipeline ingestion переносит state только при однозначной смене presentation
 identity; ambiguous merge/split сохраняются как reconciliation conflicts без
-silent overwrite. Следующий milestone может добавить CRM mirror этих значений;
-текущая задача не меняет Google Sheets, n8n, Worker или AI scoring.
+silent overwrite. Подэтап 006.2 добавляет one-time local CSV import исторических
+`Мой приоритет`/`Итог`/`Комментарий`: exact identity lookup записывает state
+только в current group, а meaningful DB state не перезаписывается. Это не
+runtime Sheets-to-DB sync. Следующий milestone может добавить CRM mirror этих
+значений; текущая задача не меняет Google Sheets, n8n, Worker или AI scoring.
 
 ---
 

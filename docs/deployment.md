@@ -1038,6 +1038,40 @@ to it to call the existing Application CRM sync adapter. Keep the `Отклик�
 sheet until the CRM update has been verified manually; the tooling never
 deletes it.
 
+## Historical VacancyUserState Import
+
+This separate one-time import reads only a local main-CRM `Вакансии` CSV export.
+It does not call Google Sheets, n8n, or any CRM sync workflow. Verify a recent
+SQLite backup first, then run the dry-run with the one-off imports mount:
+
+```bash
+cd ~/services/ai-job-automation/orchestrator
+cp data/app.db "data/app.db.backup-before-historical-user-state-$(date +%Y%m%d-%H%M%S)"
+docker compose run --rm -v ~/services/ai-job-automation-imports:/imports api \
+  python -m app.scripts.import_historical_vacancy_user_states \
+  --crm-csv /imports/vacancies.csv \
+  --report /imports/historical-user-states-dry-run.json
+```
+
+Inspect `unmatched`, `conflicts`, and `unsupported` details before the manually
+approved write. The importer reads only `Мой приоритет`, `Итог`, and
+`Комментарий`; it never overwrites differing meaningful DB feedback.
+
+```bash
+docker compose run --rm -v ~/services/ai-job-automation-imports:/imports api \
+  python -m app.scripts.import_historical_vacancy_user_states \
+  --crm-csv /imports/vacancies.csv \
+  --apply --report /imports/historical-user-states-apply.json
+
+docker compose run --rm -v ~/services/ai-job-automation-imports:/imports api \
+  python -m app.scripts.import_historical_vacancy_user_states \
+  --crm-csv /imports/vacancies.csv \
+  --report /imports/historical-user-states-idempotency-check.json
+```
+
+After a successful apply, the final dry-run should report no planned creates or
+updates and classify equivalent rows as `already_present`.
+
 ### Historical CRM Rows Without a CRM Key
 
 Import and activate `AI Job Automation — Application CRM Sync v3.json` in n8n

@@ -144,6 +144,13 @@ are retained without copying or overwriting state and recorded in
 is intentionally not part of this milestone; the persisted backend contract is
 the future sync boundary.
 
+The one-time historical `VacancyUserState` importer reads a local `Вакансии`
+CSV export only. It resolves an exact current group through CRM key, canonical
+identity, or an exact HH ID from `Ссылка`, writes only the current presentation
+key, and never makes Google Sheets a runtime source of truth. Meaningful DB
+state is never overwritten by a differing CSV value; such rows remain in the
+dry-run report as conflicts.
+
 For a full run, Manual and Web entries converge before Worker start into one
 n8n `Build Full Run Context`. Shared Worker polling reads only that normalized
 context, while `existing_run_id` replay deliberately bypasses it and continues
