@@ -78,47 +78,51 @@ def test_default_only_row_does_not_create_state(db_session, vacancy_payload: dic
     assert state(db_session, f"hh:{vacancy.external_id}") is None
 
 
-def test_legacy_duplicate_marker_without_other_state_is_a_controlled_skip(db_session, vacancy_payload: dict[str, object]) -> None:
-    vacancy = add_vacancy(db_session, vacancy_payload, "1032")
+@pytest.mark.parametrize(
+    ("external_id", "comment", "outcome"),
+    [
+        ("1032", "", ""),
+        ("1033", "Дубль 243", ""),
+        ("1034", "Повтор вакансии №192", ""),
+        ("1035", "Произвольный технический комментарий", ""),
+        ("1036", "", "В архиве"),
+        ("1037", "", "Закрыта"),
+    ],
+)
+def test_legacy_duplicate_marker_always_skips_entire_row(
+    db_session, vacancy_payload: dict[str, object], external_id: str, comment: str, outcome: str
+) -> None:
+    vacancy = add_vacancy(db_session, vacancy_payload, external_id)
 
-    report = HistoricalVacancyUserStateImportService(db_session).run([crm_row(vacancy.external_id, **{"Мой приоритет": "ДУБЛЬ"})])
+    report = HistoricalVacancyUserStateImportService(db_session).run(
+        [crm_row(vacancy.external_id, **{"Мой приоритет": "ДУБЛЬ", "Комментарий": comment, "Итог": outcome})], apply=True
+    )
 
     assert report.skipped == 1
     assert report.unsupported == 0
+    assert report.conflicts == 0
     assert report.details[0].reason == "legacy_duplicate_marker"
     assert state(db_session, f"hh:{vacancy.external_id}") is None
 
 
-def test_legacy_duplicate_marker_preserves_comment_without_priority(db_session, vacancy_payload: dict[str, object]) -> None:
-    vacancy = add_vacancy(db_session, vacancy_payload, "1033")
-
+def test_legacy_duplicate_row_does_not_conflict_with_main_group_row(db_session, vacancy_payload: dict[str, object]) -> None:
+    fingerprint = "e" * 64
+    duplicate = add_vacancy(db_session, vacancy_payload, "1038", fingerprint)
+    primary = add_vacancy(db_session, vacancy_payload, "1039", fingerprint)
     report = HistoricalVacancyUserStateImportService(db_session).run(
-        [crm_row(vacancy.external_id, **{"Мой приоритет": "ДУБЛЬ", "Комментарий": "Сохранить комментарий"})], apply=True
+        [
+            crm_row(duplicate.external_id, **{"Мой приоритет": "ДУБЛЬ", "Комментарий": "Дубль 30"}),
+            crm_row(primary.external_id, **{"Мой приоритет": "P1", "Комментарий": "Основная строка"}),
+        ],
+        apply=True,
     )
 
-    imported = state(db_session, f"hh:{vacancy.external_id}")
-    assert report.unsupported == 0
+    imported = state(db_session, f"business:{fingerprint}")
+    assert report.skipped == 1
+    assert report.conflicts == 0
     assert imported is not None
-    assert imported.user_priority is None
-    assert imported.comment == "Сохранить комментарий"
-
-
-@pytest.mark.parametrize(("outcome", "expected"), [("Закрыта", "closed"), ("В архиве", "archived")])
-def test_legacy_duplicate_marker_preserves_vacancy_status_without_priority(
-    db_session, vacancy_payload: dict[str, object], outcome: str, expected: str
-) -> None:
-    external_id = "1034" if expected == "closed" else "1035"
-    vacancy = add_vacancy(db_session, vacancy_payload, external_id)
-
-    report = HistoricalVacancyUserStateImportService(db_session).run(
-        [crm_row(vacancy.external_id, **{"Мой приоритет": "ДУБЛЬ", "Итог": outcome})], apply=True
-    )
-
-    imported = state(db_session, f"hh:{vacancy.external_id}")
-    assert report.unsupported == 0
-    assert imported is not None
-    assert imported.user_priority is None
-    assert imported.vacancy_status == expected
+    assert imported.user_priority == "P1"
+    assert imported.comment == "Основная строка"
 
 
 def test_import_reads_real_crm_headers_from_utf8_bom_csv(tmp_path: Path, db_session, vacancy_payload: dict[str, object]) -> None:

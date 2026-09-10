@@ -77,7 +77,11 @@ class HistoricalVacancyUserStateImportService:
         for row_number, row in enumerate(crm_rows, start=2):
             crm_key = _text(row.get("CRM Key"))
             external_id = extract_hh_external_id(_first_value(row, *MAIN_CRM_URL_HEADERS))
-            values, reason, legacy_duplicate_marker = self._values_from_row(row)
+            if _is_legacy_duplicate_marker(row.get("Мой приоритет")):
+                report.skipped += 1
+                report.details.append(HistoricalVacancyUserStateImportDetail(row_number, crm_key, external_id, None, "legacy_duplicate_marker"))
+                continue
+            values, reason = self._values_from_row(row)
             if reason is not None:
                 report.unsupported += 1
                 report.details.append(HistoricalVacancyUserStateImportDetail(row_number, crm_key, external_id, None, reason))
@@ -85,8 +89,7 @@ class HistoricalVacancyUserStateImportService:
             assert values is not None
             if not values.meaningful:
                 report.skipped += 1
-                skip_reason = "legacy_duplicate_marker" if legacy_duplicate_marker else "no_meaningful_user_state"
-                report.details.append(HistoricalVacancyUserStateImportDetail(row_number, crm_key, external_id, None, skip_reason))
+                report.details.append(HistoricalVacancyUserStateImportDetail(row_number, crm_key, external_id, None, "no_meaningful_user_state"))
                 continue
             report.rows_with_meaningful_state += 1
 
@@ -207,14 +210,14 @@ class HistoricalVacancyUserStateImportService:
         return groups_by_vacancy_id.get(vacancy.id) if vacancy is not None else None
 
     @staticmethod
-    def _values_from_row(row: dict[str, str]) -> tuple[_StateValues | None, str | None, bool]:
-        priority, priority_error, legacy_duplicate_marker = _priority(row.get("Мой приоритет"))
+    def _values_from_row(row: dict[str, str]) -> tuple[_StateValues | None, str | None]:
+        priority, priority_error = _priority(row.get("Мой приоритет"))
         if priority_error is not None:
-            return None, priority_error, False
+            return None, priority_error
         status, status_error = _status(row.get("Итог"))
         if status_error is not None:
-            return None, status_error, False
-        return _StateValues(priority, _text(row.get("Комментарий")), status), None, legacy_duplicate_marker
+            return None, status_error
+        return _StateValues(priority, _text(row.get("Комментарий")), status), None
 
     @staticmethod
     def _meaningful(state: VacancyUserState) -> bool:
@@ -239,16 +242,18 @@ def _text(value: str | None) -> str | None:
     return value.strip() or None
 
 
-def _priority(value: str | None) -> tuple[VacancyUserPriority | None, str | None, bool]:
+def _is_legacy_duplicate_marker(value: str | None) -> bool:
+    return (_text(value) or "").upper() == "ДУБЛЬ"
+
+
+def _priority(value: str | None) -> tuple[VacancyUserPriority | None, str | None]:
     normalized = (_text(value) or "").upper().replace("Р", "P")
     if not normalized:
-        return None, None, False
-    if normalized == "ДУБЛЬ":
-        return None, None, True
+        return None, None
     try:
-        return VacancyUserPriority(normalized), None, False
+        return VacancyUserPriority(normalized), None
     except ValueError:
-        return None, "unsupported_user_priority", False
+        return None, "unsupported_user_priority"
 
 
 def _status(value: str | None) -> tuple[VacancyStatus, str | None]:
