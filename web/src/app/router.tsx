@@ -9,6 +9,7 @@ import { StartRunPage } from "../pages/StartRunPage";
 import { VacanciesPage } from "../pages/VacanciesPage";
 import { VacancyDetailPage } from "../pages/VacancyDetailPage";
 import { ApplicationsPage } from "../pages/ApplicationsPage";
+import { StatisticsPage } from "../pages/StatisticsPage";
 
 export const router = createBrowserRouter([{ path: "/", element: <AppShell />, children: [
   { index: true, element: <DashboardPage /> },
@@ -18,5 +19,6 @@ export const router = createBrowserRouter([{ path: "/", element: <AppShell />, c
   { path: "vacancies", element: <VacanciesPage /> },
   { path: "vacancies/:presentationKey", element: <VacancyDetailPage /> },
   { path: "applications", element: <ApplicationsPage /> },
+  { path: "statistics", element: <StatisticsPage /> },
   { path: "*", element: <NotFoundPage /> }
 ] }]);

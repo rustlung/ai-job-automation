@@ -13,7 +13,7 @@ import type {
   SystemHealth,
   VacancyDetail,
   VacancyFilters,
-  VacancyListResponse, VacancyUserState, VacancyUserStateCrmSync, VacancyUserStatePatchRequest, VacancyUserStateWriteResponse, ManualVacancyCreateRequest, ManualVacancyCreateResponse, ManualVacancyCrmSync
+  VacancyListResponse, VacancyUserState, VacancyUserStateCrmSync, VacancyUserStatePatchRequest, VacancyUserStateWriteResponse, ManualVacancyCreateRequest, ManualVacancyCreateResponse, ManualVacancyCrmSync, StatisticsRequest, VacancyStatistics
 } from "../types/api";
 
 function vacancyQuery(filters: VacancyFilters): string {
@@ -51,12 +51,20 @@ function applicationQuery(filters: ApplicationFilters): string {
   return params.toString();
 }
 
+function statisticsQuery(request: StatisticsRequest): string {
+  const params = new URLSearchParams({ period: request.period });
+  if (request.date_from) params.set("date_from", request.date_from);
+  if (request.date_to) params.set("date_to", request.date_to);
+  return params.toString();
+}
+
 export const orchestratorApi = {
   getSystemHealth: () => request<SystemHealth>("/api/system/health"),
   getSearchProfiles: () => request<SearchProfilesResponse>("/api/search-profiles"),
   getRuns: (limit = 20, offset = 0) => request<RunsResponse>(`/api/runs?limit=${limit}&offset=${offset}`),
   getRun: (runId: string) => request<PipelineRunDetail>(`/api/runs/${encodeURIComponent(runId)}`),
   getVacancies: (filters: VacancyFilters) => request<VacancyListResponse>(`/api/vacancies?${vacancyQuery(filters)}`),
+  getStatistics: (statistics: StatisticsRequest) => request<VacancyStatistics>(`/api/statistics?${statisticsQuery(statistics)}`),
   getVacancyDetail: (presentationKey: string) => request<VacancyDetail>(`/api/vacancies/${encodeURIComponent(presentationKey)}`),
   createManualVacancy: (payload: ManualVacancyCreateRequest) => request<ManualVacancyCreateResponse>("/api/vacancies/manual", { method: "POST", body: JSON.stringify(payload) }),
   retryManualVacancyCrmSync: (presentationKey: string) => request<ManualVacancyCrmSync>(`/api/vacancies/${encodeURIComponent(presentationKey)}/crm-sync/retry`, { method: "POST" }),

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { orchestratorApi } from "../api/orchestrator";
 import { runPollingInterval } from "../lib/format";
-import type { ApplicationCreateRequest, ApplicationFilters, ApplicationPatchRequest, ManualVacancyCreateRequest, RunCreateRequest, VacancyFilters, VacancyUserStatePatchRequest } from "../types/api";
+import type { ApplicationCreateRequest, ApplicationFilters, ApplicationPatchRequest, ManualVacancyCreateRequest, RunCreateRequest, StatisticsRequest, VacancyFilters, VacancyUserStatePatchRequest } from "../types/api";
 
 export function useSystemHealth() {
   return useQuery({ queryKey: ["system-health"], queryFn: orchestratorApi.getSystemHealth, refetchInterval: 30_000 });
@@ -29,6 +29,15 @@ export function useVacancies(filters: VacancyFilters) {
   return useQuery({
     queryKey: ["vacancies", filters],
     queryFn: () => orchestratorApi.getVacancies(filters)
+  });
+}
+
+export function useStatistics(request: StatisticsRequest) {
+  const customRangeIsComplete = request.period !== "custom" || Boolean(request.date_from && request.date_to && request.date_from <= request.date_to);
+  return useQuery({
+    queryKey: ["statistics", request],
+    queryFn: () => orchestratorApi.getStatistics(request),
+    enabled: customRangeIsComplete
   });
 }
 

@@ -6,11 +6,11 @@ const navigation = [
   { to: "/runs/new", label: "Запуск поиска", icon: CirclePlay },
   { to: "/runs", label: "Runs", icon: BriefcaseBusiness },
   { to: "/vacancies", label: "Vacancies", icon: BriefcaseBusiness },
-  { to: "/applications", label: "Отклики", icon: Users }
+  { to: "/applications", label: "Отклики", icon: Users },
+  { to: "/statistics", label: "Statistics", icon: BarChart3 }
 ];
 
 const futureNavigation = [
-  { label: "Statistics", icon: BarChart3 },
   { label: "Settings", icon: Settings }
 ];
 

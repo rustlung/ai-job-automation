@@ -100,6 +100,7 @@ export type VacancyUserPriorityFilter = VacancyUserPriority | "none";
 export type ApplicationStatus = "submitted" | "response_received" | "screening" | "test_task" | "interview" | "offer" | "rejected" | "withdrawn";
 export type ApplicationCrmSyncStatus = "pending" | "synced" | "failed";
 export type ManualVacancyCrmSyncStatus = "pending" | "synced" | "failed";
+export type StatisticsPeriod = "today" | "7d" | "14d" | "30d" | "all" | "custom";
 export type VacancyApplicationStatusFilter = ApplicationStatus | "none";
 export type VacancyListSort = "first_seen" | "final_score" | "priority";
 export type SortDirection = "asc" | "desc";
@@ -327,3 +328,24 @@ export interface ManualVacancyCrmSync {
 }
 
 export interface ManualVacancyCreateResponse { created: boolean; presentation_key: string | null; vacancy_id: number | null; user_state: VacancyUserState | null; crm_sync: ManualVacancyCrmSync | null; duplicate: { presentation_key: string; vacancy_id: number } | null; }
+
+export interface VacancyStatistics {
+  period: StatisticsPeriod;
+  date_from: string | null;
+  date_to: string | null;
+  found: number;
+  reviewed: number;
+  applications: number;
+  responses: number;
+  interviews: number;
+  rejections: number;
+  active_processes: number;
+  offers: number;
+  legacy_without_date: number;
+}
+
+export interface StatisticsRequest {
+  period: StatisticsPeriod;
+  date_from?: string;
+  date_to?: string;
+}

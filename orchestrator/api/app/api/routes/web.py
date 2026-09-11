@@ -15,6 +15,7 @@ from app.schemas.pipeline_run import (
     WebPipelineRunCreate,
 )
 from app.schemas.vacancy_analysis import VacancyAnalysisPriority
+from app.schemas.statistics import StatisticsPeriod, VacancyStatisticsRead
 from app.schemas.web import (
     SearchProfilesResponse,
     SortDirection,
@@ -32,6 +33,7 @@ from app.services.pipeline_run import PipelineRunDatabaseError, PipelineRunNotFo
 from app.services.web_gateway import N8nWebhookClient, N8nWebhookError, WorkerGateway, WorkerGatewayError
 from app.services.web_runs import WebRunService, WebRunValidationError
 from app.services.web_vacancies import WebVacancyListService, WebVacancyNotFoundError
+from app.services.statistics import StatisticsValidationError, VacancyStatisticsService
 from app.schemas.manual_vacancy import ManualVacancyCreate, ManualVacancyCreateResponse, ManualVacancyCrmSyncRead
 from app.services.manual_vacancy import ManualVacancyDatabaseError, ManualVacancyService
 from app.services.manual_vacancy_crm_sync import ManualVacancyCrmSyncNotFoundError, ManualVacancyCrmSyncService
@@ -50,6 +52,10 @@ def get_pipeline_run_service(db: Session = Depends(get_db_session)) -> PipelineR
 
 def get_web_vacancy_list_service(db: Session = Depends(get_db_session)) -> WebVacancyListService:
     return WebVacancyListService(db)
+
+
+def get_vacancy_statistics_service(db: Session = Depends(get_db_session)) -> VacancyStatisticsService:
+    return VacancyStatisticsService(db)
 
 
 def get_manual_vacancy_service(db: Session = Depends(get_db_session)) -> ManualVacancyService:
@@ -189,6 +195,19 @@ def list_vacancies(
         sort=sort,
         sort_direction=sort_direction,
     )
+
+
+@router.get("/statistics", response_model=VacancyStatisticsRead)
+def get_vacancy_statistics(
+    period: StatisticsPeriod = StatisticsPeriod.DAYS_30,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    service: VacancyStatisticsService = Depends(get_vacancy_statistics_service),
+) -> VacancyStatisticsRead:
+    try:
+        return service.get(period=period, date_from=date_from, date_to=date_to)
+    except StatisticsValidationError as exc:
+        raise HTTPException(status_code=422, detail={"error_code": "invalid_statistics_period"}) from exc
 
 
 @router.post("/vacancies/manual", response_model=ManualVacancyCreateResponse, status_code=status.HTTP_201_CREATED)
