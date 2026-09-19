@@ -1,485 +1,303 @@
 # AI Job Automation
 
-Self-hosted AI automation system для поиска, фильтрации, анализа и
-приоритизации вакансий.
+Self-hosted система автоматизации и управления поиском работы. Она собирает вакансии с HH, пропускает их через локальный AI и детерминированный scoring, объединяет региональные дубли в logical vacancy, а затем даёт человеку рабочую среду для triage, откликов и контроля CRM.
 
-Система собирает вакансии с HH, предварительно фильтрует их локальной LLM,
-загружает полные карточки перспективных вакансий, рассчитывает объяснимый score,
-сохраняет историю в Orchestrator DB, обновляет Google Sheets CRM и отправляет
-email digest.
+**Orchestrator DB — source of truth. Google Sheets — вторичное CRM-представление.**
 
-```text
-HH → Local AI → Scoring → Orchestrator DB → CRM → Email Digest
-```
+Автоматическая отправка откликов намеренно не реализована: решение и фактическая отправка всегда остаются за человеком.
 
-Ключевые факты:
+![Web UI AI Job Automation](assets/ai-job-automation-hero.png)
 
-- self-hosted архитектура;
-- local-first AI через Ollama и `qwen3:4b-instruct`;
-- Python 3.12, FastAPI, Pydantic, SQLAlchemy, Alembic;
-- n8n orchestration;
-- Google Sheets CRM и Gmail digest;
-- ручной production workflow для on-demand Worker laptop;
-- Orchestrator DB как source of truth.
-- React + TypeScript Web UI для dashboard и управления запусками.
+## Что это
 
-![AI Job Automation overview](assets/ai-job-automation-hero.png)
+Поиск работы быстро превращается в поток похожих вакансий, вкладок, заметок и неполных таблиц. AI Job Automation берёт на себя повторяемую часть: сбор, фильтрацию, enrichment, объяснимую оценку и ведение единой базы. Пользователь работает уже с logical vacancies: расставляет собственный приоритет, оставляет комментарии, ведёт отклики и видит актуальную статистику.
 
-## Зачем нужен проект
-
-При ручном поиске работы приходится просматривать сотни вакансий, большая часть
-которых нерелевантна. Это занимает часы, плохо масштабируется, быстро утомляет и
-повышает риск пропустить хорошую вакансию.
-
-AI Job Automation автоматизирует discovery, filtering и analysis, но оставляет
-ответственное решение об отклике человеку. Автоматическая отправка откликов
-намеренно не реализована.
+Система рассчитана на self-hosted запуск: Worker с локальной моделью выполняет тяжёлую обработку, Orchestrator хранит состояние и обслуживает Web UI, n8n связывает сервисы с Google Sheets и Gmail.
 
 ## Что умеет система
 
-- HH search collection;
-- authenticated resume recommendations;
-- public expanded search;
-- custom keyword search profiles;
-- configurable n8n profile selection;
-- LAN-first Web UI: dashboard, запуск поиска и история runs;
-- pagination;
-- exact deduplication;
-- preliminary local AI filter;
-- deterministic guardrails;
-- full vacancy enrichment;
-- semantic local AI analysis;
-- deterministic scoring;
-- priority `P1 / P2 / P3 / ALT`;
-- persistent analysis history;
-- run history и processing events;
-- Google Sheets CRM sync;
-- Gmail digest;
-- preflight health checks;
-- partial failure tolerance.
+### Discovery и AI
 
-## Реальный production run
+- собирает вакансии HH через resume recommendations и public keyword profiles;
+- поддерживает preliminary local-AI filter с deterministic guardrails;
+- загружает полные карточки перспективных вакансий;
+- извлекает проверяемые признаки из текста вакансии;
+- выполняет semantic assessment локальной моделью Ollama;
+- рассчитывает итоговый score и AI priority `P1` / `P2` / `P3` / `ALT`;
+- сохраняет историю analysis, provenance, processing events и PipelineRun.
 
-Проект дошел до рабочего MVP и прошел full manual production run без acceptance
-overrides.
+### Управление вакансиями
 
-Пример одного production run:
+- объединяет региональные и business-дубли в одну logical vacancy;
+- показывает grouped Vacancy List и Vacancy Detail;
+- хранит независимый от AI `VacancyUserState`: мой приоритет `P1` / `P2` / `P3`, статус `active` / `archived` / `closed` и комментарий;
+- поддерживает inline triage в общем списке и редактирование в Detail;
+- позволяет вручную добавить вакансию из HH, карьерного сайта, Telegram или прямого контакта.
 
-- использовались два resume recommendation profile;
-- Worker обработал большой реальный batch;
-- preliminary filter прошел полный batch в рамках production safety cap;
-- перспективные вакансии дошли до full enrichment, semantic analysis и scoring;
-- результаты сохранены в Orchestrator DB;
-- production CRM sheet обновлен;
-- Gmail digest отправлен;
-- полный run занял порядка 40 минут.
+### Отклики и интеграции
 
-Это пример фактического production run, а не benchmark и не SLA. Время зависит
-от размера batch, состояния HH, локальной модели и ресурсов Worker laptop.
+- ведёт несколько Applications для canonical vacancy: submitted, response received, screening, test task, interview, offer, rejected, withdrawn;
+- показывает current Application для logical vacancy без потери истории;
+- синхронизирует Applications и VacancyUserState с Google Sheets по DB-first модели;
+- создаёт CRM-строку для manual vacancy и даёт controlled retry для внешних ошибок;
+- формирует Gmail digest по результатам search run;
+- использует versioned n8n workflows для внешних интеграций.
 
-## Почему LLM не принимает всё решение
+### Аналитика
 
-Ключевая инженерная идея проекта: LLM используется не как единственный судья, а
-как часть гибридного pipeline.
+- предоставляет Statistics Dashboard: найдено, рассмотрено, отклики, ответы, интервью, отказы, активные процессы и офферы;
+- считает logical vacancies, а не региональные canonical copies;
+- поддерживает периоды «Сегодня», 7 / 14 / 30 дней, всё время и произвольный диапазон.
+
+## Как выглядит рабочий процесс
 
 ```text
-Normalized Vacancy
-↓
-Deterministic Python extraction
-↓
-Compact facts
-↓
-Local Qwen semantic assessment
-↓
-Deterministic Python scoring
-↓
-P1 / P2 / P3 / ALT
+HH вакансии                         Manual vacancy
+    │                                      │
+    ▼                                      ▼
+Worker: collection → AI → scoring ──► Orchestrator DB ◄── Web UI triage
+                                           │                    │
+                                           ├── Applications ────┤
+                                           ├── Statistics        │
+                                           ▼                    ▼
+                                      n8n integration workflows
+                                           │
+                               Google Sheets CRM + Gmail digest
 ```
 
-Python отвечает за проверяемые признаки:
+1. Пользователь выбирает search profiles и запускает поиск через Web UI или manual trigger n8n.
+2. Worker собирает HH-вакансии, применяет предварительный filter, enrichment, semantic assessment и deterministic scoring.
+3. Orchestrator сохраняет canonical data, анализ и историю run.
+4. Web UI показывает logical vacancies; пользователь быстро оценивает их и создаёт Application при реальном отклике.
+5. После DB commit узкие CRM sync flows отражают изменения в Google Sheets. Внешняя ошибка остаётся видимой в sync state, но не отменяет DB-изменение.
 
-- salary;
-- geography;
-- office / relocation;
-- experience;
-- seniority;
-- technical signals;
-- hard blockers;
-- final score и priority.
+## Web UI
 
-LLM отвечает за смысловую оценку:
+Web UI — основной рабочий интерфейс системы, а не будущая надстройка над n8n.
 
-- semantic task fit;
-- role nature;
-- target track;
-- responsibility level;
-- short reason.
+### Vacancy List
 
-Такой подход повышает explainability, стабильность, reproducibility и
-устойчивость небольшой локальной модели.
+Список показывает logical vacancies с AI priority, score, user priority, vacancy status, current Application и комментарием. Фильтры и сортировка выполняются backend-слоем; состояние фильтров синхронизировано с URL. Статус, личный приоритет и комментарий можно менять прямо в строке.
+
+![Vacancy List](assets/web-vacancies.png)
+
+### Vacancy Detail и Applications
+
+Detail раскрывает описание, результаты анализа, canonical members группы, историю Applications и пользовательскую оценку. Для manual vacancy отсутствие AI analysis является нормальным состоянием, а не ошибкой.
+
+![Vacancy Detail](assets/web-vacancy-detail-overview.png)
+
+![Applications in Vacancy Detail](assets/web-vacancy-detail-applications.png)
+
+### Manual vacancy и Statistics
+
+Из списка можно добавить вакансию вручную: компания, должность, описание, origin, ссылка и необязательные данные. Technical identity формируется сервером; manual vacancy не участвует в automatic business grouping и не отправляется в AI pipeline.
+
+Statistics Dashboard использует cohort по дате нахождения или добавления вакансии и показывает текущий результат работы с этой cohort.
+
+![Statistics Dashboard](assets/web-statistics.png)
+
+## AI pipeline: семантика плюс deterministic правила
+
+LLM не принимает решение об отклике целиком. Она отвечает за semantic assessment, а итоговая оценка остаётся контролируемой Python-логикой.
+
+```text
+Normalized vacancy
+        │
+        ▼
+Deterministic feature extraction
+        │
+        ▼
+Local semantic assessment
+        │
+        ▼
+Deterministic scoring, hard blockers и priority
+```
+
+Детерминированный слой учитывает salary, geography, work format, experience, seniority, technical signals и hard blockers. Локальная модель оценивает смысловую релевантность роли, target track и контекст ответственности. Такое разделение делает результат объяснимее и уменьшает зависимость от одного вероятностного ответа модели.
+
+## Logical vacancy grouping
+
+Каждая исходная вакансия имеет canonical identity `source + external_id`. Для UI, CRM и statistics региональные HH-копии одной business vacancy могут быть объединены в presentation group с одним `presentation_key`.
+
+Это даёт два практических эффекта:
+
+- региональные дубли не раздувают список, CRM и статистику;
+- пользовательский priority, статус, комментарий и current Application видны на уровне logical vacancy, а не теряются на representative-регионе.
+
+Manual vacancies имеют собственную singleton identity `manual:<UUID>` и не участвуют в automatic grouping. Внутренние fingerprint и reconciliation mechanics намеренно остаются за пределами публичного интерфейса.
+
+## Applications и пользовательское состояние
+
+`VacancyUserState` существует отдельно от AI evaluation. Например, AI может назначить `P1`, а пользователь — `P3`; это валидная и полезная для последующего анализа ситуация.
+
+Пользователь может:
+
+- задать или снять личный приоритет;
+- перевести vacancy в active, archived или closed;
+- добавить, изменить или очистить комментарий;
+- создать и обновлять Application без жёсткой связи между vacancy status и application status.
+
+Application принадлежит конкретной canonical vacancy, но в grouped интерфейсе система собирает Applications всех members и детерминированно выбирает current record. История не перезаписывается.
+
+## CRM synchronization
+
+Google Sheets CRM не является prerequisite для успешного сохранения в продукте.
+
+```text
+Validate user action
+        │
+        ▼
+Commit Orchestrator DB
+        │
+        ▼
+Call narrow n8n CRM workflow
+        │
+        ├── synced
+        └── failed / pending → controlled retry
+```
+
+Так синхронизируются:
+
+- Application facts и даты: отклик, ответ, интервью, итог и заметки;
+- VacancyUserState: мой приоритет, vacancy status и комментарий;
+- новая строка manual vacancy с CRM Key `manual:<UUID>`.
+
+CRM reconciliation использует exact keys и controlled fallback для исторических HH-строк; fuzzy matching по company/title не применяется. В случае ошибки Google Sheets DB state остаётся сохранённым, а UI показывает безопасный sync status и retry. Existing Google Sheets column layout не перестраивается.
+
+![Google Sheets CRM](assets/crm-sheet.png)
+
+## Manual vacancies
+
+Ручная вакансия предназначена для источников вне обычного search pipeline: HH-ссылка, company site, Habr, Telegram, direct contact или другой источник.
+
+- backend генерирует `source=manual` и UUID external id;
+- `origin` хранит фактическое происхождение, но не участвует в identity;
+- URL опционален;
+- если для origin HH ссылка точно совпадает с уже известной HH vacancy, backend возвращает controlled duplicate result вместо создания копии;
+- vacancy сразу совместима с UserState, Applications и CRM row creation;
+- AI analysis для manual vacancy намеренно не запускается.
+
+## Statistics
+
+Statistics Dashboard не строит conversion funnel и не восстанавливает исторические даты. Для ограниченного периода в cohort попадают только logical vacancies с надёжной датой: `first_seen` для найденных вакансий и `created_at` для manual vacancies. Legacy records без надёжной cohort date доступны в «Всё время» и учитываются отдельно.
+
+Метрики отражают **текущее** состояние выбранной cohort:
+
+- **Найдено** — размер cohort logical vacancies;
+- **Рассмотрено** — есть user priority;
+- **Отклики / Ответы / Интервью** — Application достиг соответствующей стадии;
+- **Отказы / Офферы** — текущий Application имеет terminal outcome;
+- **Активные процессы** — current Application ещё не завершён rejected, offer или withdrawn.
 
 ## Архитектура
 
-![AI Job Automation architecture](assets/ai-job-automation-architecture.png)
+![Architecture](assets/ai-job-automation-architecture.png)
 
 ```text
-HH
-↓
-Worker
-├── collection
-├── preliminary AI
-├── full enrichment
-├── deterministic extraction
-├── semantic analysis
-└── scoring
-↓
-Orchestrator API
-↓
-SQLite
-↓
-n8n
-├── Google Sheets CRM
-└── Gmail Digest
+                    ┌───────────────────┐
+                    │  HH / manual input │
+                    └─────────┬─────────┘
+                              │
+          ┌───────────────────▼────────────────────┐
+          │ Worker                                  │
+          │ collection, local AI, enrichment, score │
+          └───────────────────┬────────────────────┘
+                              │
+                    ┌─────────▼─────────┐
+                    │ Orchestrator API  │
+                    │ SQLite + Alembic  │
+                    └──────┬─────┬──────┘
+                           │     │
+                  ┌────────▼─┐ ┌─▼─────────────────┐
+                  │ React UI │ │ n8n integrations  │
+                  └──────────┘ └──────┬────────────┘
+                                       │
+                            ┌──────────▼──────────┐
+                            │ Google Sheets / Gmail│
+                            └─────────────────────┘
 ```
 
-Worker — compute layer. Он собирает данные, парсит HH, запускает локальный AI,
-делает enrichment/scoring и отправляет результат в Orchestrator.
+n8n остаётся integration/orchestration layer: запускает full search workflow, выполняет preflight, связывает сервисы с Google Sheets и отправляет digest. Он не является центром domain state, не выполняет AI scoring и не хранит canonical vacancy data.
 
-Orchestrator — persistence layer и source of truth. Он хранит вакансии, историю
-анализа, processing events, persistent PipelineRun history и typed operational
-settings. Он также становится единственной backend API boundary для будущего
-React UI.
+## Основные компоненты
 
-n8n — orchestration и external integrations. Он запускает production workflow,
-выполняет preflight, вызывает Worker, читает current run из Orchestrator,
-синхронизирует CRM и отправляет digest.
+| Компонент | Роль |
+| --- | --- |
+| **Worker** | FastAPI-сервис на Windows: HH collection, Playwright/httpx, Ollama, filtering, enrichment и scoring. |
+| **Orchestrator API** | FastAPI + SQLAlchemy + SQLite: canonical data, application/user state, Web API, CRM sync state и Alembic migrations. |
+| **React Web UI** | TypeScript, React Query и React Router: daily triage, runs, vacancies, applications, manual create и statistics. |
+| **n8n** | Versioned workflows для search orchestration, узких CRM sync операций и Gmail digest. |
+| **Google Sheets / Gmail** | Вторичная CRM-витрина и уведомления, не primary datastore. |
 
-Worker и Orchestrator остаются LAN-only. Наружу опубликован только n8n через
-HTTPS.
+## Надёжность и эксплуатационные принципы
 
-## Компоненты
-
-### Worker
-
-Windows 11, Docker, FastAPI, Playwright, httpx, Ollama,
-`qwen3:4b-instruct`.
-
-Responsibilities:
-
-- HH collection;
-- parsing;
-- deduplication;
-- normalization;
-- AI filtering;
-- full vacancy enrichment;
-- scoring;
-- persistence bridge.
-
-### Orchestrator
-
-FastAPI, SQLAlchemy, Alembic, SQLite.
-
-Responsibilities:
-
-- Vacancy persistence;
-- VacancyAnalysis history;
-- processing events;
-- run history;
-- read API;
-- source of truth для автоматических pipeline data.
-
-### n8n
-
-Responsibilities:
-
-- Manual Trigger;
-- preflight;
-- Worker pipeline call;
-- current run retrieval;
-- Google Sheets CRM sync;
-- Gmail digest.
-
-## n8n workflow
-
-![n8n workflow](assets/N8n_workflow.png)
-
-```text
-Manual Trigger
-→ Search Profiles
-→ Conditional Preflight
-→ Worker Pipeline
-→ Orchestrator
-→ CRM
-→ Email
-```
-
-Workflow запускается вручную, потому что Worker laptop является on-demand
-compute node и не работает постоянно. Schedule Trigger намеренно не используется
-в production process.
-
-### Выбор профилей перед запуском
-
-Перед `Manual Trigger` откройте ноду `Search Profiles — EDIT BEFORE RUN` и
-установите `true` только для нужных направлений поиска. Не редактируйте массив
-`profile_ids` вручную: следующая техническая нода формирует его из отмеченных
-значений.
-
-```json
-{
-  "ai_resume_recommendations": true,
-  "python_resume_recommendations": true,
-  "ai_automation_keywords": true,
-  "vibecoding_keywords": false,
-  "python_backend_keywords": false,
-  "python_automation_keywords": false
-}
-```
-
-Если все профили имеют значение `false`, workflow завершится до вызова Worker с
-ошибкой `No search profiles selected`. Только keyword profiles используют public
-HH search и пропускают HH auth/session preflight. Выбор хотя бы одного resume
-profile включает существующий строгий live preflight авторизации HH и resume
-context.
-
-## CRM
-
-![CRM sheet](assets/CRM_sheet.png)
-
-Google Sheets — пользовательская CRM-витрина, а не source of truth. Источник
-автоматических данных остается в Orchestrator DB.
-
-В CRM синхронизируются `P1`, `P2` и `ALT`. `P3` остается DB-only, чтобы таблица
-не превращалась в архив слабых вакансий.
-
-User-managed fields сохраняются:
-
-- `Отклик`;
-- `Ответ`;
-- `Интервью`;
-- `Итог`;
-- `Комментарий`.
-
-CRM Key имеет формат:
-
-```text
-source:external_id
-```
-
-Legacy URL matching поддерживает старые строки CRM без CRM Key: workflow
-извлекает HH external id из URL, обновляет существующую строку и добавляет CRM
-Key без дубля.
-
-## Email digest
-
-![Email digest](assets/Email_report.png)
-
-После run пользователь получает summary:
-
-- run status;
-- collection/filter/enrichment/persistence counts;
-- `P1/P2/ALT/P3`;
-- CRM stats;
-- top vacancies;
-- short reasons;
-- risks;
-- links.
-
-Preflight failure не отправляет Gmail failure email: пользователь запускает
-workflow вручную и сразу видит ошибку в n8n UI.
-
-## Реализация
-
-![Project IDE](assets/Project_ide.png)
-
-Кодовая база разделена по компонентам:
-
-```text
-ai-job-automation/
-├── worker/
-├── orchestrator/
-├── workflows/
-└── docs/
-```
-
-## Reliability and observability
-
-![Project logs](assets/Project_logs.png)
-
-Перед долгим run preflight проверяет:
-
-- Orchestrator;
-- Worker API;
-- Ollama;
-- фактический compute backend загруженной Ollama-модели: production допускает
-  только GPU;
-- HH auth storage и live HH session, только если выбран resume profile.
-
-Workflow v9 содержит ноду `Search Profiles — EDIT BEFORE RUN` с boolean
-selection resume и keyword profiles. Keyword-only run использует public
-`expanded_search`/`httpx` path и не требует HH storage state; при выборе resume
-profile сохраняется strict live HH preflight.
-
-v9 сохраняет Manual Trigger и `existing_run_id` replay. Для будущего Web UI
-Orchestrator создаёт persistent run, передаёт его через защищённый internal
-webhook, а обе full-run ветки сходятся перед формированием `profile_ids`.
-
-Compute preflight выполняется отдельным `POST /health/ollama/compute`: при
-выгруженной модели он делает минимальный warm-up и проверяет её allocation через
-Ollama API. Состояния CPU, mixed и unknown останавливают workflow до долгого
-Worker pipeline.
-
-Это важно из-за реального production edge case: при включенном VPN HH browser
-мог попадать на `/vpncheeck`, и resume context не подтверждался. Preflight
-обнаруживает такую проблему до запуска длинного pipeline.
-
-Одна проблемная vacancy не должна ронять весь batch. Pipeline поддерживает
-`completed_with_errors`, per-vacancy isolation и controlled fallbacks:
-
-```text
-AI failure
-↓
-uncertain / fallback
-↓
-vacancy не теряется
-```
+- Preflight проверяет доступность Orchestrator, Worker, Ollama и требуемый GPU compute; HH auth/session проверяется только для resume profiles.
+- Worker изолирует ошибки на уровне vacancy и допускает controlled partial completion вместо потери всего batch.
+- Canonical upsert, analysis persistence и CRM workflows идемпотентны по их exact identity.
+- Синхронизации следуют DB-first boundary: внешний failure не откатывает успешно сохранённые product data.
+- Для CRM state предусмотрены `pending`, `synced`, `failed`, safe error code и retry.
+- Alembic управляет схемой SQLite; production update требует backup перед migration.
+- Backend и frontend покрыты automated tests; workflow exports versioned и не содержат credentials.
 
 ## Стек
 
-Backend:
+**Backend:** Python 3.12, FastAPI, Pydantic, SQLAlchemy, Alembic, SQLite.
 
-- Python 3.12;
-- FastAPI;
-- Pydantic;
-- SQLAlchemy;
-- Alembic.
+**Frontend:** React, TypeScript, Vite, TanStack Query, React Router, Tailwind CSS, Vitest.
 
-AI:
+**AI и collection:** Ollama, `qwen3:4b-instruct`, structured output, httpx, Playwright, Chromium.
 
-- Ollama;
-- `qwen3:4b-instruct`;
-- structured output;
-- deterministic + semantic hybrid analysis.
+**Automation и интеграции:** n8n, Google Sheets API, Gmail OAuth.
 
-Automation:
+**Infrastructure:** Docker Compose, Windows 11 Worker, homeserver deployment, Nginx и HTTPS для n8n.
 
-- n8n.
+## Deployment
 
-Data:
+README даёт обзор, а не заменяет operational runbook. Orchestrator, Worker и Web UI разворачиваются отдельными Docker Compose конфигурациями; n8n хранит credentials вне workflow exports. Перед обновлением production SQLite создаётся backup, затем применяется Alembic migration и выполняются health checks.
 
-- SQLite;
-- Google Sheets.
-
-Integration:
-
-- Gmail OAuth;
-- Google Service Account.
-
-Collection:
-
-- httpx;
-- Playwright;
-- Chromium.
-
-Infrastructure:
-
-- Docker;
-- Nginx;
-- Let's Encrypt;
-- Ubuntu Server;
-- Windows 11 Worker.
-
-## Как запускается
-
-README не заменяет deployment manual. В рабочем процессе:
-
-1. Поднимается Orchestrator.
-2. Запускается Worker.
-3. Проверяется доступность Ollama.
-4. При необходимости обновляется HH auth state.
-5. n8n workflow запускается вручную через Manual Trigger.
-6. Preflight подтверждает инфраструктуру.
-7. Worker выполняет длинный pipeline.
-8. Orchestrator сохраняет результаты.
-9. CRM обновляется.
-10. Gmail отправляет digest.
-
-### Обновление HH-сессии
-
-Authenticated resume recommendations используют Playwright storage state. Этот
-файл хранится локально вне Git и периодически перестает быть валидным: само
-наличие storage state файла не означает, что HH-сессия еще рабочая.
-
-На Windows Worker сессия обновляется вручную:
-
-```powershell
-cd worker
-.\api\.venv\Scripts\python.exe .\tools\hh_auth_setup.py
-```
-
-После ручной авторизации в открывшемся Chromium storage state обновляется
-локально. Затем Worker нужно перезапустить:
-
-```powershell
-docker compose restart api
-```
-
-Перед production run n8n выполняет live preflight: проверяет фактическую
-авторизацию HH и resume context. Если HH session invalid, основной pipeline не
-запускается. Failed HH preflight нельзя обходить без понимания причины:
-истекшая HH-сессия может привести к неперсонализированной или нерелевантной
-выдаче.
-
-Подробности: [docs/deployment.md](docs/deployment.md).
+Подробности: [Deployment guide](docs/deployment.md).
 
 ## Безопасность
 
-- `.env` не хранится в Git;
-- HH storage state находится вне Git;
-- OAuth tokens не попадают в workflow export;
-- Google credentials не экспортируются в repository;
-- Worker и Orchestrator остаются LAN-only;
-- n8n доступен через HTTPS;
-- secrets, raw prompts, raw AI responses и storage state не должны логироваться.
+- `.env`, OAuth tokens, service-account keys и HH browser storage state не хранятся в Git;
+- frontend общается только с Orchestrator `/api/...`, не получает Worker/n8n secrets;
+- Worker и Orchestrator остаются LAN services; публичный HTTPS нужен n8n;
+- workflow exports не содержат credentials;
+- логи не должны включать cookies, auth headers, raw HTML, полные prompts, raw AI responses и персональные данные.
 
-## Ограничения текущей версии
+## Ограничения
 
-- scoring требует дальнейшей calibration;
-- keyword search требует filter calibration для нерелевантных ролей с
-  поверхностным упоминанием AI;
-- regional/business near-duplicate suppression для разных HH external id пока
-  отсутствует;
-- локальная модель небольшая;
-- HTML HH может измениться;
-- HH auth state периодически нужно обновлять вручную;
-- cross-source deduplication отсутствует;
-- automatic applications intentionally not implemented;
-- cloud AI fallback пока не является частью MVP;
-- Telegram notification пока отсутствует.
+- Автоматическая отправка откликов отсутствует намеренно.
+- Automatic collection сейчас ориентирован на HH; manual creation закрывает другие источники без AI pipeline.
+- Quality AI filter/scoring требует регулярной calibration на реальных результатах.
+- HH HTML, auth/session и антибот-механизмы могут изменяться и требуют operational monitoring.
+- Worker рассчитан на on-demand использование и один тяжёлый pipeline run за раз.
+- Google Sheets — зеркало, поэтому CRM ошибка требует retry, но не меняет DB source of truth.
 
 ## Возможное развитие
 
-Это optional future improvements, а не blockers текущего MVP:
-
-- scoring calibration;
-- filter calibration для keyword search;
-- near-duplicate grouping для CRM/Web UI;
-- безопасный `GET /hh/search-profiles` для будущего Web UI;
-- larger/local model evaluation;
-- LoRA / QLoRA / PEFT experiments;
-- expanded search;
-- Telegram;
-- web UI;
-- cloud fallback;
-- PostgreSQL;
-- cross-source collectors.
+- calibration scoring и AI/user feedback analytics;
+- дополнительные source collectors;
+- расширение reporting без отказа от logical-vacancy semantics;
+- оценка более крупных локальных моделей и controlled cloud fallback;
+- PostgreSQL при необходимости масштаба или многопользовательского сценария;
+- дополнительные каналы уведомлений.
 
 ## Документация
 
 - [Architecture](docs/architecture.md)
 - [Current State](docs/current-state.md)
 - [API](docs/api.md)
-- [Deployment](docs/deployment.md)
 - [Workflows](docs/workflows.md)
+- [Deployment](docs/deployment.md)
+- [Changelog](docs/changelog.md)
 - [Roadmap](docs/project-roadmap-v1.1.md)
-- [Project Context](docs/project-context.md)
-- [Project History](docs/project-history.md)
+
+## Скриншоты в репозитории
+
+README использует актуальные пути `assets/ai-job-automation-hero.png`, `assets/web-vacancies.png`, `assets/web-vacancy-detail-overview.png`, `assets/web-vacancy-detail-applications.png`, `assets/web-statistics.png`, `assets/n8n-daily-workflow.png`, `assets/crm-sheet.png`, `assets/email-digest.png` и `assets/ai-job-automation-architecture.png`.
+
+![Daily workflow](assets/n8n-daily-workflow.png)
+
+![Gmail digest](assets/email-digest.png)
