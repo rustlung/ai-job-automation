@@ -3,7 +3,7 @@ param()
 
 $ErrorActionPreference = "Stop"
 
-$RemoteHost = "homeserver"
+$RemoteHost = "server"
 $RemoteProject = "~/services/ai-job-automation/orchestrator"
 $RemoteSnapshotRelativePath = "data/app-dbeaver-export.db"
 $RemoteSnapshotPath = "$RemoteProject/$RemoteSnapshotRelativePath"
@@ -30,14 +30,17 @@ function Remove-RemoteSnapshot {
 }
 
 try {
+    $remoteSnapshotCreated = $false
     New-Item -ItemType Directory -Path $LocalDirectory -Force | Out-Null
     Remove-Item -LiteralPath $LocalTemporaryFile -Force -ErrorAction SilentlyContinue
 
     $createCommand = "cd $RemoteProject && docker compose run --rm api python -m app.scripts.export_database_snapshot --output /app/data/app-dbeaver-export.db"
     Invoke-NativeCommand -FilePath "ssh" -Arguments @($RemoteHost, $createCommand) -Stage "Remote SQLite snapshot creation"
+    $remoteSnapshotCreated = $true
 
     Invoke-NativeCommand -FilePath "scp" -Arguments @("${RemoteHost}:$RemoteSnapshotPath", $LocalTemporaryFile) -Stage "Snapshot download"
     Remove-RemoteSnapshot
+    $remoteSnapshotCreated = $false
 
     if (Test-Path -LiteralPath $LocalFile) {
         [System.IO.File]::Replace($LocalTemporaryFile, $LocalFile, $null)
@@ -51,10 +54,12 @@ try {
 catch {
     $failureMessage = $_.Exception.Message
     Remove-Item -LiteralPath $LocalTemporaryFile -Force -ErrorAction SilentlyContinue
-    try {
-        Remove-RemoteSnapshot
-    } catch {
-        Write-Warning "Remote temporary snapshot cleanup failed."
+    if ($remoteSnapshotCreated) {
+        try {
+            Remove-RemoteSnapshot
+        } catch {
+            Write-Warning "Remote temporary snapshot cleanup failed."
+        }
     }
     Write-Error "Database snapshot export failed: $failureMessage"
     exit 1
