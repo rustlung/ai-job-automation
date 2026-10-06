@@ -1118,3 +1118,32 @@ docker compose up -d --build api
 DB/detail доступны независимо от CRM результата; при `synced` строка имеет
 `CRM Key=manual:<UUID>`; при `failed` кнопка retry повторяет только CRM append.
 Повторный retry не должен создавать вторую строку.
+
+## Локальный DBeaver snapshot production DB
+
+На Windows один раз установите пользовательскую команду из repository root:
+
+```powershell
+.\scripts\install_export_aja_db_command.ps1
+```
+
+Installer создаёт launcher в `$HOME\bin`, добавляет этот каталог в user `PATH`
+без повторяющихся entries и не требует Administrator privileges. После изменения
+`PATH` откройте новый PowerShell.
+
+Затем из любой директории:
+
+```powershell
+export_aja_db
+```
+
+Команда запускает `sqlite3.Connection.backup()` внутри Orchestrator container,
+скачивает временный snapshot и удаляет его с homeserver. Итоговый локальный файл:
+
+```text
+C:\ai-job-automation_db_backup\ai-job-automation.db
+```
+
+Подключите этот путь в DBeaver как SQLite database. Production `app.db` не
+копируется обычным файловым copy и не изменяется; при ошибке SSH/scp предыдущий
+локальный snapshot сохраняется.
