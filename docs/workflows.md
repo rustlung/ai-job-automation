@@ -89,13 +89,13 @@ keyword profiles и configurable selection также приняты.
 Актуальный export:
 
 ``` text
-workflows/n8n/AI Job Automation — Daily Search CRM Digest v12.json
+workflows/n8n/AI Job Automation — Daily Search CRM Digest v13.json
 ```
 
 Workflow name:
 
 ``` text
-AI Job Automation — Daily Search CRM Digest v12
+AI Job Automation — Daily Search CRM Digest v13
 ```
 
 Export не содержит credentials. После import activation управляется n8n
@@ -156,7 +156,9 @@ Manual Trigger
 → Legacy URL Match?
 → CRM Upsert by CRM Key / temporary legacy CRM key fallback / CRM Upsert Legacy by URL
 → Prepare Success Email
-→ Gmail Send Digest
+  ├→ Gmail Send Digest
+  └→ Prepare Telegram Completion Notification
+     → Telegram Send Completion Notification
 ```
 
 Failure branch:
@@ -169,6 +171,20 @@ Pipeline OK?
 → Prepare Failure Email
 → Gmail Send Failure
 ```
+
+### Telegram Completion Notification
+
+v13 добавляет независимую best-effort ветку после формирования итоговой
+success-сводки. Она не заменяет Gmail digest и не влияет на результат поиска,
+CRM sync или email delivery. `Telegram Send Completion Notification` отправляет
+в Cloudflare Telegram API Gateway только короткий текст: факт завершения,
+доступные summary-counts, P1 и, при наличии, ссылку на CRM. Полные тексты
+вакансий, персональные данные, диагностические логи и секреты не передаются.
+
+В n8n container должны быть заданы `AI_JOB_GATEWAY_BASE_URL` и
+`AI_JOB_GATEWAY_KEY`. Ключ читается только как `$env` во время выполнения и не
+входит в workflow export. Ошибка HTTP node имеет `continueOnFail=true`, поэтому
+не запускает pipeline повторно и не блокирует Gmail.
 
 ### Profile Selection And Preflight
 

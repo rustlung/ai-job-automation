@@ -738,6 +738,8 @@ N8N_PROTOCOL=https
 N8N_SECURE_COOKIE=true
 N8N_EDITOR_BASE_URL=https://n8n.vsigaev.ru
 WEBHOOK_URL=https://n8n.vsigaev.ru/
+AI_JOB_GATEWAY_BASE_URL=https://<cloudflare-telegram-gateway-host>
+AI_JOB_GATEWAY_KEY=replace-with-cloudflare-gateway-key
 ```
 
 LAN endpoints Worker и Orchestrator задаются через отдельные environment
@@ -760,7 +762,30 @@ docker compose exec n8n printenv N8N_EDITOR_BASE_URL
 docker compose exec n8n printenv WEBHOOK_URL
 docker compose exec n8n printenv ORCHESTRATOR_API_URL
 docker compose exec n8n printenv WORKER_API_URL
+docker compose exec n8n printenv AI_JOB_GATEWAY_BASE_URL
+docker compose exec n8n sh -c 'test -n "$AI_JOB_GATEWAY_KEY"'
 ```
+
+Не печатайте `AI_JOB_GATEWAY_KEY` через `printenv`: это секрет Cloudflare
+Telegram API Gateway. Base URL и key задаются только в окружении n8n container;
+ни Bot Token, ни Telegram Chat ID в n8n не требуются.
+
+### Telegram-уведомление о завершении поиска
+
+Для rollout `AI Job Automation — Daily Search CRM Digest v13`:
+
+1. Добавьте `AI_JOB_GATEWAY_BASE_URL` и `AI_JOB_GATEWAY_KEY` в environment file
+   n8n на homeserver и пересоздайте n8n container приведенной выше командой.
+2. Импортируйте
+   `workflows/n8n/AI Job Automation — Daily Search CRM Digest v13.json` в UI n8n.
+3. Убедитесь, что HTTP node `Telegram Send Completion Notification` использует
+   environment expressions из export; отдельные n8n credentials для gateway не
+   требуются.
+4. Активируйте v13 и деактивируйте прежний daily workflow v12, чтобы не
+   запускать два цикла и не получать дубли уведомлений.
+5. Выполните один ручной run и проверьте короткое Telegram-сообщение, Gmail
+   digest и CRM sync. При ошибке Gateway основной run, Gmail и CRM должны
+   завершиться независимо от Telegram node.
 
 Google OAuth callback для n8n:
 
