@@ -65,6 +65,7 @@ def test_v13_keeps_existing_email_branch_and_adds_one_independent_telegram_branc
 def test_v13_telegram_gateway_request_uses_environment_credentials_and_is_non_blocking() -> None:
     workflow = load(V13)
     request = node(workflow, "Telegram Send Completion Notification")
+    message_code = node(workflow, "Prepare Telegram Completion Notification")["parameters"]["jsCode"]
     parameters = request["parameters"]
     authorization = parameters["headerParameters"]["parameters"][0]
 
@@ -77,9 +78,11 @@ def test_v13_telegram_gateway_request_uses_environment_credentials_and_is_non_bl
     assert "$env.AI_JOB_GATEWAY_KEY" in authorization["value"]
     assert parameters["jsonBody"] == "={{ { text: $json.text } }}"
     assert "AI_JOB_GATEWAY_KEY=" not in V13.read_text(encoding="utf-8-sig")
+    assert "spreadsheet_url" not in message_code
+    assert "P1:" not in message_code
 
 
-def test_v13_telegram_message_uses_available_summary_counts_without_vacancy_content() -> None:
+def test_v13_telegram_message_uses_only_available_completion_counts_without_links() -> None:
     workflow = load(V13)
     message = telegram_message(
         workflow,
@@ -88,7 +91,6 @@ def test_v13_telegram_message_uses_available_summary_counts_without_vacancy_cont
             "config": {"spreadsheet_url": "https://docs.google.com/spreadsheets/d/example"},
             "worker": {
                 "enrichment_stats": {"enriched_count": 9},
-                "persistence_stats": {"persisted_count": 7},
             },
         },
         {"analyses": [{"priority": "P1"}, {"priority": "P2"}, {"priority": "ALT"}, {"priority": "P3"}]},
@@ -96,17 +98,18 @@ def test_v13_telegram_message_uses_available_summary_counts_without_vacancy_cont
 
     assert "AI Job Automation: обработка вакансий завершена." in message
     assert "Обработано: 9" in message
-    assert "Сохранено в DB: 7" in message
-    assert "В приоритете (P1/P2/ALT): 3" in message
-    assert "P1: 1" in message
-    assert "CRM: https://docs.google.com/spreadsheets/d/example" in message
+    assert "Отобрано: 3" in message
+    assert "https://" not in message
+    assert "P1:" not in message
+    assert "P2:" not in message
+    assert "ALT:" not in message
     assert "vacancy_snapshot" not in message
 
 
 def test_v13_telegram_message_omits_unavailable_optional_fields() -> None:
     message = telegram_message(load(V13), {"mode": "existing_run_replay", "config": {}, "worker": {}}, {"analyses": []})
 
-    assert message == "AI Job Automation: CRM/email синхронизация завершена.\nВ приоритете (P1/P2/ALT): 0\nP1: 0"
+    assert message == "AI Job Automation: синхронизация завершена.\nОтобрано: 0"
 
 
 def test_v13_has_unique_node_ids_and_positions() -> None:

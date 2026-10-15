@@ -177,8 +177,8 @@ Pipeline OK?
 v13 добавляет независимую best-effort ветку после формирования итоговой
 success-сводки. Она не заменяет Gmail digest и не влияет на результат поиска,
 CRM sync или email delivery. `Telegram Send Completion Notification` отправляет
-в Cloudflare Telegram API Gateway только короткий текст: факт завершения,
-доступные summary-counts, P1 и, при наличии, ссылку на CRM. Полные тексты
+в Cloudflare Telegram API Gateway только короткий факт завершения и, если уже
+доступны, counts обработанных и отобранных вакансий. Ссылки, полные тексты
 вакансий, персональные данные, диагностические логи и секреты не передаются.
 
 В n8n container должны быть заданы `AI_JOB_GATEWAY_BASE_URL` и
