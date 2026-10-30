@@ -10,6 +10,7 @@ import { VacanciesPage } from "../pages/VacanciesPage";
 import { VacancyDetailPage } from "../pages/VacancyDetailPage";
 import { ApplicationsPage } from "../pages/ApplicationsPage";
 import { StatisticsPage } from "../pages/StatisticsPage";
+import { ExportsPage } from "../pages/ExportsPage";
 
 export const router = createBrowserRouter([{ path: "/", element: <AppShell />, children: [
   { index: true, element: <DashboardPage /> },
@@ -20,5 +21,6 @@ export const router = createBrowserRouter([{ path: "/", element: <AppShell />, c
   { path: "vacancies/:presentationKey", element: <VacancyDetailPage /> },
   { path: "applications", element: <ApplicationsPage /> },
   { path: "statistics", element: <StatisticsPage /> },
+  { path: "exports", element: <ExportsPage /> },
   { path: "*", element: <NotFoundPage /> }
 ] }]);

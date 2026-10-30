@@ -8,6 +8,9 @@
   CSV downloads for logical Vacancy groups and real Application rows. Period
   filtering shares Statistics cohort-date semantics; the existing Google Sheets
   CRM synchronization remains enabled during this transition phase.
+- Data Exports Web UI: `/exports` uses the backend schema to select entity,
+  period, columns and format, then downloads the generated XLSX/CSV without
+  persisting preferences. Google Sheets CRM synchronization remains active.
 
 ### Fixed
 

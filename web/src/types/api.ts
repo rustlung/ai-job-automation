@@ -358,3 +358,36 @@ export interface StatisticsRequest {
   date_from?: string;
   date_to?: string;
 }
+
+export type ExportEntity = "vacancies" | "applications";
+export type ExportFormat = "xlsx" | "csv";
+export type ExportPeriod = "all" | "7d" | "30d" | "custom";
+export type ExportColumnCategory = "business" | "ai" | "technical";
+
+export interface ExportColumnDefinition {
+  key: string;
+  label: string;
+  default_enabled: boolean;
+  category: ExportColumnCategory;
+  type: string;
+}
+
+export interface ExportSchema {
+  vacancies: ExportColumnDefinition[];
+  applications: ExportColumnDefinition[];
+  formats: ExportFormat[];
+  periods: ExportPeriod[];
+}
+
+export interface ExportRequest {
+  format: ExportFormat;
+  period: ExportPeriod;
+  date_from?: string;
+  date_to?: string;
+  columns: string[];
+}
+
+export interface ExportDownload {
+  blob: Blob;
+  filename: string | null;
+}

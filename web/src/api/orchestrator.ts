@@ -1,4 +1,4 @@
-import { request } from "./client";
+import { request, requestBlob } from "./client";
 import type {
   PipelineRunDetail,
   ApplicationCrmSync,
@@ -13,7 +13,7 @@ import type {
   SystemHealth,
   VacancyDetail,
   VacancyFilters,
-  VacancyListResponse, VacancyUserState, VacancyUserStateCrmSync, VacancyUserStatePatchRequest, VacancyUserStateWriteResponse, ManualVacancyCreateRequest, ManualVacancyCreateResponse, ManualVacancyCrmSync, StatisticsRequest, VacancyStatistics
+  VacancyListResponse, VacancyUserState, VacancyUserStateCrmSync, VacancyUserStatePatchRequest, VacancyUserStateWriteResponse, ManualVacancyCreateRequest, ManualVacancyCreateResponse, ManualVacancyCrmSync, StatisticsRequest, VacancyStatistics, ExportRequest, ExportSchema, ExportDownload
 } from "../types/api";
 
 function vacancyQuery(filters: VacancyFilters): string {
@@ -65,6 +65,9 @@ export const orchestratorApi = {
   getRun: (runId: string) => request<PipelineRunDetail>(`/api/runs/${encodeURIComponent(runId)}`),
   getVacancies: (filters: VacancyFilters) => request<VacancyListResponse>(`/api/vacancies?${vacancyQuery(filters)}`),
   getStatistics: (statistics: StatisticsRequest) => request<VacancyStatistics>(`/api/statistics?${statisticsQuery(statistics)}`),
+  getExportSchema: () => request<ExportSchema>("/api/exports/schema"),
+  downloadVacancyExport: (payload: ExportRequest) => requestBlob("/api/exports/vacancies", { method: "POST", body: JSON.stringify(payload) }) as Promise<ExportDownload>,
+  downloadApplicationExport: (payload: ExportRequest) => requestBlob("/api/exports/applications", { method: "POST", body: JSON.stringify(payload) }) as Promise<ExportDownload>,
   getVacancyDetail: (presentationKey: string) => request<VacancyDetail>(`/api/vacancies/${encodeURIComponent(presentationKey)}`),
   createManualVacancy: (payload: ManualVacancyCreateRequest) => request<ManualVacancyCreateResponse>("/api/vacancies/manual", { method: "POST", body: JSON.stringify(payload) }),
   retryManualVacancyCrmSync: (presentationKey: string) => request<ManualVacancyCrmSync>(`/api/vacancies/${encodeURIComponent(presentationKey)}/crm-sync/retry`, { method: "POST" }),

@@ -1,4 +1,4 @@
-import { BarChart3, BriefcaseBusiness, CirclePlay, LayoutDashboard, Settings, Users } from "lucide-react";
+import { BarChart3, BriefcaseBusiness, CirclePlay, Download, LayoutDashboard, Settings, Users } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 
 const navigation = [
@@ -7,7 +7,8 @@ const navigation = [
   { to: "/runs", label: "Runs", icon: BriefcaseBusiness },
   { to: "/vacancies", label: "Vacancies", icon: BriefcaseBusiness },
   { to: "/applications", label: "Отклики", icon: Users },
-  { to: "/statistics", label: "Statistics", icon: BarChart3 }
+  { to: "/statistics", label: "Statistics", icon: BarChart3 },
+  { to: "/exports", label: "Экспорт", icon: Download }
 ];
 
 const futureNavigation = [

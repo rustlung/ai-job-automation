@@ -37,3 +37,22 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
   }
   return response.json() as Promise<T>;
 }
+
+export async function requestBlob(path: string, options: RequestInit = {}): Promise<{ blob: Blob; filename: string | null }> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers: { "Content-Type": "application/json", ...options.headers }
+    });
+  } catch {
+    throw new ApiError("Не удалось подключиться к Orchestrator", 0);
+  }
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as ApiErrorBody;
+    const details = errorDetails(body);
+    throw new ApiError(details.message, response.status, details.errorCode);
+  }
+  return { blob: await response.blob(), filename: response.headers.get("Content-Disposition") };
+}

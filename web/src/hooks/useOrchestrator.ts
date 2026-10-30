@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { orchestratorApi } from "../api/orchestrator";
 import { runPollingInterval } from "../lib/format";
-import type { ApplicationCreateRequest, ApplicationFilters, ApplicationPatchRequest, ManualVacancyCreateRequest, RunCreateRequest, StatisticsRequest, VacancyFilters, VacancyUserStatePatchRequest } from "../types/api";
+import type { ApplicationCreateRequest, ApplicationFilters, ApplicationPatchRequest, ExportRequest, ManualVacancyCreateRequest, RunCreateRequest, StatisticsRequest, VacancyFilters, VacancyUserStatePatchRequest } from "../types/api";
 
 export function useSystemHealth() {
   return useQuery({ queryKey: ["system-health"], queryFn: orchestratorApi.getSystemHealth, refetchInterval: 30_000 });
@@ -39,6 +39,18 @@ export function useStatistics(request: StatisticsRequest) {
     queryFn: () => orchestratorApi.getStatistics(request),
     enabled: customRangeIsComplete
   });
+}
+
+export function useExportSchema() {
+  return useQuery({ queryKey: ["export-schema"], queryFn: orchestratorApi.getExportSchema });
+}
+
+export function useDownloadVacancyExport() {
+  return useMutation({ mutationFn: (payload: ExportRequest) => orchestratorApi.downloadVacancyExport(payload) });
+}
+
+export function useDownloadApplicationExport() {
+  return useMutation({ mutationFn: (payload: ExportRequest) => orchestratorApi.downloadApplicationExport(payload) });
 }
 
 export function useVacancyDetail(presentationKey: string) {
