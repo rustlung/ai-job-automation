@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from io import BytesIO, StringIO
 from typing import Any
 
@@ -22,7 +22,7 @@ from app.repositories.vacancy_user_state import VacancyUserStateRepository
 from app.schemas.exports import ExportColumnRead, ExportFormat, ExportPeriod, ExportRequest, ExportSchemaRead
 from app.schemas.vacancy_user_state import VacancyStatus
 from app.services.business_vacancy_grouping import BusinessVacancyGroup, group_business_vacancies, merge_profile_ids
-from app.services.logical_vacancy_dates import as_utc, logical_vacancy_cohort_date
+from app.services.logical_vacancy_dates import as_utc, logical_vacancy_cohort_date, preset_period_range, samara_today
 
 
 class ExportValidationError(ValueError):
@@ -137,7 +137,7 @@ class ExportService:
         self.applications = ApplicationRepository(session)
         self.analyses = VacancyAnalysisRepository(session)
         self.user_states = VacancyUserStateRepository(session)
-        self.today = today or date.today()
+        self.today = today or samara_today()
 
     @staticmethod
     def schema() -> ExportSchemaRead:
@@ -293,8 +293,7 @@ class ExportService:
             return None, None
         if request.period == ExportPeriod.CUSTOM:
             return request.date_from, request.date_to
-        days = {ExportPeriod.DAYS_7: 7, ExportPeriod.DAYS_30: 30}[request.period]
-        return self.today - timedelta(days=days - 1), self.today
+        return preset_period_range(request.period.value, today=self.today)
 
     @staticmethod
     def _select_columns(registry: list[ExportColumn], selected: list[str] | None) -> list[ExportColumn]:

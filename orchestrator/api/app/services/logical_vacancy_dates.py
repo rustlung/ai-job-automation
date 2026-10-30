@@ -1,6 +1,16 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from app.services.business_vacancy_grouping import BusinessVacancyGroup
+
+
+SAMARA_TIMEZONE = ZoneInfo("Europe/Samara")
+_PRESET_PERIOD_DAYS = {
+    "today": 1,
+    "7d": 7,
+    "14d": 14,
+    "30d": 30,
+}
 
 
 def logical_vacancy_cohort_date(group: BusinessVacancyGroup) -> date | None:
@@ -24,3 +34,20 @@ def as_utc(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
+
+
+def samara_today(now: datetime | None = None) -> date:
+    """Return the current calendar date in the product timezone."""
+    effective_now = now or datetime.now(timezone.utc)
+    return as_utc(effective_now).astimezone(SAMARA_TIMEZONE).date()
+
+
+def preset_period_range(period: str, *, today: date | None = None) -> tuple[date | None, date | None]:
+    """Return an inclusive Samara-calendar range for a supported preset."""
+    if period == "all":
+        return None, None
+    days = _PRESET_PERIOD_DAYS.get(period)
+    if days is None:
+        raise ValueError(f"unsupported preset period: {period}")
+    end = today or samara_today()
+    return end - timedelta(days=days - 1), end

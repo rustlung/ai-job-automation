@@ -32,6 +32,7 @@ from app.schemas.manual_vacancy import ManualVacancyCrmSyncRead, ManualVacancyCr
 from app.services.application import ApplicationService
 from app.services.application_stage import matches_application_filter
 from app.services.business_vacancy_grouping import group_business_vacancies, merge_profile_ids
+from app.services.logical_vacancy_dates import logical_vacancy_cohort_date
 
 
 class WebVacancyListService:
@@ -81,6 +82,7 @@ class WebVacancyListService:
 
         items: list[VacancyListItem] = []
         for group in groups:
+            cohort_date = logical_vacancy_cohort_date(group)
             representative_analysis = latest_analyses.get(group.representative.id)
 
             member_analyses = [
@@ -126,6 +128,7 @@ class WebVacancyListService:
             )
             if self._matches_filters(
                 item,
+                cohort_date=cohort_date,
                 member_analyses=member_analyses,
                 date_from=date_from,
                 date_to=date_to,
@@ -332,6 +335,7 @@ class WebVacancyListService:
     def _matches_filters(
         item: VacancyListItem,
         *,
+        cohort_date: date | None,
         member_analyses: Iterable[object],
         date_from: date | None,
         date_to: date | None,
@@ -345,11 +349,13 @@ class WebVacancyListService:
         run_id: str | None,
         search: str | None,
     ) -> bool:
-        first_seen_date = item.first_seen_at.date()
-        if date_from is not None and first_seen_date < date_from:
-            return False
-        if date_to is not None and first_seen_date > date_to:
-            return False
+        if date_from is not None or date_to is not None:
+            if cohort_date is None:
+                return False
+            if date_from is not None and cohort_date < date_from:
+                return False
+            if date_to is not None and cohort_date > date_to:
+                return False
         if priorities and item.priority not in priorities:
             return False
         if track and item.track != track:

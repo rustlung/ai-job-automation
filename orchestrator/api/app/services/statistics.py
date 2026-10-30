@@ -1,5 +1,5 @@
 from collections.abc import Iterable
-from datetime import date, datetime, timezone
+from datetime import date
 
 from sqlalchemy.orm import Session
 
@@ -11,7 +11,7 @@ from app.schemas.application import ApplicationStatus
 from app.schemas.statistics import StatisticsPeriod, VacancyStatisticsRead
 from app.services.application_stage import has_applied, has_interview, has_response
 from app.services.business_vacancy_grouping import group_business_vacancies
-from app.services.logical_vacancy_dates import as_utc, logical_vacancy_cohort_date
+from app.services.logical_vacancy_dates import as_utc, logical_vacancy_cohort_date, preset_period_range, samara_today
 
 
 class StatisticsValidationError(ValueError):
@@ -32,7 +32,7 @@ class VacancyStatisticsService:
         self.vacancies = VacancyRepository(session)
         self.applications = ApplicationRepository(session)
         self.user_states = VacancyUserStateRepository(session)
-        self.today = today or date.today()
+        self.today = today or samara_today()
 
     def get(
         self,
@@ -120,13 +120,7 @@ class VacancyStatisticsService:
             return date_from, date_to
         if date_from is not None or date_to is not None:
             raise StatisticsValidationError("preset period does not accept custom dates")
-        days = {
-            StatisticsPeriod.TODAY: 1,
-            StatisticsPeriod.DAYS_7: 7,
-            StatisticsPeriod.DAYS_14: 14,
-            StatisticsPeriod.DAYS_30: 30,
-        }[period]
-        return date.fromordinal(self.today.toordinal() - days + 1), self.today
+        return preset_period_range(period.value, today=self.today)
 
     @staticmethod
     def _applications_by_vacancy_id(applications: Iterable[Application]) -> dict[int, list[Application]]:
