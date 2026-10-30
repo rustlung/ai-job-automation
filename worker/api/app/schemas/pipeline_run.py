@@ -1,7 +1,9 @@
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+
+from typing import Annotated
 
 
 class WorkerPipelineRunStatus(str, Enum):
@@ -9,6 +11,16 @@ class WorkerPipelineRunStatus(str, Enum):
     COMPLETED = "completed"
     COMPLETED_WITH_ERRORS = "completed_with_errors"
     FAILED = "failed"
+
+
+class WorkerPipelineRunDiagnostic(BaseModel):
+    """A compact, safe aggregate diagnostic for workflow consumers."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    code: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)]
+    count: int = Field(ge=1)
+    summary: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
 
 
 class WorkerPipelineRunSummary(BaseModel):
@@ -22,6 +34,8 @@ class WorkerPipelineRunSummary(BaseModel):
     persisted_count: int | None = Field(default=None, ge=0)
     persistence_status: str | None = None
     duration_ms: int | None = Field(default=None, ge=0)
+    warnings: list[WorkerPipelineRunDiagnostic] = Field(default_factory=list)
+    partial_failures: list[WorkerPipelineRunDiagnostic] = Field(default_factory=list)
 
 
 class WorkerPipelineRunRead(BaseModel):
@@ -34,5 +48,6 @@ class WorkerPipelineRunRead(BaseModel):
     started_at: datetime
     completed_at: datetime | None = None
     error_code: str | None = Field(default=None, min_length=1, max_length=128)
+    error_summary: str | None = Field(default=None, min_length=1, max_length=255)
     result_available: bool
     summary: WorkerPipelineRunSummary | None = None

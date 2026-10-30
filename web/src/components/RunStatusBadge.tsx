@@ -5,7 +5,7 @@ const labels: Record<PipelineRunStatus, string> = {
   running: "Выполняется",
   completed: "Завершён",
   completed_with_errors: "Завершён с ошибками",
-  failed: "Не выполнен"
+  failed: "Ошибка"
 };
 const classes: Record<PipelineRunStatus, string> = {
   accepted: "bg-zinc-100 text-zinc-700", running: "bg-sky-50 text-sky-800", completed: "bg-emerald-50 text-emerald-800", completed_with_errors: "bg-amber-50 text-amber-800", failed: "bg-red-50 text-red-800"

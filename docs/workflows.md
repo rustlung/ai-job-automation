@@ -217,8 +217,17 @@ requires `compute_backend=gpu`; CPU, mixed and unknown stop the workflow.
 `GET /health/hh-auth` and the
 read-only authenticated HH preview run only when at least one resume profile is
 selected. Keyword-only public search therefore does not depend on Playwright
-storage state. Failed required preflight stops the workflow before
-`HTTP Worker Pipeline` and does not send a failure email.
+ storage state. Failed required preflight stops the workflow before
+`HTTP Worker Pipeline` and does not send a failure email. Для Web UI run workflow
+сначала записывает terminal `PipelineRun=failed` с безопасной причиной preflight,
+а затем завершает n8n execution ошибкой; accepted run не остаётся без terminal
+статуса.
+
+Terminal diagnostics distinguish three classes: warnings (например, semantic
+fallback или configured limit), partial failures (фактически пропущенная
+вакансия/страница или частичное persistence failure) и fatal failures. Только
+partial failures дают `completed_with_errors`; warnings сами по себе сохраняются
+в `stats_snapshot.warnings` и не меняют успешный terminal status.
 
 Timeouts:
 

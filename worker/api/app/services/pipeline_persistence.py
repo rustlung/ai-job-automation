@@ -11,6 +11,7 @@ from app.schemas.pipeline_persistence import (
     PipelinePersistenceError,
     PipelinePersistenceStats,
 )
+from app.schemas.pipeline_run import WorkerPipelineRunDiagnostic
 from app.schemas.vacancy_enrichment import HHCollectFilterAndEnrichRequest, VacancyEnrichmentStatus
 from app.services.vacancy_enrichment import HHCollectFilterAndEnrichService
 
@@ -63,7 +64,15 @@ class HHCollectFilterEnrichAndPersistService:
             )
             for error in enrichment_result.errors
         ]
-        status = enrichment_result.status
+        warnings = self._warnings(enrichment_result)
+        partial_failures = self._partial_failures(enrichment_result, errors)
+        status = (
+            VacancyEnrichmentStatus.FAILED
+            if enrichment_result.status == VacancyEnrichmentStatus.FAILED
+            else VacancyEnrichmentStatus.COMPLETED_WITH_ERRORS
+            if partial_failures
+            else VacancyEnrichmentStatus.SUCCEEDED
+        )
 
         if enrichment_result.items:
             payload = self._build_persistence_payload(run_id, enrichment_result.items)
@@ -72,6 +81,13 @@ class HHCollectFilterEnrichAndPersistService:
                 persistence_stats = PipelinePersistenceStats(**persistence_result["stats"])
                 if persistence_stats.failed_count > 0 or persistence_stats.status == "completed_with_errors":
                     status = VacancyEnrichmentStatus.COMPLETED_WITH_ERRORS
+                    partial_failures.append(
+                        WorkerPipelineRunDiagnostic(
+                            code="persistence_partial_failure",
+                            count=max(persistence_stats.failed_count, 1),
+                            summary="Не все результаты удалось сохранить в Orchestrator",
+                        )
+                    )
             except OrchestratorClientError:
                 logger.warning("pipeline_persistence_failed run_id=%s error_code=orchestrator_persistence_failed", run_id)
                 status = VacancyEnrichmentStatus.COMPLETED_WITH_ERRORS
@@ -79,6 +95,13 @@ class HHCollectFilterEnrichAndPersistService:
                     PipelinePersistenceError(
                         error_code="orchestrator_persistence_failed",
                         message="Pipeline analysis succeeded but persistence to Orchestrator failed",
+                    )
+                )
+                partial_failures.append(
+                    WorkerPipelineRunDiagnostic(
+                        code="orchestrator_persistence_failed",
+                        count=1,
+                        summary="Не удалось сохранить результаты в Orchestrator",
                     )
                 )
 
@@ -103,8 +126,82 @@ class HHCollectFilterEnrichAndPersistService:
             truncated=enrichment_result.truncated,
             unprocessed_count=enrichment_result.unprocessed_count,
             errors=errors,
+            warnings=warnings,
+            partial_failures=self._merge_diagnostics(partial_failures),
             duration_ms=duration_ms,
         )
+
+    @staticmethod
+    def _warnings(enrichment_result) -> list[WorkerPipelineRunDiagnostic]:
+        warnings: list[WorkerPipelineRunDiagnostic] = []
+        semantic_fallback_count = getattr(enrichment_result.enrichment_stats, "semantic_fallback_count", 0)
+        if semantic_fallback_count:
+            warnings.append(
+                WorkerPipelineRunDiagnostic(
+                    code="semantic_fallback",
+                    count=semantic_fallback_count,
+                    summary="Для части вакансий использован контролируемый semantic fallback",
+                )
+            )
+        if getattr(enrichment_result, "truncated", False):
+            warnings.append(
+                WorkerPipelineRunDiagnostic(
+                    code="processing_limited",
+                    count=max(getattr(enrichment_result, "unprocessed_count", 0), 1),
+                    summary="Обработка ограничена настроенным лимитом",
+                )
+            )
+        filter_stats = getattr(enrichment_result, "filter_stats", None)
+        fallback_count = getattr(filter_stats, "fallback_count", 0)
+        if fallback_count:
+            warnings.append(
+                WorkerPipelineRunDiagnostic(
+                    code="preliminary_fallback",
+                    count=fallback_count,
+                    summary="Для части вакансий использован контролируемый preliminary fallback",
+                )
+            )
+        return warnings
+
+    @classmethod
+    def _partial_failures(
+        cls,
+        enrichment_result,
+        errors: list[PipelinePersistenceError],
+    ) -> list[WorkerPipelineRunDiagnostic]:
+        diagnostics = [
+            WorkerPipelineRunDiagnostic(code=error.error_code, count=1, summary=error.message)
+            for error in errors
+        ]
+        collection_stats = getattr(enrichment_result, "collection_stats", None)
+        pages_failed = getattr(collection_stats, "pages_failed", 0)
+        if pages_failed:
+            diagnostics.append(
+                WorkerPipelineRunDiagnostic(
+                    code="hh_collection_page_failed",
+                    count=pages_failed,
+                    summary="Не все страницы HH удалось получить",
+                )
+            )
+        return cls._merge_diagnostics(diagnostics)
+
+    @staticmethod
+    def _merge_diagnostics(
+        diagnostics: list[WorkerPipelineRunDiagnostic],
+    ) -> list[WorkerPipelineRunDiagnostic]:
+        merged: dict[tuple[str, str], WorkerPipelineRunDiagnostic] = {}
+        for diagnostic in diagnostics:
+            key = (diagnostic.code, diagnostic.summary)
+            current = merged.get(key)
+            if current is None:
+                merged[key] = diagnostic
+            else:
+                merged[key] = WorkerPipelineRunDiagnostic(
+                    code=current.code,
+                    count=current.count + diagnostic.count,
+                    summary=current.summary,
+                )
+        return list(merged.values())
 
     @classmethod
     def _build_persistence_payload(cls, run_id: str, items) -> dict:

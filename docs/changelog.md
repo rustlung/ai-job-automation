@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- PipelineRun lifecycle now records Web UI preflight failures as terminal
+  `failed`; structured warnings and partial failures survive Worker, n8n and
+  Orchestrator handoff, while controlled semantic fallbacks and configured
+  processing limits no longer mark an otherwise successful run as erroneous.
+- Added a dry-run-first CLI to close only historical stale `accepted`/`running`
+  PipelineRun records after an explicit SQLite backup and `--apply` approval.
+
 ## 2026-09-09
 
 ### Added

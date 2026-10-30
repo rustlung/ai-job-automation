@@ -232,6 +232,36 @@ async def test_enrichment_errors_are_exposed_in_persist_response_without_orchest
     assert result.errors[0].stage == "feature_extraction"
     assert result.errors[0].error_code == "feature_extraction_failed"
     assert result.errors[0].item_index == 0
+    assert result.partial_failures[0].code == "feature_extraction_failed"
+
+
+@pytest.mark.anyio
+async def test_warnings_do_not_change_successful_persistence_status() -> None:
+    enrichment = enrichment_result()
+    enrichment.truncated = True
+    enrichment.unprocessed_count = 2
+    enrichment.enrichment_stats.semantic_fallback_count = 1
+    service = HHCollectFilterEnrichAndPersistService(FakeEnrichmentService(enrichment), FakeOrchestratorClient())  # type: ignore[arg-type]
+
+    result = await service.collect_filter_enrich_and_persist(HHCollectFilterEnrichAndPersistRequest(pipeline_run_id="run-001"))
+
+    assert result.status == "succeeded"
+    assert {warning.code for warning in result.warnings} == {"semantic_fallback", "processing_limited"}
+    assert result.partial_failures == []
+
+
+@pytest.mark.anyio
+async def test_collection_page_failure_is_propagated_as_partial_failure() -> None:
+    enrichment = enrichment_result()
+    enrichment.collection_stats.pages_failed = 2
+    service = HHCollectFilterEnrichAndPersistService(FakeEnrichmentService(enrichment), FakeOrchestratorClient())  # type: ignore[arg-type]
+
+    result = await service.collect_filter_enrich_and_persist(HHCollectFilterEnrichAndPersistRequest(pipeline_run_id="run-001"))
+
+    assert result.status == "completed_with_errors"
+    assert [diagnostic.model_dump() for diagnostic in result.partial_failures] == [
+        {"code": "hh_collection_page_failed", "count": 2, "summary": "Не все страницы HH удалось получить"}
+    ]
 
 
 @pytest.mark.anyio

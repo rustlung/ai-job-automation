@@ -37,6 +37,16 @@ console.log(JSON.stringify(execute(
     return json.loads(result.stdout)[0]["json"]["text"]
 
 
+def execute_input_code(code: str, value: dict) -> dict:
+    harness = f"""
+const code = {json.dumps(code)};
+const execute = new Function('$input', code);
+console.log(JSON.stringify(execute({{ first: () => ({{ json: {json.dumps(value)} }}) }})));
+"""
+    result = subprocess.run(["node", "-e", harness], capture_output=True, text=True, encoding="utf-8", check=True)
+    return json.loads(result.stdout)[0]["json"]
+
+
 def test_v12_is_preserved_and_v13_is_a_separate_versioned_export() -> None:
     v12 = load(V12)
     v13 = load(V13)
@@ -119,3 +129,48 @@ def test_v13_has_unique_node_ids_and_positions() -> None:
 
     assert len(ids) == len(set(ids))
     assert len(positions) == len(set(positions))
+
+
+def test_v13_marks_web_preflight_failures_terminal_before_stopping_execution() -> None:
+    workflow = load(V13)
+    preflight_targets = workflow["connections"]["Preflight OK?"]["main"][1]
+    update = node(workflow, "Mark Pipeline Run Preflight Failed")
+    prepare = node(workflow, "Prepare Preflight Failure Lifecycle Update")
+
+    assert preflight_targets[0]["node"] == "Web Pipeline Run Exists?"
+    assert workflow["connections"]["Web Pipeline Run Exists?"]["main"][0][0]["node"] == "Prepare Preflight Failure Lifecycle Update"
+    assert workflow["connections"]["Prepare Preflight Failure Lifecycle Update"]["main"][0][0]["node"] == "Mark Pipeline Run Preflight Failed"
+    assert workflow["connections"]["Mark Pipeline Run Preflight Failed"]["main"][0][0]["node"] == "Stop Preflight Failed"
+    assert "hh_auth_failed" in prepare["parameters"]["jsCode"]
+    assert "status: 'failed'" in update["parameters"]["jsonBody"]
+    assert "error_code" in update["parameters"]["jsonBody"]
+    assert "error_summary" in update["parameters"]["jsonBody"]
+    assert "failure.detail" not in update["parameters"]["jsonBody"]
+
+    payload = execute_input_code(
+        prepare["parameters"]["jsCode"],
+        {
+            "run_id": "web-run-001",
+            "trigger_source": "web_ui",
+            "safe_error": "Preflight failed: HH auth storage state not configured",
+            "failures": [{"component": "HH auth"}],
+        },
+    )
+    assert payload["error_code"] == "hh_auth_failed"
+    assert payload["error_summary"] == "Preflight failed: HH auth storage state not configured"
+
+
+def test_v13_forwards_structured_worker_diagnostics_to_terminal_lifecycle_patch() -> None:
+    workflow = load(V13)
+    evaluate = node(workflow, "Evaluate Worker Run")["parameters"]["jsCode"]
+    completed = node(workflow, "Mark Pipeline Run Completed")["parameters"]["jsonBody"]
+    failed = node(workflow, "Mark Pipeline Run Failed")["parameters"]["jsonBody"]
+
+    assert "summary.warnings" in evaluate
+    assert "summary.partial_failures" in evaluate
+    assert "warnings: result.warnings" in completed
+    assert "partial_failures: result.partial_failures" in completed
+    assert "error_code" in completed
+    assert "error_summary" in completed
+    assert "failure_code" in failed
+    assert "failure_summary" in failed

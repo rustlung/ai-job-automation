@@ -34,6 +34,21 @@ class PipelineRunRepository:
         self.session.flush()
         return item
 
+    def list_stale_nonterminal(self, cutoff: datetime) -> list[PipelineRun]:
+        return list(
+            self.session.scalars(
+                select(PipelineRun)
+                .where(
+                    PipelineRun.status.in_([
+                        PipelineRunStatus.ACCEPTED.value,
+                        PipelineRunStatus.RUNNING.value,
+                    ]),
+                    PipelineRun.started_at < cutoff,
+                )
+                .order_by(PipelineRun.started_at.asc(), PipelineRun.id.asc())
+            ).all()
+        )
+
     def list(
         self,
         *,

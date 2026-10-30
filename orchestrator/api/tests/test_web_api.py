@@ -176,7 +176,12 @@ def test_manual_registration_and_lifecycle_are_visible_in_run_history(db_session
         )
         lifecycle = client.patch(
             "/internal/pipeline-runs/n8n-manual-001",
-            json={"status": "completed_with_errors", "stats_snapshot": {"persisted_count": 3}},
+            json={
+                "status": "completed_with_errors",
+                "error_code": "partial_failures",
+                "error_summary": "Pipeline завершился с частичными ошибками",
+                "stats_snapshot": {"persisted_count": 3, "partial_failures": [{"code": "full_fetch_failed", "count": 1, "summary": "Fetch failed"}]},
+            },
         )
         history = client.get("/api/runs?trigger_source=manual_n8n&profile_id=ai_automation_keywords")
 
@@ -185,6 +190,92 @@ def test_manual_registration_and_lifecycle_are_visible_in_run_history(db_session
     assert lifecycle.json()["completed_at"] is not None
     assert history.json()["total"] == 1
     assert history.json()["runs"][0]["status"] == "completed_with_errors"
+
+
+def test_lifecycle_requires_diagnostics_for_terminal_error_statuses(db_session) -> None:
+    with make_client(db_session) as (client, _, _):
+        client.post(
+            "/internal/pipeline-runs",
+            json={
+                "run_id": "lifecycle-diagnostics-001",
+                "trigger_source": "manual_n8n",
+                "profile_ids": ["ai_automation_keywords"],
+                "config_snapshot": {},
+            },
+        )
+        missing_partial = client.patch(
+            "/internal/pipeline-runs/lifecycle-diagnostics-001",
+            json={"status": "completed_with_errors"},
+        )
+        missing_failed = client.patch(
+            "/internal/pipeline-runs/lifecycle-diagnostics-001",
+            json={"status": "failed", "error_code": "hh_auth_failed"},
+        )
+        failed = client.patch(
+            "/internal/pipeline-runs/lifecycle-diagnostics-001",
+            json={"status": "failed", "error_code": "hh_auth_failed", "error_summary": "HH auth not confirmed"},
+        )
+
+    assert missing_partial.status_code == 422
+    assert missing_failed.status_code == 422
+    assert failed.status_code == 200
+    assert failed.json()["completed_at"] is not None
+
+
+def test_lifecycle_patch_preserves_existing_diagnostics_and_merges_structured_stats(db_session) -> None:
+    with make_client(db_session) as (client, _, _):
+        client.post(
+            "/internal/pipeline-runs",
+            json={
+                "run_id": "lifecycle-patch-001",
+                "trigger_source": "manual_n8n",
+                "profile_ids": ["ai_automation_keywords"],
+                "config_snapshot": {},
+            },
+        )
+        partial = client.patch(
+            "/internal/pipeline-runs/lifecycle-patch-001",
+            json={
+                "status": "completed_with_errors",
+                "error_code": "partial_failures",
+                "error_summary": "Partial failures",
+                "stats_snapshot": {"partial_failures": [{"code": "full_fetch_failed", "count": 2, "summary": "Fetch failed"}]},
+            },
+        )
+        stats_only = client.patch(
+            "/internal/pipeline-runs/lifecycle-patch-001",
+            json={"stats_snapshot": {"warnings": [{"code": "semantic_fallback", "count": 1, "summary": "Fallback"}]}},
+        )
+
+    assert partial.status_code == 200
+    assert stats_only.status_code == 200
+    assert stats_only.json()["error_code"] == "partial_failures"
+    assert stats_only.json()["error_summary"] == "Partial failures"
+    assert stats_only.json()["stats_snapshot"]["warnings"][0]["code"] == "semantic_fallback"
+
+
+def test_lifecycle_accepts_running_then_completed_with_warning_stats(db_session) -> None:
+    with make_client(db_session) as (client, _, _):
+        client.post(
+            "/internal/pipeline-runs",
+            json={
+                "run_id": "lifecycle-success-001",
+                "trigger_source": "manual_n8n",
+                "profile_ids": ["ai_automation_keywords"],
+                "config_snapshot": {},
+            },
+        )
+        running = client.patch("/internal/pipeline-runs/lifecycle-success-001", json={"status": "running"})
+        completed = client.patch(
+            "/internal/pipeline-runs/lifecycle-success-001",
+            json={"status": "completed", "stats_snapshot": {"warnings": [{"code": "semantic_fallback", "count": 1, "summary": "Fallback"}]}},
+        )
+
+    assert running.status_code == 200
+    assert completed.status_code == 200
+    assert completed.json()["status"] == "completed"
+    assert completed.json()["error_code"] is None
+    assert completed.json()["completed_at"] is not None
 
 
 def test_lifecycle_stats_only_update_merges_temporary_crm_migration_metric(db_session) -> None:

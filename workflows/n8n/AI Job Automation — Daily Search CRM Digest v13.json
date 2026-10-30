@@ -63,7 +63,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const worker = $input.first().json || {};\nconst context = $('Build Full Run Context').first().json;\nlet previous = {};\ntry { previous = $('Wait 20s for Worker Run').item.json || {}; } catch (error) {}\nconst elapsedMs = Date.now() - Number(context.orchestration_started_at_ms || Date.now());\nconst priorErrors = Number(previous.consecutive_polling_errors || 0);\nconst valid = new Set(['running', 'completed', 'completed_with_errors', 'failed']);\nconst status = String(worker.status || '');\nconst statusCode = Number(worker.statusCode || worker.error?.httpCode || worker.error?.statusCode || 0);\nconst summary = worker.summary || {};\nconst output = { run_id: worker.run_id || context.run_id, config: context.config, worker: { status: status || 'unknown', collection_stats: { unique_vacancy_count: summary.collection_unique_vacancy_count }, filter_stats: { processed_count: summary.filter_processed_count }, enrichment_stats: { enriched_count: summary.enriched_count }, duration_ms: summary.duration_ms }, persistence_stats: { persisted_count: summary.persisted_count, status: summary.persistence_status, failed_count: 0 }, warnings: [], terminal: false, result_available: false, consecutive_polling_errors: 0, orchestration_elapsed_ms: elapsedMs, failure_stage: null, safe_error: null };\nif (valid.has(status)) { if (status === 'running') { output.consecutive_polling_errors = 0; } else { output.terminal = true; output.result_available = worker.result_available === true; if (status === 'completed_with_errors') output.warnings.push('Worker completed with errors'); if (status === 'failed') { output.failure_stage = 'worker_pipeline'; output.safe_error = worker.error_code || 'worker_pipeline_failed'; } else if (!output.result_available) { output.failure_stage = 'orchestrator_persistence'; output.safe_error = worker.error_code || 'worker_result_unavailable'; } } } else if (statusCode === 404) { output.terminal = true; output.failure_stage = 'worker_run_recovery'; output.safe_error = 'worker_run_not_found; check Orchestrator before existing-run recovery'; } else if (elapsedMs >= 7200000) { output.terminal = true; output.failure_stage = 'worker_polling_deadline'; output.safe_error = 'worker run polling deadline exceeded; use existing-run recovery after checking Orchestrator'; } else { output.consecutive_polling_errors = priorErrors + 1; if (output.consecutive_polling_errors >= 3) { output.terminal = true; output.failure_stage = 'worker_polling'; output.safe_error = 'worker status polling failed repeatedly; use existing-run recovery after checking Orchestrator'; } }\nreturn [{ json: output }];"
+        "jsCode": "const worker = $input.first().json || {};\nconst context = $('Build Full Run Context').first().json;\nlet previous = {};\ntry { previous = $('Wait 20s for Worker Run').item.json || {}; } catch (error) {}\nconst elapsedMs = Date.now() - Number(context.orchestration_started_at_ms || Date.now());\nconst priorErrors = Number(previous.consecutive_polling_errors || 0);\nconst valid = new Set(['running', 'completed', 'completed_with_errors', 'failed']);\nconst status = String(worker.status || '');\nconst statusCode = Number(worker.statusCode || worker.error?.httpCode || worker.error?.statusCode || 0);\nconst summary = worker.summary || {};\nconst output = { run_id: worker.run_id || context.run_id, config: context.config, worker: { status: status || 'unknown', error_code: worker.error_code || null, error_summary: worker.error_summary || null, collection_stats: { unique_vacancy_count: summary.collection_unique_vacancy_count }, filter_stats: { processed_count: summary.filter_processed_count }, enrichment_stats: { enriched_count: summary.enriched_count }, duration_ms: summary.duration_ms }, persistence_stats: { persisted_count: summary.persisted_count, status: summary.persistence_status, failed_count: 0 }, warnings: Array.isArray(summary.warnings) ? summary.warnings : [], partial_failures: Array.isArray(summary.partial_failures) ? summary.partial_failures : [], terminal: false, result_available: false, consecutive_polling_errors: 0, orchestration_elapsed_ms: elapsedMs, failure_code: null, failure_summary: null };\nif (valid.has(status)) { if (status === 'running') { output.consecutive_polling_errors = 0; } else { output.terminal = true; output.result_available = worker.result_available === true; if (status === 'completed_with_errors' && output.partial_failures.length === 0) output.partial_failures.push({ code: 'partial_failures', count: 1, summary: 'Pipeline завершился с частичными ошибками' }); if (status === 'failed') { output.failure_code = worker.error_code || 'worker_pipeline_failed'; output.failure_summary = worker.error_summary || 'Worker pipeline завершился ошибкой'; } else if (!output.result_available) { output.failure_code = worker.error_code || 'worker_result_unavailable'; output.failure_summary = worker.error_summary || 'Worker не вернул пригодный для сохранения результат'; } } } else if (statusCode === 404) { output.terminal = true; output.failure_code = 'worker_run_not_found'; output.failure_summary = 'Worker не нашёл запущенный pipeline'; } else if (elapsedMs >= 7200000) { output.terminal = true; output.failure_code = 'worker_polling_deadline'; output.failure_summary = 'Превышен срок ожидания Worker pipeline'; } else { output.consecutive_polling_errors = priorErrors + 1; if (output.consecutive_polling_errors >= 3) { output.terminal = true; output.failure_code = 'worker_polling_failed'; output.failure_summary = 'Не удалось получить статус Worker pipeline'; } }\nreturn [{ json: output }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -828,6 +828,81 @@
           },
           "conditions": [
             {
+              "id": "b49e95ea-d925-4642-8998-f484ece9892b",
+              "leftValue": "={{ $json.trigger_source === 'web_ui' && String($json.run_id || '').trim() !== '' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3600,
+        608
+      ],
+      "id": "427d1dbf-8f9d-440d-bc6f-7c7c3084c13a",
+      "name": "Web Pipeline Run Exists?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\nconst firstFailure = Array.isArray(input.failures) ? input.failures[0] || {} : {};\nconst component = String(firstFailure.component || '').toLowerCase();\nconst errorCode = component === 'hh auth' ? 'hh_auth_failed' : component === 'hh session' ? 'hh_session_failed' : component === 'worker api' ? 'worker_unavailable' : component === 'ollama' || component === 'ollama compute' ? 'ollama_unavailable' : component === 'orchestrator' ? 'orchestrator_unavailable' : 'preflight_failed';\nreturn [{ json: { ...input, error_code: errorCode, error_summary: String(input.safe_error || 'Preflight failed').slice(0, 255) } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3840,
+        608
+      ],
+      "id": "d187cb2f-b1d3-4de9-99af-0f89b596a3c5",
+      "name": "Prepare Preflight Failure Lifecycle Update"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $json.config.orchestrator_api_url }}/internal/pipeline-runs/{{ $json.run_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Orchestrator-Internal-Token",
+              "value": "={{ $env.ORCHESTRATOR_INTERNAL_API_TOKEN || \"\" }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { status: 'failed', error_code: $json.error_code, error_summary: $json.error_summary, stats_snapshot: { preflight: $json.preflight, failures: Array.isArray($json.failures) ? $json.failures.map(failure => ({ component: failure.component || null, reason: failure.reason || null })) : [] } } }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4080,
+        608
+      ],
+      "id": "f80118be-c71e-4fe9-a015-5ff1a6d0c2cf",
+      "name": "Mark Pipeline Run Preflight Failed"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
               "id": "31f40c84-a23b-44e9-a2f2-4f351d44b3c2",
               "leftValue": "={{ String($json.existing_run_id || \"\").trim() }}",
               "rightValue": "",
@@ -1201,7 +1276,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { status: $(\"Evaluate Worker Run\").first().json.worker.status, stats_snapshot: { collection_stats: $(\"Evaluate Worker Run\").first().json.worker.collection_stats, filter_stats: $(\"Evaluate Worker Run\").first().json.worker.filter_stats, enrichment_stats: $(\"Evaluate Worker Run\").first().json.worker.enrichment_stats, persistence_stats: $(\"Evaluate Worker Run\").first().json.persistence_stats, duration_ms: $(\"Evaluate Worker Run\").first().json.worker.duration_ms } } }}",
+        "jsonBody": "={{ (() => { const result = $(\"Evaluate Worker Run\").first().json; const body = { status: result.worker.status, stats_snapshot: { collection_stats: result.worker.collection_stats, filter_stats: result.worker.filter_stats, enrichment_stats: result.worker.enrichment_stats, persistence_stats: result.persistence_stats, duration_ms: result.worker.duration_ms, warnings: result.warnings, partial_failures: result.partial_failures } }; if (result.worker.status === 'completed_with_errors') { body.error_code = result.worker.error_code || 'partial_failures'; body.error_summary = result.worker.error_summary || 'Pipeline завершился с частичными ошибками'; } return body; })() }}",
         "options": {
           "timeout": 15000
         }
@@ -1243,7 +1318,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { status: \"failed\", error_code: $json.safe_error || \"worker_pipeline_failed\", error_summary: \"Worker pipeline did not produce a persisted result\" } }}",
+        "jsonBody": "={{ { status: \"failed\", error_code: $json.failure_code || \"worker_pipeline_failed\", error_summary: $json.failure_summary || \"Worker pipeline не завершился с полезным результатом\" } }}",
         "options": {
           "timeout": 15000
         }
@@ -2027,6 +2102,46 @@
             "index": 0
           }
         ],
+        [
+          {
+            "node": "Web Pipeline Run Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Web Pipeline Run Exists?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Preflight Failure Lifecycle Update",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stop Preflight Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Preflight Failure Lifecycle Update": {
+      "main": [
+        [
+          {
+            "node": "Mark Pipeline Run Preflight Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Pipeline Run Preflight Failed": {
+      "main": [
         [
           {
             "node": "Stop Preflight Failed",

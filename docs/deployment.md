@@ -1097,6 +1097,37 @@ docker compose run --rm -v ~/services/ai-job-automation-imports:/imports api \
 After a successful apply, the final dry-run should report no planned creates or
 updates and classify equivalent rows as `already_present`.
 
+## Historical Stale PipelineRun Repair
+
+Этот controlled repair предназначен только для старых зависших запусков со
+статусом `accepted` или `running`. Он не изменяет `completed`,
+`completed_with_errors` или `failed` и не пытается восстановить утраченные
+исторические diagnostics. Перед любым `--apply` создайте SQLite backup:
+
+```bash
+cd ~/services/ai-job-automation/orchestrator
+cp data/app.db "data/app.db.backup-before-stale-run-repair-$(date +%Y%m%d-%H%M%S)"
+```
+
+Dry-run по умолчанию выбирает только runs старше 24 часов и ничего не меняет:
+
+```bash
+docker compose run --rm api \
+  python -m app.scripts.repair_stale_pipeline_runs \
+  --older-than-hours 24
+```
+
+Проверьте список `run_ids`, затем вручную запустите apply. Изменения выполняются
+одной DB transaction; repaired run получает `failed`, `stale_run_repaired` и
+безопасное explanatory summary. Повторный apply идемпотентен.
+
+```bash
+docker compose run --rm api \
+  python -m app.scripts.repair_stale_pipeline_runs \
+  --older-than-hours 24 \
+  --apply
+```
+
 ### Historical CRM Rows Without a CRM Key
 
 Import and activate `AI Job Automation — Application CRM Sync v3.json` in n8n

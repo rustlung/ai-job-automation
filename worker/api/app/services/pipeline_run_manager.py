@@ -49,6 +49,7 @@ class _PipelineRunRecord:
     started_at: datetime
     completed_at: datetime | None = None
     error_code: str | None = None
+    error_summary: str | None = None
     result_available: bool = False
     summary: WorkerPipelineRunSummary | None = None
     task: asyncio.Task[None] | None = None
@@ -60,6 +61,7 @@ class _PipelineRunRecord:
             started_at=self.started_at,
             completed_at=self.completed_at,
             error_code=self.error_code,
+            error_summary=self.error_summary,
             result_available=self.result_available,
             summary=self.summary,
         )
@@ -141,12 +143,13 @@ class WorkerPipelineRunManager:
         started_at = time.perf_counter()
         try:
             result = await self._pipeline_service_factory().collect_filter_enrich_and_persist(request)
-            status, result_available, error_code = self._result_state(result)
+            status, result_available, error_code, error_summary = self._result_state(result)
             await self._set_terminal(
                 record,
                 status,
                 result_available=result_available,
                 error_code=error_code,
+                error_summary=error_summary,
                 summary=self._summary(result),
             )
             logger.info(
@@ -162,6 +165,7 @@ class WorkerPipelineRunManager:
                 WorkerPipelineRunStatus.FAILED,
                 result_available=False,
                 error_code="pipeline_task_cancelled",
+                error_summary="Worker pipeline был отменён",
                 summary=None,
             )
             logger.warning(
@@ -176,6 +180,7 @@ class WorkerPipelineRunManager:
                 WorkerPipelineRunStatus.FAILED,
                 result_available=False,
                 error_code="unknown_profile",
+                error_summary="Выбран неизвестный профиль поиска",
                 summary=None,
             )
             logger.warning(
@@ -189,6 +194,7 @@ class WorkerPipelineRunManager:
                 WorkerPipelineRunStatus.FAILED,
                 result_available=False,
                 error_code="collection_identity_conflict",
+                error_summary="Обнаружен конфликт identity при сборе вакансий",
                 summary=None,
             )
             logger.warning(
@@ -202,6 +208,7 @@ class WorkerPipelineRunManager:
                 WorkerPipelineRunStatus.FAILED,
                 result_available=False,
                 error_code="internal_pipeline_error",
+                error_summary="Worker pipeline завершился внутренней ошибкой",
                 summary=None,
             )
             logger.error(
@@ -228,6 +235,7 @@ class WorkerPipelineRunManager:
         *,
         result_available: bool,
         error_code: str | None,
+        error_summary: str | None,
         summary: WorkerPipelineRunSummary | None,
     ) -> None:
         async with self._state_lock:
@@ -235,6 +243,7 @@ class WorkerPipelineRunManager:
             record.completed_at = self._utc_now()
             record.result_available = result_available
             record.error_code = error_code
+            record.error_summary = error_summary
             record.summary = summary
 
     def _cleanup_terminal_history(self) -> None:
@@ -248,17 +257,18 @@ class WorkerPipelineRunManager:
             self._runs.pop(run_id, None)
 
     @staticmethod
-    def _result_state(result: Any) -> tuple[WorkerPipelineRunStatus, bool, str | None]:
+    def _result_state(result: Any) -> tuple[WorkerPipelineRunStatus, bool, str | None, str | None]:
         result_status = str(getattr(getattr(result, "status", None), "value", getattr(result, "status", "failed")))
         if result_status == "succeeded":
-            return WorkerPipelineRunStatus.COMPLETED, True, None
+            return WorkerPipelineRunStatus.COMPLETED, True, None, None
         if result_status == "completed_with_errors":
             return (
                 WorkerPipelineRunStatus.COMPLETED_WITH_ERRORS,
                 getattr(result, "persistence_stats", None) is not None,
-                None,
+                "partial_failures",
+                "Pipeline завершился с частичными ошибками",
             )
-        return WorkerPipelineRunStatus.FAILED, False, "pipeline_failed"
+        return WorkerPipelineRunStatus.FAILED, False, "pipeline_failed", "Pipeline не завершился с полезным результатом"
 
     @staticmethod
     def _summary(result: Any) -> WorkerPipelineRunSummary:
@@ -274,6 +284,8 @@ class WorkerPipelineRunManager:
             persisted_count=getattr(persistence_stats, "persisted_count", None),
             persistence_status=str(getattr(persistence_status, "value", persistence_status)) if persistence_status is not None else None,
             duration_ms=getattr(result, "duration_ms", None),
+            warnings=list(getattr(result, "warnings", [])),
+            partial_failures=list(getattr(result, "partial_failures", [])),
         )
 
     @staticmethod

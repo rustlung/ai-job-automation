@@ -269,7 +269,7 @@ async def test_semantic_fallback_preserves_vacancy() -> None:
 
     result = await service(preliminary_result(items), semantic_fallback=True).collect_filter_and_enrich(HHCollectFilterAndEnrichRequest())
 
-    assert result.status == "completed_with_errors"
+    assert result.status == "succeeded"
     assert result.enrichment_stats.semantic_fallback_count == 1
     assert result.items[0].semantic_assessment.fallback_used is True
     assert result.items[0].priority in {"P2", "P3"}
@@ -290,6 +290,7 @@ async def test_limits_truncate_without_silent_drop() -> None:
     assert result.truncated is True
     assert result.unprocessed_count == 1
     assert result.enrichment_stats.enriched_count == 2
+    assert result.status == "succeeded"
 
 
 @pytest.mark.anyio

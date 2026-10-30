@@ -3,6 +3,7 @@ from typing import Annotated, Any
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from app.schemas.preliminary_filter import HHCollectionStats, PreliminaryFilterStats
+from app.schemas.pipeline_run import WorkerPipelineRunDiagnostic
 from app.schemas.vacancy_enrichment import EnrichedVacancyAssessment, VacancyEnrichmentStats, VacancyEnrichmentStatus
 
 RUN_ID_MAX_LENGTH = 128
@@ -58,4 +59,6 @@ class HHCollectFilterEnrichAndPersistResult(BaseModel):
     truncated: bool = False
     unprocessed_count: int = Field(default=0, ge=0)
     errors: list[PipelinePersistenceError] = Field(default_factory=list)
+    warnings: list[WorkerPipelineRunDiagnostic] = Field(default_factory=list)
+    partial_failures: list[WorkerPipelineRunDiagnostic] = Field(default_factory=list)
     duration_ms: int = Field(ge=0)

@@ -73,9 +73,9 @@ class PipelineRunService:
                 run.status = payload.status.value
             if payload.stats_snapshot is not None:
                 run.stats_snapshot = {**(run.stats_snapshot or {}), **payload.stats_snapshot}
-            if payload.status is not None or "error_code" in payload.model_fields_set:
+            if "error_code" in payload.model_fields_set:
                 run.error_code = payload.error_code
-            if payload.status is not None or "error_summary" in payload.model_fields_set:
+            if "error_summary" in payload.model_fields_set:
                 run.error_summary = payload.error_summary
             if payload.status in {PipelineRunStatus.COMPLETED, PipelineRunStatus.COMPLETED_WITH_ERRORS, PipelineRunStatus.FAILED}:
                 run.completed_at = datetime.now(timezone.utc)

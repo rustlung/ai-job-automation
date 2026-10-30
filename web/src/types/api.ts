@@ -46,8 +46,16 @@ export interface PipelineRunOverrides {
   max_enrich_items_override: number | null;
 }
 
+export interface PipelineRunDiagnostic {
+  code: string;
+  count: number;
+  summary: string;
+}
+
 export interface PipelineRunStatsSnapshot {
   legacy_crm_key_matches?: number;
+  warnings?: PipelineRunDiagnostic[];
+  partial_failures?: PipelineRunDiagnostic[];
   [key: string]: unknown;
 }
 

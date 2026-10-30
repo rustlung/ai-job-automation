@@ -34,6 +34,19 @@ def request(run_id: str) -> HHCollectFilterEnrichAndPersistRequest:
     return HHCollectFilterEnrichAndPersistRequest(pipeline_run_id=run_id, profile_ids=["keyword-profile"])
 
 
+def result(*, status: str = "succeeded", warnings=None, partial_failures=None, persistence=True):
+    return SimpleNamespace(
+        status=status,
+        persistence_stats=object() if persistence else None,
+        collection_stats=SimpleNamespace(unique_vacancy_count=3),
+        filter_stats=SimpleNamespace(processed_count=2),
+        enrichment_stats=SimpleNamespace(enriched_count=2),
+        warnings=warnings or [],
+        partial_failures=partial_failures or [],
+        duration_ms=10,
+    )
+
+
 async def wait_for_terminal(manager: WorkerPipelineRunManager, run_id: str):
     for _ in range(100):
         state = await manager.get_status(run_id)
@@ -80,6 +93,40 @@ async def test_completed_with_errors_requires_persisted_result() -> None:
 
 
 @pytest.mark.anyio
+async def test_warning_only_result_completes_and_preserves_warning_summary() -> None:
+    service = FakePipelineService(result=result(warnings=[{"code": "semantic_fallback", "count": 1, "summary": "Fallback"}]))
+    manager = WorkerPipelineRunManager(lambda: service, lambda _: None)
+
+    await manager.start(request("warnings"))
+    state = await wait_for_terminal(manager, "warnings")
+
+    assert state.status == WorkerPipelineRunStatus.COMPLETED
+    assert state.error_code is None
+    assert state.summary is not None
+    assert state.summary.warnings[0].code == "semantic_fallback"
+
+
+@pytest.mark.anyio
+async def test_partial_failure_result_has_compact_and_structured_diagnostics() -> None:
+    service = FakePipelineService(
+        result=result(
+            status="completed_with_errors",
+            partial_failures=[{"code": "full_fetch_failed", "count": 2, "summary": "Fetch failed"}],
+        )
+    )
+    manager = WorkerPipelineRunManager(lambda: service, lambda _: None)
+
+    await manager.start(request("partial"))
+    state = await wait_for_terminal(manager, "partial")
+
+    assert state.status == WorkerPipelineRunStatus.COMPLETED_WITH_ERRORS
+    assert state.error_code == "partial_failures"
+    assert state.error_summary == "Pipeline завершился с частичными ошибками"
+    assert state.summary is not None
+    assert state.summary.partial_failures[0].code == "full_fetch_failed"
+
+
+@pytest.mark.anyio
 async def test_failure_releases_active_run_for_next_start() -> None:
     failing = FakePipelineService(error=RuntimeError("internal"))
     succeeding = FakePipelineService()
@@ -90,6 +137,7 @@ async def test_failure_releases_active_run_for_next_start() -> None:
     failed = await wait_for_terminal(manager, "failed-run")
     assert failed.status == WorkerPipelineRunStatus.FAILED
     assert failed.error_code == "internal_pipeline_error"
+    assert failed.error_summary == "Worker pipeline завершился внутренней ошибкой"
 
     next_state = await manager.start(request("next-run"))
     assert next_state.status == WorkerPipelineRunStatus.RUNNING

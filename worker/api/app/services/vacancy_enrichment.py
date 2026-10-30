@@ -205,8 +205,6 @@ class HHCollectFilterAndEnrichService:
             input_count=len(candidates),
             enriched_count=len(sorted_items),
             errors=errors,
-            truncated=truncated,
-            semantic_fallback_count=semantic_fallback_count,
         )
         stats = VacancyEnrichmentStats(
             status=status,
@@ -272,12 +270,10 @@ class HHCollectFilterAndEnrichService:
         input_count: int,
         enriched_count: int,
         errors: list[VacancyEnrichmentError],
-        truncated: bool,
-        semantic_fallback_count: int,
     ) -> VacancyEnrichmentStatus:
         if input_count > 0 and enriched_count == 0:
             return VacancyEnrichmentStatus.FAILED
-        if errors or truncated or semantic_fallback_count:
+        if errors:
             return VacancyEnrichmentStatus.COMPLETED_WITH_ERRORS
         return VacancyEnrichmentStatus.SUCCEEDED
 
