@@ -1850,9 +1850,9 @@ Custom engine:
 -   Worker поддерживает controlled partial failure semantics и per-vacancy
     error isolation.
 -   `PipelineRun` хранит terminal diagnostics в существующем `stats_snapshot`:
-    warnings не понижают статус, partial failures дают
-    `completed_with_errors`, а fatal failures всегда имеют безопасные
-    `error_code` и `error_summary`.
+    warnings и vacancy-level processing diagnostics не понижают `completed`;
+    `completed_with_errors` означает конкретный сбой post-run integration,
+    а fatal failures всегда имеют безопасные `error_code` и `error_summary`.
 
 Следующие шаги:
 

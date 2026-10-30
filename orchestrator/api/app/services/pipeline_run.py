@@ -72,7 +72,7 @@ class PipelineRunService:
             if payload.status is not None:
                 run.status = payload.status.value
             if payload.stats_snapshot is not None:
-                run.stats_snapshot = {**(run.stats_snapshot or {}), **payload.stats_snapshot}
+                run.stats_snapshot = self._merge_stats_snapshot(run.stats_snapshot, payload.stats_snapshot)
             if "error_code" in payload.model_fields_set:
                 run.error_code = payload.error_code
             if "error_summary" in payload.model_fields_set:
@@ -87,6 +87,27 @@ class PipelineRunService:
         except SQLAlchemyError as exc:
             self.session.rollback()
             raise PipelineRunDatabaseError from exc
+
+    @staticmethod
+    def _merge_stats_snapshot(current: dict | None, update: dict) -> dict:
+        merged = {**(current or {}), **update}
+        for key in ("warnings", "partial_failures", "integration_errors"):
+            if key not in update:
+                continue
+            current_items = list((current or {}).get(key) or [])
+            update_items = list(update.get(key) or [])
+            by_identity: dict[tuple[object, object], dict] = {}
+            for item in current_items + update_items:
+                if not isinstance(item, dict):
+                    continue
+                identity = (item.get("code"), item.get("summary"))
+                existing = by_identity.get(identity)
+                if existing is None:
+                    by_identity[identity] = dict(item)
+                else:
+                    existing["count"] = int(existing.get("count") or 0) + int(item.get("count") or 0)
+            merged[key] = list(by_identity.values())
+        return merged
 
     def list(
         self,

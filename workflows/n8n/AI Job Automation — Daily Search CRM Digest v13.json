@@ -569,7 +569,8 @@
           "name": "Gmail account"
         }
       },
-      "disabled": true
+      "disabled": true,
+      "continueOnFail": true
     },
     {
       "parameters": {
@@ -612,6 +613,158 @@
       ],
       "id": "5bf21a87-05dc-44a3-9b56-5c50f365daa1",
       "name": "Telegram Send Completion Notification",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json || {};\nconst run = $('Build Run Context').first().json;\nconst status = Number(response.statusCode || response.status || response.error?.httpCode || 0);\nconst failed = Boolean(response.error) || response.ok === false || status >= 400;\nreturn [{ json: { run_id: run.run_id, config: run.config, integration_error: failed ? { code: 'gmail_digest_failed', count: 1, summary: 'Не удалось отправить Gmail-дайджест.' } : null } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9360,
+        336
+      ],
+      "id": "74b2d96d-6fd6-4bcb-bd95-a45972af60c1",
+      "name": "Prepare Gmail Integration Lifecycle Update"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "4d4d532d-006b-4f6b-a745-b16d2a0f13d9",
+              "leftValue": "={{ Boolean($json.integration_error) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        9600,
+        336
+      ],
+      "id": "c157e47c-0fdc-4c72-a2dd-cfe7fca5f62f",
+      "name": "Gmail Integration Failed?"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $json.config.orchestrator_api_url }}/internal/pipeline-runs/{{ $json.run_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Orchestrator-Internal-Token",
+              "value": "={{ $env.ORCHESTRATOR_INTERNAL_API_TOKEN || \"\" }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { status: 'completed_with_errors', error_code: $json.integration_error.code, error_summary: $json.integration_error.summary, stats_snapshot: { integration_errors: [$json.integration_error] } } }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        9840,
+        336
+      ],
+      "id": "b0c5a66a-3bb1-4a9e-b931-4f6a4d5e5d4b",
+      "name": "Mark Pipeline Run Gmail Integration Failed",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json || {};\nconst run = $('Build Run Context').first().json;\nconst status = Number(response.statusCode || response.status || response.error?.httpCode || 0);\nconst failed = Boolean(response.error) || response.ok === false || status >= 400;\nreturn [{ json: { run_id: run.run_id, config: run.config, integration_error: failed ? { code: 'telegram_notification_failed', count: 1, summary: 'Не удалось отправить Telegram-уведомление.' } : null } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9600,
+        480
+      ],
+      "id": "d1e3c4a9-2cfa-4c2a-a99c-28c94660d4a5",
+      "name": "Prepare Telegram Integration Lifecycle Update"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cad9f4ba-6256-4609-a10f-b2d54debd8d8",
+              "leftValue": "={{ Boolean($json.integration_error) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        9840,
+        480
+      ],
+      "id": "7783a686-436e-4ee5-9608-4f9e308195dc",
+      "name": "Telegram Integration Failed?"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $json.config.orchestrator_api_url }}/internal/pipeline-runs/{{ $json.run_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Orchestrator-Internal-Token",
+              "value": "={{ $env.ORCHESTRATOR_INTERNAL_API_TOKEN || \"\" }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { status: 'completed_with_errors', error_code: $json.integration_error.code, error_summary: $json.integration_error.summary, stats_snapshot: { integration_errors: [$json.integration_error] } } }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        10080,
+        480
+      ],
+      "id": "93179851-fa25-4303-a5d0-0e8eb3185a7e",
+      "name": "Mark Pipeline Run Telegram Integration Failed",
       "continueOnFail": true
     },
     {
@@ -1276,7 +1429,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ (() => { const result = $(\"Evaluate Worker Run\").first().json; const body = { status: result.worker.status, stats_snapshot: { collection_stats: result.worker.collection_stats, filter_stats: result.worker.filter_stats, enrichment_stats: result.worker.enrichment_stats, persistence_stats: result.persistence_stats, duration_ms: result.worker.duration_ms, warnings: result.warnings, partial_failures: result.partial_failures } }; if (result.worker.status === 'completed_with_errors') { body.error_code = result.worker.error_code || 'partial_failures'; body.error_summary = result.worker.error_summary || 'Pipeline завершился с частичными ошибками'; } return body; })() }}",
+        "jsonBody": "={{ (() => { const result = $(\"Evaluate Worker Run\").first().json; return { status: 'completed', stats_snapshot: { collection_stats: result.worker.collection_stats, filter_stats: result.worker.filter_stats, enrichment_stats: result.worker.enrichment_stats, persistence_stats: result.persistence_stats, duration_ms: result.worker.duration_ms, warnings: result.warnings, partial_failures: result.partial_failures } }; })() }}",
         "options": {
           "timeout": 15000
         }
@@ -1680,7 +1833,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { stats_snapshot: { legacy_crm_key_matches: $('Prepare CRM Rows').all().filter(item => item.json.match_strategy === 'legacy_crm_key_fallback').length } } }}",
+        "jsonBody": "={{ (() => { const nodeNames = ['CRM Upsert by CRM Key', 'CRM Upsert Legacy CRM Key Fallback', 'CRM Upsert Legacy by URL']; const failedCount = nodeNames.flatMap(name => { try { return $(name).all(); } catch (error) { return []; } }).filter(item => { const value = item.json || {}; const status = Number(value.statusCode || value.status || value.error?.httpCode || 0); return Boolean(value.error) || value.ok === false || status >= 400; }).length; const integration_errors = failedCount ? [{ code: 'crm_sync_failed', count: failedCount, summary: 'Не удалось синхронизировать результаты с Google Sheets CRM.' }] : []; const body = { stats_snapshot: { legacy_crm_key_matches: $('Prepare CRM Rows').all().filter(item => item.json.match_strategy === 'legacy_crm_key_fallback').length, integration_errors } }; if (integration_errors.length) { body.status = 'completed_with_errors'; body.error_code = 'crm_sync_failed'; body.error_summary = integration_errors[0].summary; } return body; })() }}",
         "options": {
           "timeout": 15000
         }
@@ -1799,7 +1952,53 @@
             "node": "Gmail Send Digest",
             "type": "main",
             "index": 0
-          },
+          }
+        ]
+      ]
+    },
+    "Gmail Send Digest": {
+      "main": [
+        [
+          {
+            "node": "Prepare Gmail Integration Lifecycle Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Gmail Integration Lifecycle Update": {
+      "main": [
+        [
+          {
+            "node": "Gmail Integration Failed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Integration Failed?": {
+      "main": [
+        [
+          {
+            "node": "Mark Pipeline Run Gmail Integration Failed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Telegram Completion Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Pipeline Run Gmail Integration Failed": {
+      "main": [
+        [
           {
             "node": "Prepare Telegram Completion Notification",
             "type": "main",
@@ -1813,6 +2012,39 @@
         [
           {
             "node": "Telegram Send Completion Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Send Completion Notification": {
+      "main": [
+        [
+          {
+            "node": "Prepare Telegram Integration Lifecycle Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Telegram Integration Lifecycle Update": {
+      "main": [
+        [
+          {
+            "node": "Telegram Integration Failed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Integration Failed?": {
+      "main": [
+        [
+          {
+            "node": "Mark Pipeline Run Telegram Integration Failed",
             "type": "main",
             "index": 0
           }

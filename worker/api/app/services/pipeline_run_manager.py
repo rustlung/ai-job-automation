@@ -262,12 +262,9 @@ class WorkerPipelineRunManager:
         if result_status == "succeeded":
             return WorkerPipelineRunStatus.COMPLETED, True, None, None
         if result_status == "completed_with_errors":
-            return (
-                WorkerPipelineRunStatus.COMPLETED_WITH_ERRORS,
-                getattr(result, "persistence_stats", None) is not None,
-                "partial_failures",
-                "Pipeline завершился с частичными ошибками",
-            )
+            if getattr(result, "persistence_stats", None) is not None:
+                return WorkerPipelineRunStatus.COMPLETED, True, None, None
+            return WorkerPipelineRunStatus.FAILED, False, "critical_persistence_failure", "Worker не сохранил полезный результат"
         return WorkerPipelineRunStatus.FAILED, False, "pipeline_failed", "Pipeline не завершился с полезным результатом"
 
     @staticmethod

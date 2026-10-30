@@ -227,7 +227,7 @@ async def test_fetch_failure_does_not_stop_run() -> None:
 
     result = await service(preliminary_result(items), fetch_failures={"1"}).collect_filter_and_enrich(HHCollectFilterAndEnrichRequest())
 
-    assert result.status == "completed_with_errors"
+    assert result.status == "succeeded"
     assert result.enrichment_stats.failed_fetch_count == 1
     assert result.enrichment_stats.enriched_count == 1
     assert result.errors[0].error_code == "full_fetch_failed"
@@ -242,7 +242,7 @@ async def test_normalization_failure_does_not_stop_run() -> None:
         normalization_service=FailingNormalizationService(lambda: datetime(2026, 8, 10, tzinfo=timezone.utc)),
     ).collect_filter_and_enrich(HHCollectFilterAndEnrichRequest())
 
-    assert result.status == "completed_with_errors"
+    assert result.status == "succeeded"
     assert result.enrichment_stats.failed_normalization_count == 1
     assert result.enrichment_stats.enriched_count == 1
 
@@ -256,7 +256,7 @@ async def test_feature_extraction_failure_does_not_stop_next_vacancy() -> None:
         feature_service=FailingFeatureExtractionService(),
     ).collect_filter_and_enrich(HHCollectFilterAndEnrichRequest())
 
-    assert result.status == "completed_with_errors"
+    assert result.status == "succeeded"
     assert result.enrichment_stats.enriched_count == 1
     assert result.items[0].vacancy.external_id == "2"
     assert result.errors[0].stage == "feature_extraction"

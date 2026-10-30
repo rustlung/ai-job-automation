@@ -201,7 +201,7 @@ async def test_persistence_failure_preserves_enrichment_items() -> None:
 
     result = await service.collect_filter_enrich_and_persist(HHCollectFilterEnrichAndPersistRequest(pipeline_run_id="run-001"))
 
-    assert result.status == "completed_with_errors"
+    assert result.status == "failed"
     assert result.items[0].final_score == 91
     assert result.persistence_stats is None
     assert result.errors[0].error_code == "orchestrator_persistence_failed"
@@ -226,7 +226,7 @@ async def test_enrichment_errors_are_exposed_in_persist_response_without_orchest
 
     result = await service.collect_filter_enrich_and_persist(HHCollectFilterEnrichAndPersistRequest(pipeline_run_id="run-001"))
 
-    assert result.status == "completed_with_errors"
+    assert result.status == "failed"
     assert result.persistence_stats is None
     assert client.payloads == []
     assert result.errors[0].stage == "feature_extraction"
@@ -258,7 +258,7 @@ async def test_collection_page_failure_is_propagated_as_partial_failure() -> Non
 
     result = await service.collect_filter_enrich_and_persist(HHCollectFilterEnrichAndPersistRequest(pipeline_run_id="run-001"))
 
-    assert result.status == "completed_with_errors"
+    assert result.status == "succeeded"
     assert [diagnostic.model_dump() for diagnostic in result.partial_failures] == [
         {"code": "hh_collection_page_failed", "count": 2, "summary": "Не все страницы HH удалось получить"}
     ]

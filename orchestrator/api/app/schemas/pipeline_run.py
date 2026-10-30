@@ -65,10 +65,11 @@ class PipelineRunLifecycleUpdate(BaseModel):
             if not self.error_code or not self.error_summary:
                 raise ValueError("failed status requires error_code and error_summary")
         if self.status == PipelineRunStatus.COMPLETED_WITH_ERRORS:
-            has_partial_failures = bool((self.stats_snapshot or {}).get("partial_failures"))
-            has_compact_diagnostic = bool(self.error_code and self.error_summary)
-            if not has_partial_failures and not has_compact_diagnostic:
-                raise ValueError("completed_with_errors requires diagnostics")
+            integration_errors = (self.stats_snapshot or {}).get("integration_errors")
+            if not self.error_code or not self.error_summary or not integration_errors:
+                raise ValueError("completed_with_errors requires concrete integration diagnostics")
+            if self.error_code == "partial_failures" or self.error_summary == "Pipeline завершился с частичными ошибками":
+                raise ValueError("completed_with_errors requires a concrete integration error")
         return self
 
 

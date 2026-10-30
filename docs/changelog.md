@@ -5,9 +5,10 @@
 ### Fixed
 
 - PipelineRun lifecycle now records Web UI preflight failures as terminal
-  `failed`; structured warnings and partial failures survive Worker, n8n and
-  Orchestrator handoff, while controlled semantic fallbacks and configured
-  processing limits no longer mark an otherwise successful run as erroneous.
+  `failed`; warnings and vacancy-level processing diagnostics survive Worker,
+  n8n and Orchestrator handoff without lowering `completed`. Concrete
+  Telegram, Gmail and Google Sheets CRM failures are recorded as structured
+  integration errors and produce `completed_with_errors`.
 - Added a dry-run-first CLI to close only historical stale `accepted`/`running`
   PipelineRun records after an explicit SQLite backup and `--apply` approval.
 

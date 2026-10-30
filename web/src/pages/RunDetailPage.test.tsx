@@ -22,8 +22,8 @@ function run(status: "completed" | "completed_with_errors" | "failed", statsSnap
     profile_ids: ["profile"],
     config_snapshot: {},
     stats_snapshot: statsSnapshot,
-    error_code: status === "failed" ? "hh_auth_failed" : status === "completed_with_errors" ? "partial_failures" : null,
-    error_summary: status === "failed" ? "HH session не подтверждена" : status === "completed_with_errors" ? "Partial failures" : null,
+    error_code: status === "failed" ? "hh_auth_failed" : status === "completed_with_errors" ? "telegram_notification_failed" : null,
+    error_summary: status === "failed" ? "HH session не подтверждена" : status === "completed_with_errors" ? "Не удалось отправить Telegram-уведомление." : null,
     started_at: "2026-10-30T08:00:00Z",
     completed_at: "2026-10-30T08:01:00Z",
     created_at: "2026-10-30T08:00:00Z",
@@ -32,25 +32,28 @@ function run(status: "completed" | "completed_with_errors" | "failed", statsSnap
 }
 
 describe("RunDetailPage diagnostics", () => {
-  it("shows warnings for a completed run without an empty fatal error block", () => {
-    useRun.mockReturnValue({ isLoading: false, isError: false, data: run("completed", { warnings: [{ code: "semantic_fallback", count: 2, summary: "Semantic fallback" }] }) });
+  it("shows processing diagnostics and warnings for a completed run without an error block", () => {
+    useRun.mockReturnValue({ isLoading: false, isError: false, data: run("completed", { warnings: [{ code: "semantic_fallback", count: 2, summary: "Semantic fallback" }], partial_failures: [{ code: "full_fetch_failed", count: 1, summary: "Не удалось загрузить карточку" }] }) });
 
     renderPage();
 
     expect(screen.getAllByText("Завершён")).not.toHaveLength(0);
     expect(screen.getByText("Предупреждения")).toBeInTheDocument();
     expect(screen.getByText("Semantic fallback")).toBeInTheDocument();
+    expect(screen.getByText("Диагностика обработки")).toBeInTheDocument();
+    expect(screen.getByText("Не удалось загрузить карточку")).toBeInTheDocument();
     expect(screen.queryByText("Ошибка")).not.toBeInTheDocument();
+    expect(screen.queryByText("Ошибки интеграций")).not.toBeInTheDocument();
   });
 
-  it("shows structured partial failures for completed_with_errors", () => {
-    useRun.mockReturnValue({ isLoading: false, isError: false, data: run("completed_with_errors", { partial_failures: [{ code: "full_fetch_failed", count: 3, summary: "Не удалось загрузить карточку" }] }) });
+  it("shows concrete integration errors for completed_with_errors", () => {
+    useRun.mockReturnValue({ isLoading: false, isError: false, data: run("completed_with_errors", { integration_errors: [{ code: "telegram_notification_failed", count: 1, summary: "Не удалось отправить Telegram-уведомление." }] }) });
 
     renderPage();
 
     expect(screen.getByText("Завершён с ошибками")).toBeInTheDocument();
-    expect(screen.getByText("Частичные ошибки")).toBeInTheDocument();
-    expect(screen.getByText("Не удалось загрузить карточку")).toBeInTheDocument();
+    expect(screen.getByText("Ошибки интеграций")).toBeInTheDocument();
+    expect(screen.getByText("Не удалось отправить Telegram-уведомление.")).toBeInTheDocument();
   });
 
   it("shows a fatal error only for failed runs", () => {

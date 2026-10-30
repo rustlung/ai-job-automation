@@ -273,8 +273,6 @@ class HHCollectFilterAndEnrichService:
     ) -> VacancyEnrichmentStatus:
         if input_count > 0 and enriched_count == 0:
             return VacancyEnrichmentStatus.FAILED
-        if errors:
-            return VacancyEnrichmentStatus.COMPLETED_WITH_ERRORS
         return VacancyEnrichmentStatus.SUCCEEDED
 
     @staticmethod

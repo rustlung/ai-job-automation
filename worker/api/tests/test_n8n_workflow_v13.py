@@ -47,6 +47,19 @@ console.log(JSON.stringify(execute({{ first: () => ({{ json: {json.dumps(value)}
     return json.loads(result.stdout)[0]["json"]
 
 
+def execute_integration_code(code: str, value: dict, run_context: dict) -> dict:
+    harness = f"""
+const code = {json.dumps(code)};
+const execute = new Function('$', '$input', code);
+console.log(JSON.stringify(execute(
+  (name) => ({{ first: () => ({{ json: {json.dumps(run_context)} }}) }}),
+  {{ first: () => ({{ json: {json.dumps(value)} }}) }},
+)));
+"""
+    result = subprocess.run(["node", "-e", harness], capture_output=True, text=True, encoding="utf-8", check=True)
+    return json.loads(result.stdout)[0]["json"]
+
+
 def test_v12_is_preserved_and_v13_is_a_separate_versioned_export() -> None:
     v12 = load(V12)
     v13 = load(V13)
@@ -56,20 +69,20 @@ def test_v12_is_preserved_and_v13_is_a_separate_versioned_export() -> None:
     assert V12.read_bytes() != V13.read_bytes()
 
 
-def test_v13_keeps_existing_email_branch_and_adds_one_independent_telegram_branch() -> None:
+def test_v13_keeps_email_delivery_and_runs_telegram_after_its_result_is_known() -> None:
     v12 = load(V12)
     workflow = load(V13)
     targets = workflow["connections"]["Prepare Success Email"]["main"][0]
 
-    assert node(workflow, "Gmail Send Digest") == node(v12, "Gmail Send Digest")
-    assert {target["node"] for target in targets} == {
-        "Gmail Send Digest",
-        "Prepare Telegram Completion Notification",
-    }
+    assert node(workflow, "Gmail Send Digest")["parameters"] == node(v12, "Gmail Send Digest")["parameters"]
+    assert node(workflow, "Gmail Send Digest")["credentials"] == node(v12, "Gmail Send Digest")["credentials"]
+    assert [target["node"] for target in targets] == ["Gmail Send Digest"]
+    assert workflow["connections"]["Gmail Send Digest"]["main"][0][0]["node"] == "Prepare Gmail Integration Lifecycle Update"
+    assert workflow["connections"]["Gmail Integration Failed?"]["main"][1][0]["node"] == "Prepare Telegram Completion Notification"
     assert workflow["connections"]["Prepare Telegram Completion Notification"]["main"][0][0]["node"] == (
         "Telegram Send Completion Notification"
     )
-    assert "Telegram Send Completion Notification" not in workflow["connections"].get("Gmail Send Digest", {})
+    assert workflow["connections"]["Telegram Send Completion Notification"]["main"][0][0]["node"] == "Prepare Telegram Integration Lifecycle Update"
 
 
 def test_v13_telegram_gateway_request_uses_environment_credentials_and_is_non_blocking() -> None:
@@ -160,7 +173,7 @@ def test_v13_marks_web_preflight_failures_terminal_before_stopping_execution() -
     assert payload["error_summary"] == "Preflight failed: HH auth storage state not configured"
 
 
-def test_v13_forwards_structured_worker_diagnostics_to_terminal_lifecycle_patch() -> None:
+def test_v13_records_processing_diagnostics_without_turning_core_success_into_terminal_error() -> None:
     workflow = load(V13)
     evaluate = node(workflow, "Evaluate Worker Run")["parameters"]["jsCode"]
     completed = node(workflow, "Mark Pipeline Run Completed")["parameters"]["jsonBody"]
@@ -170,7 +183,40 @@ def test_v13_forwards_structured_worker_diagnostics_to_terminal_lifecycle_patch(
     assert "summary.partial_failures" in evaluate
     assert "warnings: result.warnings" in completed
     assert "partial_failures: result.partial_failures" in completed
-    assert "error_code" in completed
-    assert "error_summary" in completed
+    assert "status: 'completed'" in completed
+    assert "error_code" not in completed
+    assert "error_summary" not in completed
     assert "failure_code" in failed
     assert "failure_summary" in failed
+
+
+def test_v13_marks_only_concrete_post_run_integration_failures_as_completed_with_errors() -> None:
+    workflow = load(V13)
+    crm = node(workflow, "Record Legacy CRM Key Migration Stats")["parameters"]["jsonBody"]
+    gmail_prepare = node(workflow, "Prepare Gmail Integration Lifecycle Update")["parameters"]["jsCode"]
+    telegram_prepare = node(workflow, "Prepare Telegram Integration Lifecycle Update")["parameters"]["jsCode"]
+
+    assert "crm_sync_failed" in crm
+    assert "integration_errors" in crm
+    assert "completed_with_errors" in crm
+    assert "gmail_digest_failed" in gmail_prepare
+    assert "Не удалось отправить Gmail-дайджест." in gmail_prepare
+    assert "telegram_notification_failed" in telegram_prepare
+    assert "Не удалось отправить Telegram-уведомление." in telegram_prepare
+    for name in ("Gmail Send Digest", "Telegram Send Completion Notification"):
+        assert node(workflow, name)["continueOnFail"] is True
+    for name in ("Mark Pipeline Run Gmail Integration Failed", "Mark Pipeline Run Telegram Integration Failed"):
+        body = node(workflow, name)["parameters"]["jsonBody"]
+        assert "completed_with_errors" in body
+        assert "integration_errors" in body
+
+    run_context = {"run_id": "run-001", "config": {"orchestrator_api_url": "http://orchestrator"}}
+    telegram_failure = execute_integration_code(telegram_prepare, {"error": {"message": "gateway unavailable"}}, run_context)
+    gmail_success = execute_integration_code(gmail_prepare, {"id": "message-001"}, run_context)
+
+    assert telegram_failure["integration_error"] == {
+        "code": "telegram_notification_failed",
+        "count": 1,
+        "summary": "Не удалось отправить Telegram-уведомление.",
+    }
+    assert gmail_success["integration_error"] is None

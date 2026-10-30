@@ -178,9 +178,9 @@ def test_manual_registration_and_lifecycle_are_visible_in_run_history(db_session
             "/internal/pipeline-runs/n8n-manual-001",
             json={
                 "status": "completed_with_errors",
-                "error_code": "partial_failures",
-                "error_summary": "Pipeline завершился с частичными ошибками",
-                "stats_snapshot": {"persisted_count": 3, "partial_failures": [{"code": "full_fetch_failed", "count": 1, "summary": "Fetch failed"}]},
+                "error_code": "telegram_notification_failed",
+                "error_summary": "Не удалось отправить Telegram-уведомление.",
+                "stats_snapshot": {"persisted_count": 3, "integration_errors": [{"code": "telegram_notification_failed", "count": 1, "summary": "Не удалось отправить Telegram-уведомление."}]},
             },
         )
         history = client.get("/api/runs?trigger_source=manual_n8n&profile_id=ai_automation_keywords")
@@ -207,6 +207,24 @@ def test_lifecycle_requires_diagnostics_for_terminal_error_statuses(db_session) 
             "/internal/pipeline-runs/lifecycle-diagnostics-001",
             json={"status": "completed_with_errors"},
         )
+        processing_only = client.patch(
+            "/internal/pipeline-runs/lifecycle-diagnostics-001",
+            json={
+                "status": "completed_with_errors",
+                "error_code": "partial_failures",
+                "error_summary": "Часть вакансий не обработана.",
+                "stats_snapshot": {"partial_failures": [{"code": "full_fetch_failed", "count": 1, "summary": "Fetch failed"}]},
+            },
+        )
+        generic_integration_error = client.patch(
+            "/internal/pipeline-runs/lifecycle-diagnostics-001",
+            json={
+                "status": "completed_with_errors",
+                "error_code": "partial_failures",
+                "error_summary": "Pipeline завершился с частичными ошибками",
+                "stats_snapshot": {"integration_errors": [{"code": "telegram_notification_failed", "count": 1, "summary": "Не удалось отправить Telegram-уведомление."}]},
+            },
+        )
         missing_failed = client.patch(
             "/internal/pipeline-runs/lifecycle-diagnostics-001",
             json={"status": "failed", "error_code": "hh_auth_failed"},
@@ -217,9 +235,44 @@ def test_lifecycle_requires_diagnostics_for_terminal_error_statuses(db_session) 
         )
 
     assert missing_partial.status_code == 422
+    assert processing_only.status_code == 422
+    assert generic_integration_error.status_code == 422
     assert missing_failed.status_code == 422
     assert failed.status_code == 200
     assert failed.json()["completed_at"] is not None
+
+
+def test_lifecycle_accepts_concrete_telegram_gmail_and_crm_integration_errors(db_session) -> None:
+    integrations = [
+        ("telegram_notification_failed", "Не удалось отправить Telegram-уведомление."),
+        ("gmail_digest_failed", "Не удалось отправить Gmail-дайджест."),
+        ("crm_sync_failed", "Не удалось синхронизировать результаты с Google Sheets CRM."),
+    ]
+    with make_client(db_session) as (client, _, _):
+        for index, (code, summary) in enumerate(integrations, start=1):
+            run_id = f"integration-error-{index}"
+            client.post(
+                "/internal/pipeline-runs",
+                json={
+                    "run_id": run_id,
+                    "trigger_source": "manual_n8n",
+                    "profile_ids": ["ai_automation_keywords"],
+                    "config_snapshot": {},
+                },
+            )
+            response = client.patch(
+                f"/internal/pipeline-runs/{run_id}",
+                json={
+                    "status": "completed_with_errors",
+                    "error_code": code,
+                    "error_summary": summary,
+                    "stats_snapshot": {"integration_errors": [{"code": code, "count": 1, "summary": summary}]},
+                },
+            )
+            assert response.status_code == 200
+            assert response.json()["status"] == "completed_with_errors"
+            assert response.json()["error_code"] == code
+            assert response.json()["stats_snapshot"]["integration_errors"][0]["summary"] == summary
 
 
 def test_lifecycle_patch_preserves_existing_diagnostics_and_merges_structured_stats(db_session) -> None:
@@ -237,9 +290,9 @@ def test_lifecycle_patch_preserves_existing_diagnostics_and_merges_structured_st
             "/internal/pipeline-runs/lifecycle-patch-001",
             json={
                 "status": "completed_with_errors",
-                "error_code": "partial_failures",
-                "error_summary": "Partial failures",
-                "stats_snapshot": {"partial_failures": [{"code": "full_fetch_failed", "count": 2, "summary": "Fetch failed"}]},
+                "error_code": "gmail_digest_failed",
+                "error_summary": "Не удалось отправить Gmail-дайджест.",
+                "stats_snapshot": {"integration_errors": [{"code": "gmail_digest_failed", "count": 1, "summary": "Не удалось отправить Gmail-дайджест."}]},
             },
         )
         stats_only = client.patch(
@@ -249,8 +302,8 @@ def test_lifecycle_patch_preserves_existing_diagnostics_and_merges_structured_st
 
     assert partial.status_code == 200
     assert stats_only.status_code == 200
-    assert stats_only.json()["error_code"] == "partial_failures"
-    assert stats_only.json()["error_summary"] == "Partial failures"
+    assert stats_only.json()["error_code"] == "gmail_digest_failed"
+    assert stats_only.json()["error_summary"] == "Не удалось отправить Gmail-дайджест."
     assert stats_only.json()["stats_snapshot"]["warnings"][0]["code"] == "semantic_fallback"
 
 

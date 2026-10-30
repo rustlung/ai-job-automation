@@ -81,14 +81,14 @@ async def test_completed_with_errors_requires_persisted_result() -> None:
     manager = WorkerPipelineRunManager(lambda: persisted, lambda _: None)
     await manager.start(request("persisted"))
     state = await wait_for_terminal(manager, "persisted")
-    assert state.status == WorkerPipelineRunStatus.COMPLETED_WITH_ERRORS
+    assert state.status == WorkerPipelineRunStatus.COMPLETED
     assert state.result_available is True
 
     unavailable = FakePipelineService(result=SimpleNamespace(status="completed_with_errors", persistence_stats=None))
     manager = WorkerPipelineRunManager(lambda: unavailable, lambda _: None)
     await manager.start(request("unavailable"))
     state = await wait_for_terminal(manager, "unavailable")
-    assert state.status == WorkerPipelineRunStatus.COMPLETED_WITH_ERRORS
+    assert state.status == WorkerPipelineRunStatus.FAILED
     assert state.result_available is False
 
 
@@ -107,7 +107,7 @@ async def test_warning_only_result_completes_and_preserves_warning_summary() -> 
 
 
 @pytest.mark.anyio
-async def test_partial_failure_result_has_compact_and_structured_diagnostics() -> None:
+async def test_processing_diagnostics_do_not_change_completed_worker_status() -> None:
     service = FakePipelineService(
         result=result(
             status="completed_with_errors",
@@ -119,9 +119,9 @@ async def test_partial_failure_result_has_compact_and_structured_diagnostics() -
     await manager.start(request("partial"))
     state = await wait_for_terminal(manager, "partial")
 
-    assert state.status == WorkerPipelineRunStatus.COMPLETED_WITH_ERRORS
-    assert state.error_code == "partial_failures"
-    assert state.error_summary == "Pipeline завершился с частичными ошибками"
+    assert state.status == WorkerPipelineRunStatus.COMPLETED
+    assert state.error_code is None
+    assert state.error_summary is None
     assert state.summary is not None
     assert state.summary.partial_failures[0].code == "full_fetch_failed"
 

@@ -69,8 +69,7 @@ class HHCollectFilterEnrichAndPersistService:
         status = (
             VacancyEnrichmentStatus.FAILED
             if enrichment_result.status == VacancyEnrichmentStatus.FAILED
-            else VacancyEnrichmentStatus.COMPLETED_WITH_ERRORS
-            if partial_failures
+            or (enrichment_result.status == VacancyEnrichmentStatus.COMPLETED_WITH_ERRORS and not enrichment_result.items)
             else VacancyEnrichmentStatus.SUCCEEDED
         )
 
@@ -80,7 +79,6 @@ class HHCollectFilterEnrichAndPersistService:
                 persistence_result = await self.orchestrator_client.persist_pipeline_results(payload)
                 persistence_stats = PipelinePersistenceStats(**persistence_result["stats"])
                 if persistence_stats.failed_count > 0 or persistence_stats.status == "completed_with_errors":
-                    status = VacancyEnrichmentStatus.COMPLETED_WITH_ERRORS
                     partial_failures.append(
                         WorkerPipelineRunDiagnostic(
                             code="persistence_partial_failure",
@@ -90,7 +88,7 @@ class HHCollectFilterEnrichAndPersistService:
                     )
             except OrchestratorClientError:
                 logger.warning("pipeline_persistence_failed run_id=%s error_code=orchestrator_persistence_failed", run_id)
-                status = VacancyEnrichmentStatus.COMPLETED_WITH_ERRORS
+                status = VacancyEnrichmentStatus.FAILED
                 errors.append(
                     PipelinePersistenceError(
                         error_code="orchestrator_persistence_failed",

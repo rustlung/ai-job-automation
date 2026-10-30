@@ -56,6 +56,7 @@ export interface PipelineRunStatsSnapshot {
   legacy_crm_key_matches?: number;
   warnings?: PipelineRunDiagnostic[];
   partial_failures?: PipelineRunDiagnostic[];
+  integration_errors?: PipelineRunDiagnostic[];
   [key: string]: unknown;
 }
 

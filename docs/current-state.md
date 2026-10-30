@@ -721,11 +721,13 @@ Stage C: mixed run с одним resume и одним keyword profile при
 public `httpx`, strict resume preflight, collection/merge/dedup, persistence и
 CRM.
 
-Controlled partial failure semantics приняты как production behavior: отдельные
-HH fetch failures, invalid extracted data или persistence failures дают
-`completed_with_errors`, но валидные вакансии сохраняются. Semantic fallback и
-configured processing limits сохраняются как warnings и не понижают successful
-run. Fatal preflight/runtime failures получают terminal `failed` с безопасной
+Controlled processing diagnostics приняты как production behavior: отдельные
+HH fetch failures, invalid extracted data или другие vacancy-level потери не
+понижают terminal `completed`, если полезный результат сохранён. Semantic
+fallback и configured processing limits также сохраняются как warnings.
+`completed_with_errors` используется только для конкретной неудавшейся
+post-run integration (Telegram, Gmail или Google Sheets CRM). Fatal
+preflight/runtime failures получают terminal `failed` с безопасной
 diagnostic. Production-blocking edge case с календарным годом в experience extraction исправлен: годы вроде
 `2015` не считаются required experience, out-of-range experience становится
 `unknown`/`None`, а одна проблемная vacancy не роняет весь batch.

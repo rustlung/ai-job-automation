@@ -224,10 +224,11 @@ selected. Keyword-only public search therefore does not depend on Playwright
 статуса.
 
 Terminal diagnostics distinguish three classes: warnings (например, semantic
-fallback или configured limit), partial failures (фактически пропущенная
-вакансия/страница или частичное persistence failure) и fatal failures. Только
-partial failures дают `completed_with_errors`; warnings сами по себе сохраняются
-в `stats_snapshot.warnings` и не меняют успешный terminal status.
+fallback или configured limit), processing diagnostics (фактически пропущенная
+вакансия/страница) и fatal failures. Warnings и processing diagnostics
+сохраняются для успешного `completed`. `completed_with_errors` предназначен
+только для конкретного сбоя post-run integration: Telegram, Gmail или Google
+Sheets CRM; такие ошибки сохраняются в `stats_snapshot.integration_errors`.
 
 Timeouts:
 
