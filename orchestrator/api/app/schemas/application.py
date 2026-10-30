@@ -101,7 +101,6 @@ class ApplicationCrmSyncRead(BaseModel):
 
 class ApplicationWriteResponse(BaseModel):
     application: ApplicationRead
-    crm_sync: ApplicationCrmSyncRead
 
 
 class ApplicationListItem(ApplicationRead):

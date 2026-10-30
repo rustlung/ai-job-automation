@@ -65,9 +65,10 @@ Public exposure:
 -   Worker и Orchestrator остаются LAN-only;
 -   Orchestrator DB является source of truth для автоматических vacancy
     pipeline данных;
--   Google Sheets является пользовательской CRM-витриной.
--   On-demand Data Exports читает Orchestrator DB напрямую и выдаёт XLSX/CSV;
-    на текущем этапе он существует параллельно с Google Sheets CRM sync.
+-   Google Sheets временно сохраняется только для Daily Search v13 и legacy
+    workflows; пользовательские Application/UserState/manual mutations больше
+    не используют его как runtime mirror.
+-   On-demand Data Exports читает Orchestrator DB напрямую и выдаёт XLSX/CSV.
 
 Web backend foundation:
 
@@ -87,19 +88,10 @@ reporting mirror; it is not a source of truth for user-owned application data.
 canonical `Vacancy.id`, rather than to a business presentation key. A canonical
 vacancy may have multiple applications. Its absence means no application has
 been recorded; `not_applied` is deliberately not an application status. Google
-Sheets sync is a secondary, retryable operation: the Application commit happens
-first, then Orchestrator calls a narrow n8n Google-Sheets adapter. Its persistent
-`ApplicationCrmSyncState` records `pending`, `synced`, or `failed` without
-rolling back Application data. The adapter updates only J--M and Y--AD on an
-already reconciled business/canonical CRM row; it never appends a vacancy row.
-Application CRM Sync v3 is key-first (`business:<fingerprint>`, then canonical
-member key). Only when both miss for an HH Application with a known external ID,
-it performs one exact `Ссылка` URL-ID lookup for a historical/backfilled row.
-The compatibility parser accepts a raw HH URL or a whole Markdown hyperlink
-whose destination is an HH URL. One match is repaired to `hh:<external_id>`;
-zero or multiple matches remain
-controlled failures. This is a compatibility fallback, not a second grouping or
-fuzzy matching algorithm.
+Application create and PATCH are DB-only mutations. They commit and return the
+current record without calling n8n or Google Sheets. Existing CRM sync state is
+historical data retained until a later schema-cleanup phase; it is not exposed
+by current Web API responses and receives no new records.
 Historical Application import is a one-time operational path, not a daily
 workflow concern. It reads local CSV exports of `Отклики` and `Вакансии`,
 matches only canonical `hh:<external_id>` records, and creates Applications
@@ -146,10 +138,9 @@ are retained without copying or overwriting state and recorded in
 is intentionally not part of this milestone; the persisted backend contract is
 the future sync boundary.
 
-Vacancy user-state writes are also DB-first. After a successful state commit,
-the separate `VacancyUserStateCrmSyncState` records the secondary CRM mirror
-attempt; Sheets failure never rolls back `user_priority`, `vacancy_status`, or
-`comment`.
+Vacancy user-state writes are DB-only. A successful state commit immediately
+returns the current user-owned values without a Sheets/n8n side effect. The
+former sync-state table remains historical-only until a later cleanup phase.
 
 The one-time historical `VacancyUserState` importer reads a local `Вакансии`
 CSV export only. It resolves an exact current group through CRM key, canonical
@@ -1865,16 +1856,11 @@ Custom engine:
 
 ------------------------------------------------------------------------
 
-# 15. Manual Vacancy CRM row creation
+# 15. Manual Vacancy runtime mutation
 
 Ручная vacancy и начальный `VacancyUserState` фиксируются одной DB-транзакцией.
-Только после commit отдельный сервис вызывает узкий n8n workflow
-`AI Job Automation — Manual Vacancy CRM Create v1`. Ошибка Google Sheets не
-откатывает DB: отдельная таблица `manual_vacancy_crm_sync_states` хранит
-`pending`/`synced`/`failed` и безопасную диагностику.
-
-CRM identity равна `manual:<UUID>`. Workflow сверяет только точный `CRM Key`:
-нулевое число строк приводит к append, одна строка считается идемпотентным
-успехом, несколько строк дают `crm_row_ambiguous`. Application CRM Sync и
-VacancyUserState CRM Sync затем используют ту же строку по существующему
-key-based contract.
+После Phase 3A API не вызывает `AI Job Automation — Manual Vacancy CRM Create
+v1`: `manual:<UUID>` остаётся только DB identity, а отсутствие Google Sheets
+append не влияет на успешное создание. Таблица
+`manual_vacancy_crm_sync_states` и dedicated workflow временно сохранены как
+исторические артефакты до отдельного decommission этапа.

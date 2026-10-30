@@ -32,7 +32,6 @@ const vacancy = {
   run_ids: ["run-1"],
   applications: [],
   user_state: { id: null, presentation_key: "business:abc123", user_priority: null, comment: null, vacancy_status: "active" as const, created_at: null, updated_at: null },
-  manual_crm_sync: null,
   members: [
     { source: "hh", external_id: "102", url: "https://samara.hh.ru/vacancy/102", title: "Python Developer", company: "Example Company", location: "Самара", representative: true },
     { source: "hh", external_id: "101", url: "https://kazan.hh.ru/vacancy/101", title: "Python Developer", company: "Example Company", location: "Казань", representative: false }
@@ -43,17 +42,13 @@ const useVacancyDetail = vi.fn();
 const useSearchProfiles = vi.fn();
 const useCreateApplication = vi.fn();
 const useUpdateApplication = vi.fn();
-const useRetryApplicationCrmSync = vi.fn();
 const useUpdateVacancyUserState = vi.fn();
-const useRetryManualVacancyCrmSync = vi.fn();
 vi.mock("../hooks/useOrchestrator", () => ({
   useVacancyDetail: (...args: unknown[]) => useVacancyDetail(...args),
   useSearchProfiles: () => useSearchProfiles(),
   useCreateApplication: () => useCreateApplication(),
   useUpdateApplication: () => useUpdateApplication(),
-  useRetryApplicationCrmSync: () => useRetryApplicationCrmSync()
-  , useUpdateVacancyUserState: () => useUpdateVacancyUserState(),
-  useRetryManualVacancyCrmSync: () => useRetryManualVacancyCrmSync()
+  useUpdateVacancyUserState: () => useUpdateVacancyUserState()
 }));
 
 function renderPage(entry: string | { pathname: string; state?: unknown } = "/vacancies/business%3Aabc123") {
@@ -66,9 +61,7 @@ describe("VacancyDetailPage", () => {
     useSearchProfiles.mockReturnValue({ data: { profiles: [{ id: "ai_automation_keywords", name: "AI Automation" }] }, isError: false });
     useCreateApplication.mockReturnValue({ isPending: false, error: null, mutateAsync: vi.fn() });
     useUpdateApplication.mockReturnValue({ isPending: false, error: null, mutateAsync: vi.fn() });
-    useRetryApplicationCrmSync.mockReturnValue({ isPending: false, mutate: vi.fn() });
     useUpdateVacancyUserState.mockReturnValue({ isPending: false, isError: false, mutateAsync: vi.fn().mockResolvedValue({}) });
-    useRetryManualVacancyCrmSync.mockReturnValue({ isPending: false, mutate: vi.fn() });
   });
   afterEach(() => cleanup());
 
@@ -126,58 +119,11 @@ describe("VacancyDetailPage", () => {
     expect(screen.getByText("ai_automation_keywords")).toBeInTheDocument();
   });
 
-  it("shows failed CRM sync for the current application and retries without hiding data", () => {
-    const retry = vi.fn();
-    useRetryApplicationCrmSync.mockReturnValue({ isPending: false, mutate: retry });
-    useVacancyDetail.mockReturnValue({ data: {
-      ...vacancy,
-      applications: [{
-        application: { id: 2, vacancy_id: 1, status: "submitted", applied_at: null, application_text: "Текст", employer_response: null, response_received_at: null, interview_at: null, offer_at: null, notes: null, platform: "hh", created_at: "2026-09-04T10:00:00Z", updated_at: "2026-09-05T10:00:00Z" },
-        source: "hh", external_id: "102", url: vacancy.url, representative_member: true, current: true,
-        crm_sync: { application_id: 2, status: "failed", last_attempt_at: "2026-09-05T10:00:00Z", synced_at: null, error_code: "crm_sync_timeout", error_message_safe: "Google CRM sync failed" }
-      }]
-    }, isLoading: false, isError: false });
+  it("does not render CRM synchronization controls", () => {
     renderPage();
 
-    expect(screen.getByText("Ошибка синхронизации CRM")).toBeInTheDocument();
-    expect(screen.getByText("Текст")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Повторить синхронизацию" }));
-    expect(retry).toHaveBeenCalledWith(2);
-  });
-
-  it("keeps a created manual vacancy visible when CRM append fails and retries it", () => {
-    const retry = vi.fn();
-    useRetryManualVacancyCrmSync.mockReturnValue({ isPending: false, mutate: retry });
-    useVacancyDetail.mockReturnValue({ data: {
-      ...vacancy,
-      presentation_key: "manual:manual-id",
-      source: "manual",
-      external_id: "manual-id",
-      company: "Manual Co",
-      title: "Manual role",
-      manual_crm_sync: { vacancy_id: 7, presentation_key: "manual:manual-id", status: "failed", last_attempt_at: "2026-09-10T10:00:00Z", synced_at: null, error_code: "crm_sync_timeout", error_message_safe: "Google CRM row creation failed" }
-    }, isLoading: false, isError: false });
-
-    renderPage("/vacancies/manual%3Amanual-id");
-
-    expect(screen.getByRole("heading", { name: "Manual role" })).toBeInTheDocument();
-    expect(screen.getByText("Вакансия сохранена, строка CRM не создана")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Повторить синхронизацию" }));
-    expect(retry).toHaveBeenCalledWith("manual:manual-id");
-  });
-
-  it("shows a successful manual CRM row creation", () => {
-    useVacancyDetail.mockReturnValue({ data: {
-      ...vacancy,
-      presentation_key: "manual:manual-id",
-      source: "manual",
-      external_id: "manual-id",
-      manual_crm_sync: { vacancy_id: 7, presentation_key: "manual:manual-id", status: "synced", last_attempt_at: "2026-09-10T10:00:00Z", synced_at: "2026-09-10T10:00:00Z", error_code: null, error_message_safe: null }
-    }, isLoading: false, isError: false });
-
-    renderPage("/vacancies/manual%3Amanual-id");
-
-    expect(screen.getByText("Строка CRM создана")).toBeInTheDocument();
+    expect(screen.queryByText(/CRM/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Повторить синхронизацию/ })).not.toBeInTheDocument();
   });
 
   it("does not execute description HTML", () => {

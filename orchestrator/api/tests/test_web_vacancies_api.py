@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.api.routes.web import get_web_vacancy_list_service
-from app.api.routes.vacancy_user_states import get_vacancy_user_state_crm_sync_service, get_vacancy_user_state_service
+from app.api.routes.vacancy_user_states import get_vacancy_user_state_service
 from app.api.routes.applications import get_web_application_list_service
 from app.main import app
 from app.models.application import Application
@@ -18,7 +18,6 @@ from app.models.vacancy_user_state import VacancyUserState
 from app.schemas.manual_vacancy import ManualVacancyCreate
 from app.services.web_vacancies import WebVacancyListService
 from app.services.vacancy_user_state import VacancyUserStateService
-from app.schemas.vacancy_user_state import VacancyUserStateCrmSyncRead, VacancyUserStateCrmSyncStatus
 from app.services.manual_vacancy import ManualVacancyService
 from app.services.web_applications import WebApplicationListService
 
@@ -28,10 +27,6 @@ def make_client(db_session) -> Generator[TestClient, None, None]:
     app.dependency_overrides[get_web_vacancy_list_service] = lambda: WebVacancyListService(db_session)
     app.dependency_overrides[get_web_application_list_service] = lambda: WebApplicationListService(db_session)
     app.dependency_overrides[get_vacancy_user_state_service] = lambda: VacancyUserStateService(db_session)
-    class FakeSync:
-        async def sync(self, presentation_key, *, retry=False):
-            return VacancyUserStateCrmSyncRead(presentation_key=presentation_key, status=VacancyUserStateCrmSyncStatus.PENDING, last_attempt_at=None, synced_at=None, error_code="crm_sync_disabled", error_message_safe="CRM sync is disabled")
-    app.dependency_overrides[get_vacancy_user_state_crm_sync_service] = FakeSync
     try:
         with TestClient(app) as client:
             yield client
@@ -577,7 +572,7 @@ def test_group_user_state_is_stable_across_regional_members_and_filters(db_sessi
     assert updated.json()["user_state"]["user_priority"] is None
     assert updated.json()["user_state"]["comment"] is None
     assert updated.json()["user_state"]["vacancy_status"] == "closed"
-    assert updated.json()["crm_sync"]["status"] == "pending"
+    assert "crm_sync" not in updated.json()
     assert none.json()["total"] == 1
 
 

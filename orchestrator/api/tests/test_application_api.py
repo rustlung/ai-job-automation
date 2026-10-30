@@ -2,21 +2,16 @@ from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
 
-from app.api.routes.applications import get_application_crm_sync_service, get_application_service
+from app.api.routes.applications import get_application_service
 from app.api.routes.vacancies import get_vacancy_service
 from app.main import create_app
 from app.services.application import ApplicationService
-from app.schemas.application import ApplicationCrmSyncRead, ApplicationCrmSyncStatus
 from app.services.vacancy import VacancyService
 
 
-def make_client(db_session, *, sync_status: ApplicationCrmSyncStatus = ApplicationCrmSyncStatus.SYNCED) -> TestClient:
+def make_client(db_session) -> TestClient:
     app = create_app()
     app.dependency_overrides[get_application_service] = lambda: ApplicationService(db_session)
-    class FakeCrmSyncService:
-        async def sync(self, application_id: int, *, retry: bool = False) -> ApplicationCrmSyncRead:
-            return ApplicationCrmSyncRead(application_id=application_id, status=sync_status, last_attempt_at=None, synced_at=None, error_code="crm_sync_timeout" if sync_status == ApplicationCrmSyncStatus.FAILED else None, error_message_safe=None)
-    app.dependency_overrides[get_application_crm_sync_service] = FakeCrmSyncService
     app.dependency_overrides[get_vacancy_service] = lambda: VacancyService(db_session)
     return TestClient(app)
 
@@ -51,7 +46,7 @@ def test_application_api_create_list_get_and_multiple_records(db_session, vacanc
 
     assert first.status_code == 201
     assert first.json()["application"]["status"] == "submitted"
-    assert first.json()["crm_sync"]["status"] == "synced"
+    assert "crm_sync" not in first.json()
     assert first.json()["application"]["created_at"].endswith("Z")
     assert second.status_code == 201
     assert [item["id"] for item in listed.json()] == [first.json()["application"]["id"], second.json()["application"]["id"]]
@@ -97,14 +92,14 @@ def test_application_api_rejects_missing_vacancy_invalid_status_and_missing_appl
     assert missing_application.status_code == 404
 
 
-def test_application_write_remains_successful_when_secondary_crm_sync_fails(db_session, vacancy_payload: dict[str, object]) -> None:
-    with make_client(db_session, sync_status=ApplicationCrmSyncStatus.FAILED) as client:
+def test_application_write_does_not_depend_on_crm_sync(db_session, vacancy_payload: dict[str, object]) -> None:
+    with make_client(db_session) as client:
         vacancy = create_vacancy(client, vacancy_payload)
-        failed = client.post(f"/api/vacancies/{vacancy['id']}/applications", json=application_payload())
+        created = client.post(f"/api/vacancies/{vacancy['id']}/applications", json=application_payload())
 
-    assert failed.status_code == 201
-    assert failed.json()["application"]["id"]
-    assert failed.json()["crm_sync"]["status"] == "failed"
+    assert created.status_code == 201
+    assert created.json()["application"]["id"]
+    assert "crm_sync" not in created.json()
 
 
 def test_application_service_keeps_historical_dates_optional_and_normalizes_utc(db_session, vacancy_payload: dict[str, object]) -> None:

@@ -6,9 +6,8 @@
 
 ## Data Exports
 
-Phase 1 добавляет on-demand выгрузки из Orchestrator DB параллельно с текущей
-Google Sheets CRM synchronization. Экспорт не вызывает Web list API, не имеет
-pagination и не сохраняет файлы на сервере.
+On-demand выгрузки читают Orchestrator DB напрямую. Экспорт не вызывает Web
+list API, не имеет pagination и не сохраняет файлы на сервере.
 
 ```text
 GET  /api/exports/schema
@@ -214,7 +213,6 @@ GET /api/applications/{application_id}
 PATCH /api/applications/{application_id}
 GET /api/vacancies/{presentation_key}/user-state
 PATCH /api/vacancies/{presentation_key}/user-state
-POST /api/vacancies/{presentation_key}/user-state/crm-sync/retry
 ```
 
 `OperationalSettings` is a typed singleton for editable operational values,
@@ -230,8 +228,9 @@ internal n8n webhook without waiting for the production pipeline.
 UI. It uses the established business presentation grouping: groupable rows use
 `business:<fingerprint>`, non-groupable rows retain `source:external_id`, and
 the representative remains subject to the Samara preference. `date_from` and
-`date_to` filter the earliest `first_seen_at` among group members, meaning when
-the system first found the logical vacancy rather than HH publication time.
+`date_to` filter the shared logical cohort date: a manual vacancy uses
+`created_at`, an ordinary group uses the earliest reliable `first_seen_at`, and
+legacy groups without a reliable date are excluded from bounded ranges.
 Filters apply after grouping, followed by whitelist sorting and offset/limit
 pagination. The endpoint supports priority, track, profile provenance union,
 application filter (including `application_status=none` for groups with no
@@ -263,6 +262,8 @@ unchanged, while explicit `null` clears `user_priority` or `comment`.
 `vacancy_status` and `user_priority`, with backend filters
 `vacancy_status=active|archived|closed` and `user_priority=P1|P2|P3|none`.
 `none` means a null user priority, not a domain priority.
+PATCH is DB-only and returns `{"user_state": ...}`; it does not call n8n or
+Google Sheets, create a sync-state record, or expose a CRM retry endpoint.
 
 `GET /api/system/health` is lightweight: it does not call the Worker compute
 preflight or warm an Ollama model. Internal n8n lifecycle endpoints live under
@@ -289,15 +290,13 @@ members. Multiple applications per vacancy are allowed. The status enum is
 `submitted`, `response_received`, `screening`, `test_task`, `interview`,
 `offer`, `rejected`, `withdrawn`; lack of an Application record means no
 application. PATCH is partial: omitted fields are unchanged and explicit
-`null` clears nullable fields. Successful create and PATCH responses include a
-secondary `crm_sync` state. The Application DB commit completes before the
-server calls the narrow n8n CRM-sync adapter, so a Sheets failure is reported
-as `crm_sync.status=failed`, not as an Application write failure. `POST
-/api/applications/{application_id}/crm-sync/retry` retries only this secondary
-effect. Historical import is an operational CLI, not a Web API: it consumes
-local CSV exports and is dry-run by default.
+`null` clears nullable fields. Create and PATCH are DB-only operations and
+return `{"application": ...}`; they neither call n8n/Google Sheets nor expose
+CRM sync state or retry endpoints. Historical import is an operational CLI,
+not a Web API: it consumes local CSV exports and is dry-run by default.
 
-Application CRM reconciliation remains key-first: `business:<fingerprint>`,
+The retained historical Application CRM adapter uses key-first reconciliation:
+`business:<fingerprint>`,
 then a canonical member key such as `hh:<external_id>`. For historical
 backfilled HH vacancies only, the v3 adapter finally compares the exact HH
 external ID parsed from the CRM `Ссылка` column. One exact match is updated and
@@ -380,15 +379,14 @@ sync. Именно этот endpoint используется production workflo
 `GET /pipeline-results/analyses/latest` предоставляет обзорный read API с
 фильтром по priority и pagination; он не заменяет current-run sync.
 
-### Manual Vacancy CRM Create
+### Manual Vacancy Create
 
 ``` text
 POST /api/vacancies/manual
-POST /api/vacancies/{presentation_key}/crm-sync/retry
 ```
 
 Первый endpoint атомарно создаёт manual vacancy и meaningful initial user state,
-коммитит DB, затем пытается создать строку CRM. Ответ созданной vacancy содержит
-`crm_sync` со статусом `pending`, `synced` или `failed`; внешний сбой не меняет
-успех DB-операции. Retry повторяет только идемпотентное создание строки и не
-изменяет Vacancy/UserState. Endpoint применим только к ключам `manual:<UUID>`.
+коммитит DB и возвращает `created`, `presentation_key`, `vacancy_id`, initial
+`user_state` и optional HH duplicate context. Он не создаёт строку Google
+Sheets, не возвращает CRM sync state и не имеет retry endpoint. Endpoint
+применим только к ключам `manual:<UUID>`.

@@ -76,5 +76,4 @@ class ManualVacancyCreateResponse(BaseModel):
     presentation_key: str | None = None
     vacancy_id: int | None = None
     user_state: VacancyUserStateRead | None = None
-    crm_sync: ManualVacancyCrmSyncRead | None = None
     duplicate: ManualVacancyDuplicate | None = None

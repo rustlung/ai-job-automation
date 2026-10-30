@@ -39,9 +39,9 @@
 ✅ Vacancy persistence API
 ✅ VacancyAnalysis persistence API
 ✅ Application CRUD UI/API: canonical vacancy relation, multiple records, partial updates, status in grouped Vacancy list and status filter
-✅ Vacancy user state: group-level user priority, comment and active/archived/closed status with Web Detail editing and grouped list filters; CRM sync is deliberately pending
+✅ Vacancy user state: group-level user priority, comment and active/archived/closed status with Web Detail editing and grouped list filters
 ✅ Historical VacancyUserState import tooling: exact local CRM CSV matching, dry-run by default, explicit DB apply, and conflict-safe preservation of meaningful DB feedback
-✅ Application CRM mirror: DB-first sync state, retryable narrow n8n v3 adapter, J--M/Y--AD mapping, and an exact-HH-ID historical fallback for raw or Markdown-wrapped HH links that repairs missing canonical CRM keys
+✅ Application CRUD mutations: DB-only create/update without runtime Google Sheets mirror or retry surface
 ✅ Historical Application import tooling: local CSV dry-run, explicit DB apply, and separate CRM batch command
 ✅ Historical Vacancy backfill tooling: required-HH-only CSV planning before Application import, with explicit DB apply
 ✅ Idempotent vacancy upsert
@@ -143,8 +143,9 @@
 ✅ Production preliminary safety cap 1000
 ✅ PipelineRun lifecycle diagnostics: warnings != partial failures != fatal errors
 ✅ Controlled dry-run-first repair CLI for stale accepted/running PipelineRun records
-✅ Data Exports backend foundation: logical Vacancy и real Application on-demand XLSX/CSV exports with selectable columns and period filters; current Google Sheets CRM sync remains enabled in parallel
-✅ Data Exports Web UI: `/exports` page loads the backend column registry, supports period/format/column selection and browser download for Vacancy and Application files; Google Sheets CRM sync remains enabled in parallel
+✅ Data Exports backend foundation: logical Vacancy и real Application on-demand XLSX/CSV exports with selectable columns and period filters
+✅ Data Exports Web UI: `/exports` page loads the backend column registry, supports period/format/column selection and browser download for Vacancy and Application files
+✅ Phase 3A CRM retirement: Application, VacancyUserState и manual vacancy mutations работают только с Orchestrator DB; runtime sync UI и retry routes удалены
 ✅ Public HTTPS n8n via Nginx
 ✅ Let's Encrypt certificate for n8n
 ✅ Google OAuth callback via public n8n domain
@@ -755,6 +756,7 @@ backlog, а не blockers завершенного MVP.
 
 Milestone 006 завершён: manual vacancies создаются в DB с identity
 `manual:<UUID>`, поддерживают UserState и Applications и не проходят AI-анализ.
-Отдельный workflow `AI Job Automation — Manual Vacancy CRM Create v1` после DB
-commit идемпотентно создаёт CRM row по exact `CRM Key`; failure сохраняется как
-retryable sync-state и не откатывает Vacancy/UserState.
+Phase 3A retirement отключает runtime Google Sheets append для manual create;
+vacancy и initial UserState остаются атомарной DB-операцией. Daily Search v13 и
+dedicated CRM workflows временно сохранены для последующего decommission, а
+sync-state таблицы остаются историческими и больше не получают новые записи.

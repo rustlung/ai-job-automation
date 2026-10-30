@@ -71,4 +71,3 @@ class VacancyUserStateCrmSyncRead(BaseModel):
 
 class VacancyUserStateWriteResponse(BaseModel):
     user_state: VacancyUserStateRead
-    crm_sync: VacancyUserStateCrmSyncRead

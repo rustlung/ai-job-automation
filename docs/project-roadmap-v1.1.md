@@ -1469,8 +1469,11 @@ silent overwrite. Подэтап 006.2 добавляет one-time local CSV imp
 runtime Sheets-to-DB sync. Следующий milestone может добавить CRM mirror этих
 значений. Подэтапы 006.3--006.5 добавляют DB-first user-state CRM update,
 manual vacancy creation и отдельный идемпотентный append manual CRM row.
-Milestone 006 закрыт: Google Sheets остаётся вторичным представлением, а Worker,
-Daily Search и AI scoring для manual vacancies не менялись.
+Milestone 006 закрыт. Phase 3A retirement отключает runtime Google Sheets sync
+для Application, VacancyUserState и manual vacancy mutations: DB является
+единственным runtime source of truth, а XLSX/CSV exports доступны как путь
+выгрузки. Daily Search v13, Gmail source и dedicated CRM workflows временно
+не менялись; sync-state schema остаётся исторической до отдельной cleanup phase.
 
 ---
 

@@ -3,11 +3,10 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.schemas.application import ApplicationCrmSyncRead, ApplicationRead, ApplicationStatus
+from app.schemas.application import ApplicationRead, ApplicationStatus
 from app.schemas.pipeline_run import PipelineRunRead
 from app.schemas.vacancy_analysis import VacancyAnalysisPriority
 from app.schemas.vacancy_user_state import VacancyStatus, VacancyUserPriority, VacancyUserStateRead
-from app.schemas.manual_vacancy import ManualVacancyCrmSyncRead
 
 
 class SearchProfileTrack(str, Enum):
@@ -154,7 +153,6 @@ class VacancyApplicationDetail(BaseModel):
     url: str | None
     representative_member: bool
     current: bool
-    crm_sync: ApplicationCrmSyncRead
 
 
 class VacancyAnalysisDetail(BaseModel):
@@ -200,4 +198,3 @@ class VacancyDetail(BaseModel):
     members: list[VacancyCanonicalMember]
     applications: list[VacancyApplicationDetail]
     user_state: VacancyUserStateRead
-    manual_crm_sync: ManualVacancyCrmSyncRead | None = None

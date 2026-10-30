@@ -2,7 +2,6 @@ import asyncio
 from types import SimpleNamespace
 
 import httpx
-from sqlalchemy.orm import Session
 
 from app.api.routes.web import create_manual_vacancy
 from app.repositories.manual_vacancy_crm_sync_state import ManualVacancyCrmSyncStateRepository
@@ -16,7 +15,6 @@ from app.services.manual_vacancy import ManualVacancyService
 from app.services.manual_vacancy_crm_sync import ManualVacancyCrmSyncService
 from app.services.vacancy_user_state_crm_sync import VacancyUserStateCrmSyncService
 from app.services.web_gateway import ManualVacancyCrmCreateGatewayError, ManualVacancyCrmCreateWebhookClient
-from app.services.web_vacancies import WebVacancyListService
 
 
 class EnabledSettings:
@@ -93,35 +91,15 @@ def test_manual_crm_sync_uses_committed_vacancy_and_complete_payload(db_session)
     }
 
 
-def test_create_orchestration_calls_crm_only_after_db_commit(db_session) -> None:
-    class PostCommitSync:
-        async def sync(self, presentation_key):
-            with Session(db_session.get_bind()) as independent_session:
-                vacancy = VacancyRepository(independent_session).get_by_source_external_id(
-                    "manual", presentation_key.removeprefix("manual:")
-                )
-                assert vacancy is not None
-                vacancy_id = vacancy.id
-            return SimpleNamespace(
-                vacancy_id=vacancy_id,
-                presentation_key=presentation_key,
-                status=ManualVacancyCrmSyncStatus.SYNCED,
-                last_attempt_at=None,
-                synced_at=None,
-                error_code=None,
-                error_message_safe=None,
-            )
-
-    response = asyncio.run(
-        create_manual_vacancy(
-            ManualVacancyCreate(company="Committed", title="Vacancy", description="Description", origin="other"),
-            ManualVacancyService(db_session),
-            PostCommitSync(),
-        )
+def test_create_orchestration_returns_db_result_without_crm_sync(db_session) -> None:
+    response = create_manual_vacancy(
+        ManualVacancyCreate(company="Committed", title="Vacancy", description="Description", origin="other"),
+        ManualVacancyService(db_session),
     )
 
     assert response.created is True
-    assert response.crm_sync.status == ManualVacancyCrmSyncStatus.SYNCED
+    assert response.presentation_key is not None
+    assert "crm_sync" not in response.model_fields_set
 
 
 def test_crm_failure_keeps_vacancy_and_initial_user_state(db_session) -> None:
@@ -134,7 +112,6 @@ def test_crm_failure_keeps_vacancy_and_initial_user_state(db_session) -> None:
     assert VacancyRepository(db_session).get_by_id(created.vacancy_id) is not None
     assert VacancyUserStateRepository(db_session).get_by_presentation_key(created.presentation_key).comment == "Сохранено в DB"
     assert ManualVacancyCrmSyncStateRepository(db_session).get(created.presentation_key).status == "failed"
-    assert WebVacancyListService(db_session).get(created.presentation_key).manual_crm_sync.status == ManualVacancyCrmSyncStatus.FAILED
 
 
 def test_retry_succeeds_once_and_is_idempotent_after_sync(db_session) -> None:

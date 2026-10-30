@@ -83,13 +83,12 @@ describe("VacanciesPage", () => {
     expect(screen.getByText("Detail route")).toBeInTheDocument();
   });
 
-  it("redirects to the DB-created manual vacancy even when CRM append failed", async () => {
+  it("redirects to the DB-created manual vacancy", async () => {
     const create = vi.fn().mockResolvedValue({
       created: true,
       presentation_key: "manual:uuid-1",
       vacancy_id: 7,
       user_state: null,
-      crm_sync: { vacancy_id: 7, presentation_key: "manual:uuid-1", status: "failed", last_attempt_at: null, synced_at: null, error_code: "crm_sync_timeout", error_message_safe: "Google CRM row creation failed" },
       duplicate: null
     });
     useCreateManualVacancy.mockReturnValue({ isPending: false, mutateAsync: create });

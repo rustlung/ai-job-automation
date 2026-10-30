@@ -66,17 +66,6 @@ export function useCreateManualVacancy() {
   return useMutation({ mutationFn: (payload: ManualVacancyCreateRequest) => orchestratorApi.createManualVacancy(payload), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["vacancies"] }) });
 }
 
-export function useRetryManualVacancyCrmSync() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: orchestratorApi.retryManualVacancyCrmSync,
-    onSuccess: () => Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["vacancy"] }),
-      queryClient.invalidateQueries({ queryKey: ["vacancies"] })
-    ])
-  });
-}
-
 export function useApplications(filters: ApplicationFilters) {
   return useQuery({ queryKey: ["applications", filters], queryFn: () => orchestratorApi.getApplications(filters) });
 }
@@ -104,11 +93,6 @@ export function useUpdateApplication() {
     mutationFn: ({ applicationId, payload }: { applicationId: number; payload: ApplicationPatchRequest }) => orchestratorApi.updateApplication(applicationId, payload),
     onSuccess: invalidate
   });
-}
-
-export function useRetryApplicationCrmSync() {
-  const invalidate = useApplicationInvalidation();
-  return useMutation({ mutationFn: orchestratorApi.retryApplicationCrmSync, onSuccess: invalidate });
 }
 
 export function useUpdateVacancyUserState() {
