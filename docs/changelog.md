@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- Data Exports backend foundation: typed column metadata plus in-memory XLSX and
+  CSV downloads for logical Vacancy groups and real Application rows. Period
+  filtering shares Statistics cohort-date semantics; the existing Google Sheets
+  CRM synchronization remains enabled during this transition phase.
+
 ### Fixed
 
 - PipelineRun lifecycle now records Web UI preflight failures as terminal

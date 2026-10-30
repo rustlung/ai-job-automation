@@ -66,6 +66,8 @@ Public exposure:
 -   Orchestrator DB является source of truth для автоматических vacancy
     pipeline данных;
 -   Google Sheets является пользовательской CRM-витриной.
+-   On-demand Data Exports читает Orchestrator DB напрямую и выдаёт XLSX/CSV;
+    на текущем этапе он существует параллельно с Google Sheets CRM sync.
 
 Web backend foundation:
 

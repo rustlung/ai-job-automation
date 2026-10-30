@@ -10,7 +10,8 @@ from app.repositories.vacancy_user_state import VacancyUserStateRepository
 from app.schemas.application import ApplicationStatus
 from app.schemas.statistics import StatisticsPeriod, VacancyStatisticsRead
 from app.services.application_stage import has_applied, has_interview, has_response
-from app.services.business_vacancy_grouping import BusinessVacancyGroup, group_business_vacancies
+from app.services.business_vacancy_grouping import group_business_vacancies
+from app.services.logical_vacancy_dates import as_utc, logical_vacancy_cohort_date
 
 
 class StatisticsValidationError(ValueError):
@@ -63,7 +64,7 @@ class VacancyStatisticsService:
         }
         legacy_without_date = 0
         for group in groups:
-            cohort_date = self._cohort_date(group)
+            cohort_date = logical_vacancy_cohort_date(group)
             if cohort_date is None:
                 legacy_without_date += 1
                 if period != StatisticsPeriod.ALL:
@@ -127,23 +128,6 @@ class VacancyStatisticsService:
         }[period]
         return date.fromordinal(self.today.toordinal() - days + 1), self.today
 
-    @classmethod
-    def _cohort_date(cls, group: BusinessVacancyGroup) -> date | None:
-        if group.representative.source == "manual":
-            return cls._as_utc(group.representative.created_at).date()
-        reliable_dates = [
-            cls._as_utc(member.first_seen_at).date()
-            for member in group.members
-            if cls._has_reliable_discovery_date(member)
-        ]
-        return min(reliable_dates) if reliable_dates else None
-
-    @staticmethod
-    def _has_reliable_discovery_date(vacancy) -> bool:
-        # Historical backfill intentionally writes an empty description and current timestamps.
-        # Those timestamps are import time, not the original vacancy discovery date.
-        return bool(vacancy.description and vacancy.description.strip())
-
     @staticmethod
     def _applications_by_vacancy_id(applications: Iterable[Application]) -> dict[int, list[Application]]:
         result: dict[int, list[Application]] = {}
@@ -153,11 +137,5 @@ class VacancyStatisticsService:
 
     @classmethod
     def _current_application(cls, applications: Iterable[Application]) -> Application | None:
-        ordered = sorted(applications, key=lambda item: (cls._as_utc(item.updated_at), item.id), reverse=True)
+        ordered = sorted(applications, key=lambda item: (as_utc(item.updated_at), item.id), reverse=True)
         return ordered[0] if ordered else None
-
-    @staticmethod
-    def _as_utc(value: datetime) -> datetime:
-        if value.tzinfo is None or value.utcoffset() is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)

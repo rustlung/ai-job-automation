@@ -4,6 +4,46 @@
 автоматический OpenAPI dump: здесь зафиксировано назначение рабочих routes и их
 место в pipeline.
 
+## Data Exports
+
+Phase 1 добавляет on-demand выгрузки из Orchestrator DB параллельно с текущей
+Google Sheets CRM synchronization. Экспорт не вызывает Web list API, не имеет
+pagination и не сохраняет файлы на сервере.
+
+```text
+GET  /api/exports/schema
+POST /api/exports/vacancies
+POST /api/exports/applications
+```
+
+`GET /api/exports/schema` возвращает стабильный registry доступных колонок,
+поддерживаемые `formats` (`xlsx`, `csv`) и `periods` (`all`, `7d`, `30d`,
+`custom`).
+
+Оба POST endpoint принимают JSON:
+
+```json
+{
+  "format": "xlsx",
+  "period": "30d",
+  "columns": ["company", "title", "url"]
+}
+```
+
+Для `custom` обязательны `date_from` и `date_to` в формате ISO date; начало
+не может быть позже конца. Пустой или отсутствующий `columns` использует
+default-набор. Неизвестные и повторяющиеся column keys возвращают `422`.
+
+Vacancies экспортируются как logical vacancy groups: regional canonical members
+не дублируют строку, а UserState и current Application берутся на уровне
+presentation group. Applications экспортируются как реальные записи Application
+без группировки. Ограниченные периоды Vacancy используют cohort date, как
+Statistics; legacy vacancy без надёжной даты входят только в `all`.
+
+Ответ является download response с `Content-Disposition: attachment`.
+XLSX создаётся в памяти, CSV имеет `utf-8-sig` и разделитель `;` для Excel с
+кириллицей.
+
 ## Worker API
 
 Worker API работает на Windows 11 Worker через Docker Compose и публикуется

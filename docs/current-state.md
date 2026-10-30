@@ -143,6 +143,7 @@
 ✅ Production preliminary safety cap 1000
 ✅ PipelineRun lifecycle diagnostics: warnings != partial failures != fatal errors
 ✅ Controlled dry-run-first repair CLI for stale accepted/running PipelineRun records
+✅ Data Exports backend foundation: logical Vacancy и real Application on-demand XLSX/CSV exports with selectable columns and period filters; current Google Sheets CRM sync remains enabled in parallel
 ✅ Public HTTPS n8n via Nginx
 ✅ Let's Encrypt certificate for n8n
 ✅ Google OAuth callback via public n8n domain

@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes.applications import router as applications_router
+from app.api.routes.exports import router as exports_router
 from app.api.routes.internal_pipeline_runs import router as internal_pipeline_runs_router
 from app.api.routes.pipeline_results import router as pipeline_results_router
 from app.api.routes.vacancy_analyses import router as vacancy_analyses_router
@@ -25,6 +26,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
     app.include_router(vacancies_router)
     app.include_router(applications_router)
+    app.include_router(exports_router)
     app.include_router(vacancy_user_states_router)
     app.include_router(vacancy_analyses_router)
     app.include_router(vacancy_processing_events_router)
