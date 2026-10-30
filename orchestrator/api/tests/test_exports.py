@@ -12,6 +12,7 @@ from app.models.vacancy_analysis import VacancyAnalysis
 from app.models.vacancy_user_state import VacancyUserState
 from app.schemas.exports import ExportFormat, ExportPeriod, ExportRequest
 from app.services.exports import ExportService
+from app.services.logical_vacancy_dates import SAMARA_TIMEZONE
 
 
 NOW = datetime(2026, 10, 31, 10, tzinfo=timezone.utc)
@@ -147,7 +148,7 @@ def test_applications_export_keeps_real_rows_and_applied_period_semantics(db_ses
     all_time = service(db_session).applications_dataset(ExportRequest())
     assert [column.label for column in all_time.columns] == ["№", "Компания", "Должность", "Дата отклика", "Статус отклика", "Текст отклика", "Ссылка"]
     assert len(all_time.rows) == 3
-    assert all_time.rows[0][3] == NOW.replace(tzinfo=None)
+    assert all_time.rows[0][3] == NOW.astimezone(SAMARA_TIMEZONE).replace(tzinfo=None)
     assert all_time.rows[0][4] == "Интервью"
     assert all_time.rows[-1][3] is None
     assert first.id != second.id != null_date.id

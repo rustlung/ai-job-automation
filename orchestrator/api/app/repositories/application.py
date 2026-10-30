@@ -1,10 +1,11 @@
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, timezone
 
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
 from app.models.application import Application
 from app.schemas.application import ApplicationCreate, ApplicationUpdate
+from app.services.logical_vacancy_dates import business_date_utc_bounds
 
 
 class ApplicationRepository:
@@ -67,10 +68,11 @@ class ApplicationRepository:
         if status is not None:
             statement = statement.where(Application.status == status)
         if date_from is not None:
-            statement = statement.where(Application.applied_at >= datetime.combine(date_from, time.min, tzinfo=timezone.utc))
+            start, _ = business_date_utc_bounds(date_from)
+            statement = statement.where(Application.applied_at >= start)
         if date_to is not None:
-            next_day = date.fromordinal(date_to.toordinal() + 1)
-            statement = statement.where(Application.applied_at < datetime.combine(next_day, time.min, tzinfo=timezone.utc))
+            _, end = business_date_utc_bounds(date_to)
+            statement = statement.where(Application.applied_at < end)
         if platform is not None:
             statement = statement.where(Application.platform == platform)
         return statement

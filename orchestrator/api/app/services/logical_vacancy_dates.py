@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from app.services.business_vacancy_grouping import BusinessVacancyGroup
@@ -16,9 +16,9 @@ _PRESET_PERIOD_DAYS = {
 def logical_vacancy_cohort_date(group: BusinessVacancyGroup) -> date | None:
     """Return the reliable discovery date used by statistics and exports."""
     if group.representative.source == "manual":
-        return as_utc(group.representative.created_at).date()
+        return timestamp_to_business_date(group.representative.created_at)
     reliable_dates = [
-        as_utc(member.first_seen_at).date()
+        timestamp_to_business_date(member.first_seen_at)
         for member in group.members
         if has_reliable_discovery_date(member)
     ]
@@ -31,9 +31,22 @@ def has_reliable_discovery_date(vacancy: object) -> bool:
 
 
 def as_utc(value: datetime) -> datetime:
+    """Normalize persisted timestamps; SQLite returns naive UTC values."""
     if value.tzinfo is None or value.utcoffset() is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
+
+
+def timestamp_to_business_date(value: datetime) -> date:
+    """Translate a persisted UTC timestamp into its Europe/Samara calendar date."""
+    return as_utc(value).astimezone(SAMARA_TIMEZONE).date()
+
+
+def business_date_utc_bounds(day: date) -> tuple[datetime, datetime]:
+    """Return the half-open UTC interval for one Europe/Samara calendar day."""
+    start = datetime.combine(day, time.min, tzinfo=SAMARA_TIMEZONE).astimezone(timezone.utc)
+    end = datetime.combine(day + timedelta(days=1), time.min, tzinfo=SAMARA_TIMEZONE).astimezone(timezone.utc)
+    return start, end
 
 
 def samara_today(now: datetime | None = None) -> date:

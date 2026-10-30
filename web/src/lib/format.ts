@@ -1,5 +1,7 @@
 import type { PipelineRunStatus, PipelineRunTriggerSource } from "../types/api";
 
+const businessTimeZone = "Europe/Samara";
+
 export const isTerminalRunStatus = (status: PipelineRunStatus): boolean =>
   ["completed", "completed_with_errors", "failed"].includes(status);
 
@@ -20,6 +22,7 @@ export function formatDateTime(value: string | null): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   return new Intl.DateTimeFormat("ru-RU", {
+    timeZone: businessTimeZone,
     dateStyle: "medium",
     timeStyle: "short"
   }).format(date);
@@ -29,7 +32,7 @@ export function formatDate(value: string | null): string {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat("ru-RU", { dateStyle: "medium" }).format(date);
+  return new Intl.DateTimeFormat("ru-RU", { timeZone: businessTimeZone, dateStyle: "medium" }).format(date);
 }
 
 export function formatDuration(startedAt: string, completedAt: string | null): string {

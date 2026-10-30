@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatDateTime, formatTriggerSource, isTerminalRunStatus, runPollingInterval } from "./format";
+import { formatDate, formatDateTime, formatTriggerSource, isTerminalRunStatus, runPollingInterval } from "./format";
 
 describe("run status helpers", () => {
   it("distinguishes terminal states and stops polling", () => {
@@ -14,5 +14,10 @@ describe("run status helpers", () => {
     expect(formatTriggerSource("manual_n8n")).toBe("Manual n8n");
     expect(formatDateTime("2026-09-04T12:30:00Z")).not.toBe("—");
     expect(formatDateTime(null)).toBe("—");
+  });
+
+  it("formats UTC timestamps in Europe/Samara", () => {
+    expect(formatDateTime("2026-10-30T22:00:00Z")).toContain("31 окт.");
+    expect(formatDate("2026-10-30T22:00:00Z")).toContain("31 окт.");
   });
 });

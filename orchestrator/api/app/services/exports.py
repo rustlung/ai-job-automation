@@ -22,7 +22,7 @@ from app.repositories.vacancy_user_state import VacancyUserStateRepository
 from app.schemas.exports import ExportColumnRead, ExportFormat, ExportPeriod, ExportRequest, ExportSchemaRead
 from app.schemas.vacancy_user_state import VacancyStatus
 from app.services.business_vacancy_grouping import BusinessVacancyGroup, group_business_vacancies, merge_profile_ids
-from app.services.logical_vacancy_dates import as_utc, logical_vacancy_cohort_date, preset_period_range, samara_today
+from app.services.logical_vacancy_dates import SAMARA_TIMEZONE, as_utc, logical_vacancy_cohort_date, preset_period_range, samara_today
 
 
 class ExportValidationError(ValueError):
@@ -331,7 +331,7 @@ class ExportService:
 
     @staticmethod
     def _datetime(value: datetime | None) -> datetime | None:
-        return as_utc(value).replace(tzinfo=None) if value is not None else None
+        return as_utc(value).astimezone(SAMARA_TIMEZONE).replace(tzinfo=None) if value is not None else None
 
     def _filename_suffix(self, request: ExportRequest) -> str:
         if request.period == ExportPeriod.CUSTOM:
