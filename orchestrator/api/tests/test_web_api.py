@@ -87,9 +87,7 @@ def test_settings_defaults_are_operational_and_not_acceptance_limited(db_session
 
     assert response.status_code == 200
     body = response.json()
-    assert body["sheet_name"] == "Вакансии"
     assert body["max_pages_override"] is None
-    assert body["crm_sync_priorities"] == ["P1", "P2", "ALT"]
     assert body["top_vacancy_limit"] == 10
     assert "profile_selection" not in body
     assert "existing_run_id" not in body
@@ -97,12 +95,11 @@ def test_settings_defaults_are_operational_and_not_acceptance_limited(db_session
 
 def test_settings_patch_is_partial_and_validated(db_session) -> None:
     with make_client(db_session) as (client, _, _):
-        patched = client.patch("/api/settings", json={"sheet_name": "Вакансии", "top_vacancy_limit": 25})
+        patched = client.patch("/api/settings", json={"top_vacancy_limit": 25})
         invalid = client.patch("/api/settings", json={"max_pages_override": 0})
         stored = client.get("/api/settings")
 
     assert patched.status_code == 200
-    assert stored.json()["sheet_name"] == "Вакансии"
     assert stored.json()["top_vacancy_limit"] == 25
     assert invalid.status_code == 422
 
@@ -142,10 +139,11 @@ def test_web_run_generates_id_before_webhook_and_snapshots_overrides(db_session)
     assert response.json()["run"]["status"] == "accepted"
     assert detail.status_code == 200
     assert detail.json()["config_snapshot"]["max_pages_override"] == 2
-    assert detail.json()["config_snapshot"]["sheet_name"] == "Вакансии"
+    assert "sheet_name" not in detail.json()["config_snapshot"]
     assert webhook.payloads[0]["run_id"] == run_id
     assert webhook.payloads[0]["trigger_source"] == "web_ui"
-    assert webhook.payloads[0]["config"]["sheet_name"] == "Вакансии"
+    assert "crm_sync_priorities" not in webhook.payloads[0]["config"]
+    assert "google_crm_sync_enabled" not in webhook.payloads[0]["config"]
     assert webhook.payloads[0]["profile_selection"]["ai_automation_keywords"] is True
 
 
@@ -242,11 +240,10 @@ def test_lifecycle_requires_diagnostics_for_terminal_error_statuses(db_session) 
     assert failed.json()["completed_at"] is not None
 
 
-def test_lifecycle_accepts_concrete_telegram_gmail_and_crm_integration_errors(db_session) -> None:
+def test_lifecycle_accepts_current_telegram_and_gmail_integration_errors(db_session) -> None:
     integrations = [
         ("telegram_notification_failed", "Не удалось отправить Telegram-уведомление."),
         ("gmail_digest_failed", "Не удалось отправить Gmail-дайджест."),
-        ("crm_sync_failed", "Не удалось синхронизировать результаты с Google Sheets CRM."),
     ]
     with make_client(db_session) as (client, _, _):
         for index, (code, summary) in enumerate(integrations, start=1):

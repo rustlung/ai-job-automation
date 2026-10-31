@@ -90,9 +90,6 @@ class WebRunService:
                 if overrides.max_enrich_items_override is not None
                 else settings.max_enrich_items_override
             ),
-            "crm_sync_priorities": [priority.value for priority in settings.crm_sync_priorities],
             "top_vacancy_limit": settings.top_vacancy_limit,
-            "sheet_name": settings.sheet_name,
             "email_to": settings.email_to,
-            "google_crm_sync_enabled": settings.google_crm_sync_enabled,
         }

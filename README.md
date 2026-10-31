@@ -2,7 +2,7 @@
 
 Self-hosted система автоматизации и управления поиском работы. Она собирает вакансии с HH, пропускает их через локальный AI и детерминированный scoring, объединяет региональные дубли в logical vacancy, а затем даёт человеку рабочую среду для triage, откликов и контроля CRM.
 
-**Orchestrator DB — source of truth. Google Sheets — вторичное CRM-представление.**
+**Orchestrator DB — единственный source of truth. XLSX/CSV exports формируются по запросу из этой базы.**
 
 Автоматическая отправка откликов намеренно не реализована: решение и фактическая отправка всегда остаются за человеком.
 
@@ -12,7 +12,7 @@ Self-hosted система автоматизации и управления п
 
 Поиск работы быстро превращается в поток похожих вакансий, вкладок, заметок и неполных таблиц. AI Job Automation берёт на себя повторяемую часть: сбор, фильтрацию, enrichment, объяснимую оценку и ведение единой базы. Пользователь работает уже с logical vacancies: расставляет собственный приоритет, оставляет комментарии, ведёт отклики и видит актуальную статистику.
 
-Система рассчитана на self-hosted запуск: Worker с локальной моделью выполняет тяжёлую обработку, Orchestrator хранит состояние и обслуживает Web UI, n8n связывает сервисы с Google Sheets и Gmail.
+Система рассчитана на self-hosted запуск: Worker с локальной моделью выполняет тяжёлую обработку, Orchestrator хранит состояние и обслуживает Web UI, а n8n запускает search workflow и доставляет Gmail/Telegram-уведомления.
 
 ## Что умеет система
 
@@ -34,12 +34,12 @@ Self-hosted система автоматизации и управления п
 - поддерживает inline triage в общем списке и редактирование в Detail;
 - позволяет вручную добавить вакансию из HH, карьерного сайта, Telegram или прямого контакта.
 
-### Отклики и интеграции
+### Отклики, экспорт и интеграции
 
 - ведёт несколько Applications для canonical vacancy: submitted, response received, screening, test task, interview, offer, rejected, withdrawn;
 - показывает current Application для logical vacancy без потери истории;
-- синхронизирует Applications и VacancyUserState с Google Sheets по DB-first модели;
-- создаёт CRM-строку для manual vacancy и даёт controlled retry для внешних ошибок;
+- сохраняет Applications, VacancyUserState и manual vacancies непосредственно в Orchestrator DB;
+- выгружает logical vacancies и реальные Applications в XLSX или CSV по запросу;
 - формирует Gmail digest по результатам search run;
 - использует versioned n8n workflows для внешних интеграций.
 
@@ -62,14 +62,14 @@ Worker: collection → AI → scoring ──► Orchestrator DB ◄── Web UI
                                            ▼                    ▼
                                       n8n integration workflows
                                            │
-                               Google Sheets CRM + Gmail digest
+                                 Gmail digest + Telegram
 ```
 
 1. Пользователь выбирает search profiles и запускает поиск через Web UI или manual trigger n8n.
 2. Worker собирает HH-вакансии, применяет предварительный filter, enrichment, semantic assessment и deterministic scoring.
 3. Orchestrator сохраняет canonical data, анализ и историю run.
 4. Web UI показывает logical vacancies; пользователь быстро оценивает их и создаёт Application при реальном отклике.
-5. После DB commit узкие CRM sync flows отражают изменения в Google Sheets. Внешняя ошибка остаётся видимой в sync state, но не отменяет DB-изменение.
+5. Пользователь работает с данными в Web UI; при необходимости получает XLSX/CSV export непосредственно из Orchestrator DB.
 
 ## Web UI
 
@@ -140,32 +140,11 @@ Manual vacancies имеют собственную singleton identity `manual:<U
 
 Application принадлежит конкретной canonical vacancy, но в grouped интерфейсе система собирает Applications всех members и детерминированно выбирает current record. История не перезаписывается.
 
-## CRM synchronization
+## Экспорт данных
 
-Google Sheets CRM не является prerequisite для успешного сохранения в продукте.
+Google Sheets runtime integration выведена из эксплуатации. Product data сохраняются только в Orchestrator DB; страница «Экспорт» формирует XLSX или CSV без промежуточной CRM-копии.
 
-```text
-Validate user action
-        │
-        ▼
-Commit Orchestrator DB
-        │
-        ▼
-Call narrow n8n CRM workflow
-        │
-        ├── synced
-        └── failed / pending → controlled retry
-```
-
-Так синхронизируются:
-
-- Application facts и даты: отклик, ответ, интервью, итог и заметки;
-- VacancyUserState: мой приоритет, vacancy status и комментарий;
-- новая строка manual vacancy с CRM Key `manual:<UUID>`.
-
-CRM reconciliation использует exact keys и controlled fallback для исторических HH-строк; fuzzy matching по company/title не применяется. В случае ошибки Google Sheets DB state остаётся сохранённым, а UI показывает безопасный sync status и retry. Existing Google Sheets column layout не перестраивается.
-
-![Google Sheets CRM](assets/crm-sheet.png)
+Выгрузка вакансий использует logical vacancy grouping, а выгрузка откликов содержит каждую реальную Application отдельной строкой. Доступны периоды, набор колонок и корректная обработка manual vacancies.
 
 ## Manual vacancies
 
@@ -175,7 +154,7 @@ CRM reconciliation использует exact keys и controlled fallback для
 - `origin` хранит фактическое происхождение, но не участвует в identity;
 - URL опционален;
 - если для origin HH ссылка точно совпадает с уже известной HH vacancy, backend возвращает controlled duplicate result вместо создания копии;
-- vacancy сразу совместима с UserState, Applications и CRM row creation;
+- vacancy сразу совместима с UserState, Applications и экспортом;
 - AI analysis для manual vacancy намеренно не запускается.
 
 ## Statistics
@@ -214,29 +193,29 @@ Statistics Dashboard не строит conversion funnel и не восстан�
                   └──────────┘ └──────┬────────────┘
                                        │
                             ┌──────────▼──────────┐
-                            │ Google Sheets / Gmail│
+                            │ Gmail / Telegram     │
                             └─────────────────────┘
 ```
 
-n8n остаётся integration/orchestration layer: запускает full search workflow, выполняет preflight, связывает сервисы с Google Sheets и отправляет digest. Он не является центром domain state, не выполняет AI scoring и не хранит canonical vacancy data.
+n8n остаётся integration/orchestration layer: запускает full search workflow, выполняет preflight и отправляет уведомления. Он не является центром domain state, не выполняет AI scoring и не хранит canonical vacancy data.
 
 ## Основные компоненты
 
 | Компонент | Роль |
 | --- | --- |
 | **Worker** | FastAPI-сервис на Windows: HH collection, Playwright/httpx, Ollama, filtering, enrichment и scoring. |
-| **Orchestrator API** | FastAPI + SQLAlchemy + SQLite: canonical data, application/user state, Web API, CRM sync state и Alembic migrations. |
-| **React Web UI** | TypeScript, React Query и React Router: daily triage, runs, vacancies, applications, manual create и statistics. |
-| **n8n** | Versioned workflows для search orchestration, узких CRM sync операций и Gmail digest. |
-| **Google Sheets / Gmail** | Вторичная CRM-витрина и уведомления, не primary datastore. |
+| **Orchestrator API** | FastAPI + SQLAlchemy + SQLite: canonical data, application/user state, Web API, on-demand exports и Alembic migrations. |
+| **React Web UI** | TypeScript, React Query и React Router: daily triage, runs, vacancies, applications, manual create, statistics и exports. |
+| **n8n** | Versioned workflows для search orchestration, Gmail digest и Telegram notification. |
+| **Gmail / Telegram** | Дополнительные каналы уведомлений, не primary datastore. |
 
 ## Надёжность и эксплуатационные принципы
 
 - Preflight проверяет доступность Orchestrator, Worker, Ollama и требуемый GPU compute; HH auth/session проверяется только для resume profiles.
 - Worker изолирует ошибки на уровне vacancy и допускает controlled partial completion вместо потери всего batch.
-- Canonical upsert, analysis persistence и CRM workflows идемпотентны по их exact identity.
-- Синхронизации следуют DB-first boundary: внешний failure не откатывает успешно сохранённые product data.
-- Для CRM state предусмотрены `pending`, `synced`, `failed`, safe error code и retry.
+- Canonical upsert и analysis persistence идемпотентны по их exact identity.
+- Product mutations завершаются в Orchestrator DB и не зависят от внешнего CRM mirror.
+- Ошибка Gmail или Telegram не отменяет полезный результат pipeline и сохраняется как integration diagnostic.
 - Alembic управляет схемой SQLite; production update требует backup перед migration.
 - Backend и frontend покрыты automated tests; workflow exports versioned и не содержат credentials.
 
@@ -248,7 +227,7 @@ n8n остаётся integration/orchestration layer: запускает full se
 
 **AI и collection:** Ollama, `qwen3:4b-instruct`, structured output, httpx, Playwright, Chromium.
 
-**Automation и интеграции:** n8n, Google Sheets API, Gmail OAuth.
+**Automation и интеграции:** n8n, Gmail OAuth, Cloudflare Telegram API Gateway.
 
 **Infrastructure:** Docker Compose, Windows 11 Worker, homeserver deployment, Nginx и HTTPS для n8n.
 
@@ -273,7 +252,7 @@ README даёт обзор, а не заменяет operational runbook. Orches
 - Quality AI filter/scoring требует регулярной calibration на реальных результатах.
 - HH HTML, auth/session и антибот-механизмы могут изменяться и требуют operational monitoring.
 - Worker рассчитан на on-demand использование и один тяжёлый pipeline run за раз.
-- Google Sheets — зеркало, поэтому CRM ошибка требует retry, но не меняет DB source of truth.
+- Historical Google Sheets workflows и sync-state tables сохранены как архив до отдельной schema-cleanup фазы, но не участвуют в runtime.
 
 ## Возможное развитие
 

@@ -53,24 +53,6 @@ class ManualVacancyDuplicate(BaseModel):
     vacancy_id: int
 
 
-class ManualVacancyCrmSyncStatus(str, Enum):
-    PENDING = "pending"
-    SYNCED = "synced"
-    FAILED = "failed"
-
-
-class ManualVacancyCrmSyncRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    vacancy_id: int
-    presentation_key: str
-    status: ManualVacancyCrmSyncStatus
-    last_attempt_at: datetime | None
-    synced_at: datetime | None
-    error_code: str | None
-    error_message_safe: str | None
-
-
 class ManualVacancyCreateResponse(BaseModel):
     created: bool
     presentation_key: str | None = None

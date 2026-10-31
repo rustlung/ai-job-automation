@@ -1,11 +1,9 @@
-import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.scripts.sync_historical_applications import run_sync
-from app.schemas.application import ApplicationCreate, ApplicationCrmSyncRead, ApplicationCrmSyncStatus
+from app.schemas.application import ApplicationCreate
 from app.schemas.vacancy import VacancyCreate
 from app.repositories.vacancy import VacancyRepository
 from app.services.application import ApplicationService
@@ -186,25 +184,3 @@ def test_apply_rolls_back_all_creates_on_critical_database_error(db_session, vac
     assert report.created_application_ids == []
     assert ApplicationService(db_session).list_for_vacancy(first.id) == []
     assert ApplicationService(db_session).list_for_vacancy(second.id) == []
-
-
-def test_historical_crm_batch_dry_run_and_apply_use_existing_sync_service() -> None:
-    class FakeSyncService:
-        def __init__(self) -> None:
-            self.synced: list[int] = []
-
-        def get_state(self, application_id: int) -> ApplicationCrmSyncRead:
-            return ApplicationCrmSyncRead(application_id=application_id, status=ApplicationCrmSyncStatus.SYNCED if application_id == 1 else ApplicationCrmSyncStatus.PENDING, last_attempt_at=None, synced_at=None, error_code=None, error_message_safe=None)
-
-        async def sync(self, application_id: int, *, retry: bool) -> ApplicationCrmSyncRead:
-            self.synced.append(application_id)
-            return ApplicationCrmSyncRead(application_id=application_id, status=ApplicationCrmSyncStatus.SYNCED, last_attempt_at=None, synced_at=None, error_code=None, error_message_safe=None)
-
-    fake = FakeSyncService()
-    dry = asyncio.run(run_sync([1, 2], apply=False, service=fake))
-    applied = asyncio.run(run_sync([1, 2], apply=True, service=fake))
-
-    assert dry["already_synced"] == 1
-    assert dry["would_sync"] == 1
-    assert applied["synced"] == 1
-    assert fake.synced == [2]

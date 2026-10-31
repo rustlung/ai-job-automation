@@ -17,12 +17,6 @@ class VacancyStatus(str, Enum):
     CLOSED = "closed"
 
 
-class VacancyUserStateCrmSyncStatus(str, Enum):
-    PENDING = "pending"
-    SYNCED = "synced"
-    FAILED = "failed"
-
-
 OptionalVacancyComment = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=20_000)]
 
 
@@ -57,16 +51,6 @@ class VacancyUserStateRead(BaseModel):
     vacancy_status: VacancyStatus
     created_at: datetime | None
     updated_at: datetime | None
-
-
-class VacancyUserStateCrmSyncRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    presentation_key: str
-    status: VacancyUserStateCrmSyncStatus
-    last_attempt_at: datetime | None
-    synced_at: datetime | None
-    error_code: str | None
-    error_message_safe: str | None
 
 
 class VacancyUserStateWriteResponse(BaseModel):

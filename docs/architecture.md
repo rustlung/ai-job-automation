@@ -66,9 +66,10 @@ Public exposure:
 -   Orchestrator DB является source of truth для автоматических vacancy
     pipeline данных;
 -   Daily Search v14 читает persisted grouped result из Orchestrator DB и не
-    использует Google Sheets. Historical v13 и dedicated CRM workflows временно
-    сохраняются до Phase 3C; пользовательские Application/UserState/manual
-    mutations также не используют Sheets как runtime mirror.
+    использует Google Sheets. Historical v13 сохранён как previous daily export,
+    а dedicated CRM workflows хранятся в archive; пользовательские
+    Application/UserState/manual mutations также не используют Sheets как runtime
+    mirror.
 -   On-demand Data Exports читает Orchestrator DB напрямую и выдаёт XLSX/CSV.
 
 Web backend foundation:
@@ -82,8 +83,9 @@ Orchestrator API
 └── internal n8n webhook start
 ```
 
-The Orchestrator is the only frontend boundary. Google Sheets remains a
-reporting mirror; it is not a source of truth for user-owned application data.
+The Orchestrator is the only frontend boundary and the sole source of truth.
+Google Sheets runtime mirror has been retired; users obtain XLSX/CSV exports
+directly from Orchestrator DB.
 
 `Application` is a permanent Orchestrator entity for a real response to one
 canonical `Vacancy.id`, rather than to a business presentation key. A canonical
@@ -98,8 +100,8 @@ workflow concern. It reads local CSV exports of `Отклики` and `Вакан
 matches only canonical `hh:<external_id>` records, and creates Applications
 only after an explicit CLI `--apply`. The technical source status fields are
 ignored; the main CRM J/K/L/M fields provide conservative lifecycle hints.
-The subsequent CRM batch uses the existing Application CRM sync service rather
-than a second Sheets mapping.
+No outbound CRM batch follows historical imports; they are local, explicit DB
+operations.
 
 When an historical Application references an HH vacancy predating Orchestrator
 persistence, a separate dry-run-first backfill creates only that missing
@@ -115,8 +117,7 @@ the grouped Vacancy list exposes the deterministic current record selected by
 `updated_at DESC, id DESC`. `GET /api/applications` remains an application-level
 view but supplies the backend-owned presentation key for safe navigation. This
 keeps regional grouping in one backend implementation and avoids React N+1
-requests. Google Sheets synchronization and historical import remain separate
-future milestones.
+requests. Historical import remains a separate local operational utility.
 
 Application filtering distinguishes reached facts from the editable current
 status. The reusable `application_stage` helper defines applied, employer
@@ -155,10 +156,9 @@ n8n `Build Full Run Context`. Shared Worker polling reads only that normalized
 context, while `existing_run_id` replay deliberately bypasses it and continues
 through the replay-safe late-stage context.
 
-Manual n8n config reads the CRM sheet name from its environment. Web runs use
-the editable Orchestrator OperationalSettings value captured in each PipelineRun
-config snapshot; after input normalization, shared workflow nodes use only
-`config.sheet_name`.
+The current n8n workflow reads only run, Worker and notification configuration.
+Historical CRM settings remain stored schema fields until a dedicated cleanup
+migration; they are not captured in current PipelineRun snapshots.
 
 Production процесс осознанно ручной: Windows Worker не работает постоянно,
 поэтому пользователь включает Worker, проверяет Docker/Ollama/HH access и
@@ -1658,9 +1658,11 @@ run n8n использует grouped endpoint. `GET /pipeline-results/analyses/l
 остается read API для диагностических и обзорных сценариев, но не заменяет
 current-run sync.
 
-## 11.5. CRM and notification flow
+## 11.5. Historical CRM and notification flow
 
-Статус: implemented и принят в Phase 5.10.
+Статус: historical Phase 5.10 acceptance. Google Sheets runtime mirror retired
+in Phase 3C; current production flow is Daily Search Digest v14 documented
+above.
 
 Принятый поток:
 

@@ -788,6 +788,23 @@ Telegram API Gateway. Base URL и key задаются только в окру�
    Sheets nodes или credential references. При ошибке Gateway основной run и
    Gmail завершаются независимо от Telegram node.
 
+### Phase 3C: финальный вывод Google Sheets runtime из эксплуатации
+
+После deploy Orchestrator/Web и проверки v14:
+
+1. Убедитесь, что Application, VacancyUserState и manual vacancy mutations
+   сохраняются в DB и не вызывают n8n CRM webhook.
+2. Проверьте XLSX/CSV exports для vacancies и applications.
+3. Деактивируйте в n8n `Application CRM Sync v3`, `Vacancy User State CRM Sync
+   v1` и `Manual Vacancy CRM Create v1`. Не удаляйте их сразу: их exports
+   сохранены в `workflows/n8n/archive/` как historical artifacts.
+4. После периода наблюдения вручную удалите Google Sheets credential в n8n и
+   obsolete CRM environment variables из production configuration, затем
+   перезапустите затронутые сервисы.
+
+Google Sheets больше не является production runtime dependency. Sync-state
+SQLite tables намеренно сохраняются до отдельной schema-cleanup migration.
+
 Google OAuth callback для n8n:
 
 ``` text
@@ -803,6 +820,10 @@ resolver, который временно возвращал NXDOMAIN для н�
 постоянным ограничением.
 
 ## n8n Workflow Configuration
+
+> Historical reference: the CRM workflow exports below predate Phase 3C. The
+> current production workflow is `AI Job Automation — Daily Search Digest v14`;
+> CRM exports are archival only and must not be activated.
 
 Workflow export `AI Job Automation — Daily Search CRM Digest v4` подготовлен
 для импорта в n8n на homeserver. Актуальный export:

@@ -7,13 +7,17 @@
 - Daily Search Digest v14: отдельный production workflow без Google Sheets
   nodes, credentials и CRM matching. Gmail digest теперь формируется из
   persisted grouped run data Orchestrator; v13 остаётся historical export.
+- Phase 3C: Google Sheets runtime mirror retired. Dedicated CRM workflows
+  перенесены в archive; backend CRM gateways/services и outbound historical
+  sync utility удалены, а XLSX/CSV exports остаются replacement path.
 - Data Exports backend foundation: typed column metadata plus in-memory XLSX and
   CSV downloads for logical Vacancy groups and real Application rows. Period
-  filtering shares Statistics cohort-date semantics; the existing Google Sheets
-  CRM synchronization remains enabled during this transition phase.
+  filtering shares Statistics cohort-date semantics. Google Sheets runtime
+  synchronization was retired later in Phase 3C.
 - Data Exports Web UI: `/exports` uses the backend schema to select entity,
   period, columns and format, then downloads the generated XLSX/CSV without
-  persisting preferences. Google Sheets CRM synchronization remains active.
+  persisting preferences. Google Sheets runtime synchronization was retired
+  later in Phase 3C.
 
 ### Fixed
 
@@ -23,7 +27,7 @@
 - PipelineRun lifecycle now records Web UI preflight failures as terminal
   `failed`; warnings and vacancy-level processing diagnostics survive Worker,
   n8n and Orchestrator handoff without lowering `completed`. Concrete
-  Telegram, Gmail and Google Sheets CRM failures are recorded as structured
+  Telegram and Gmail failures are recorded as structured
   integration errors and produce `completed_with_errors`.
 - Added a dry-run-first CLI to close only historical stale `accepted`/`running`
   PipelineRun records after an explicit SQLite backup and `--apply` approval.

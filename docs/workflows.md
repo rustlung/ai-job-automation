@@ -101,6 +101,9 @@ AI Job Automation — Daily Search Digest v14
 Export не содержит credentials. После import activation управляется n8n
 deployment; `AI Job Automation — Daily Search CRM Digest v13` сохраняется как
 historical baseline и не перезаписывается.
+Dedicated CRM workflow exports находятся в `workflows/n8n/archive/` и имеют
+статус historical only: их нельзя импортировать или активировать как runtime
+workflows.
 `Manual Trigger` остаётся полноценным production entry, а Web UI использует
 внутренний webhook entry. Schedule Trigger в текущем export отсутствует и не
 является частью production process.
@@ -273,13 +276,14 @@ GET /pipeline-results/runs/{run_id}/grouped
 ```
 
 `GET /pipeline-results/analyses/latest` не используется для дайджеста
-конкретного run. Historical v13 и dedicated CRM workflows остаются до отдельной
-Phase 3C decommission.
+конкретного run. Historical v13 и dedicated CRM workflows архивированы после
+Phase 3C и не входят в production runtime.
 
 ### Historical CRM Sync
 
 Ниже описан historical v13 и отдельные CRM workflows. Они не входят в runtime
-path Daily Search v14 и не требуются ему для credentials.
+path Daily Search v14, не требуются ему для credentials и не являются
+поддерживаемым production contract.
 
 CRM spreadsheet: `CRM_поиска_работы_и_заказов`.
 

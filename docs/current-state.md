@@ -42,7 +42,7 @@
 ✅ Vacancy user state: group-level user priority, comment and active/archived/closed status with Web Detail editing and grouped list filters
 ✅ Historical VacancyUserState import tooling: exact local CRM CSV matching, dry-run by default, explicit DB apply, and conflict-safe preservation of meaningful DB feedback
 ✅ Application CRUD mutations: DB-only create/update without runtime Google Sheets mirror or retry surface
-✅ Historical Application import tooling: local CSV dry-run, explicit DB apply, and separate CRM batch command
+✅ Historical Application import tooling: local CSV dry-run and explicit DB apply
 ✅ Historical Vacancy backfill tooling: required-HH-only CSV planning before Application import, with explicit DB apply
 ✅ Idempotent vacancy upsert
 ✅ Idempotent analysis upsert
@@ -147,6 +147,7 @@
 ✅ Data Exports Web UI: `/exports` page loads the backend column registry, supports period/format/column selection and browser download for Vacancy and Application files
 ✅ Phase 3A CRM retirement: Application, VacancyUserState и manual vacancy mutations работают только с Orchestrator DB; runtime sync UI и retry routes удалены
 ✅ Phase 3B Daily Search Digest v14: Google Sheets исключён из основного workflow, а Gmail digest строится из persisted grouped run data Orchestrator DB
+✅ Phase 3C Google Sheets runtime retirement: dedicated CRM workflows архивированы, backend CRM gateways/services и outbound historical sync utility удалены; sync-state tables сохранены как historical data
 ✅ Public HTTPS n8n via Nginx
 ✅ Let's Encrypt certificate for n8n
 ✅ Google OAuth callback via public n8n domain
@@ -614,7 +615,10 @@ pipeline. Daily Search v14 строит Gmail digest из persisted grouped run 
 Google Sheets не является частью его runtime path. Ошибка Gmail или Telegram
 сохраняется как concrete integration error и не отменяет persistence.
 
-CRM sync проверен на существующей таблице `CRM_поиска_работы_и_заказов`.
+Следующий блок описывает historical CRM integration, принятую до Phase 3C; она
+не является текущим runtime contract.
+
+CRM sync был проверен на существующей таблице `CRM_поиска_работы_и_заказов`.
 Acceptance выполнялась на отдельном тестовом листе, после приемки workflow
 переключен на основной лист `Вакансии`. Существующие пользовательские колонки
 A:W сохранены. System-managed колонки P:V: `Score`, `AI причина`,
@@ -729,7 +733,7 @@ HH fetch failures, invalid extracted data или другие vacancy-level по
 понижают terminal `completed`, если полезный результат сохранён. Semantic
 fallback и configured processing limits также сохраняются как warnings.
 `completed_with_errors` используется только для конкретной неудавшейся
-post-run integration (Telegram, Gmail или Google Sheets CRM). Fatal
+post-run integration (Telegram или Gmail). Fatal
 preflight/runtime failures получают terminal `failed` с безопасной
 diagnostic. Production-blocking edge case с календарным годом в experience extraction исправлен: годы вроде
 `2015` не считаются required experience, out-of-range experience становится
@@ -756,9 +760,10 @@ backlog, а не blockers завершенного MVP.
 
 Milestone 006 завершён: manual vacancies создаются в DB с identity
 `manual:<UUID>`, поддерживают UserState и Applications и не проходят AI-анализ.
-Phase 3A retirement отключает runtime Google Sheets append для manual create;
-vacancy и initial UserState остаются атомарной DB-операцией. Phase 3B вводит
+Phase 3A retirement отключил runtime Google Sheets append для manual create;
+vacancy и initial UserState остаются атомарной DB-операцией. Phase 3B ввёл
 Daily Search Digest v14: Gmail digest использует grouped result из Orchestrator
-DB, Daily path не читает и не пишет Google Sheets. v13 и dedicated CRM workflows
-временно сохранены для последующего Phase 3C decommission, а sync-state таблицы
-остаются историческими и больше не получают новые записи.
+DB, Daily path не читает и не пишет Google Sheets. Phase 3C сохранил v13 как
+historical daily export, архивировал dedicated CRM workflows, удалил backend
+outbound CRM runtime и оставил sync-state таблицы только как historical data
+без новых записей.

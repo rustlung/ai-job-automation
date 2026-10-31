@@ -215,8 +215,9 @@ GET /api/vacancies/{presentation_key}/user-state
 PATCH /api/vacancies/{presentation_key}/user-state
 ```
 
-`OperationalSettings` is a typed singleton for editable operational values,
-including the CRM `sheet_name` (current default: `Вакансии`).
+`OperationalSettings` is a typed singleton for editable operational values.
+Historical CRM fields remain in its persisted schema until a separate cleanup
+migration, but current runs do not snapshot or use them.
 Search profiles and `existing_run_id` are deliberately not settings. Search
 profile metadata contains both `enabled` and `user_selectable`: the latter is
 required for `POST /api/runs`, while legacy profiles may remain enabled for
