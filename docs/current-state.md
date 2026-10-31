@@ -146,6 +146,7 @@
 ✅ Data Exports backend foundation: logical Vacancy и real Application on-demand XLSX/CSV exports with selectable columns and period filters
 ✅ Data Exports Web UI: `/exports` page loads the backend column registry, supports period/format/column selection and browser download for Vacancy and Application files
 ✅ Phase 3A CRM retirement: Application, VacancyUserState и manual vacancy mutations работают только с Orchestrator DB; runtime sync UI и retry routes удалены
+✅ Phase 3B Daily Search Digest v14: Google Sheets исключён из основного workflow, а Gmail digest строится из persisted grouped run data Orchestrator DB
 ✅ Public HTTPS n8n via Nginx
 ✅ Let's Encrypt certificate for n8n
 ✅ Google OAuth callback via public n8n domain
@@ -589,8 +590,8 @@ Manual Trigger
 → Worker POST /hh/collect-filter-enrich-and-persist
 → Orchestrator DB
 → Orchestrator GET /pipeline-results/runs/{run_id}/grouped
-→ Google Sheets CRM sync
 → Gmail email digest
+→ Telegram notification
 ```
 
 n8n является orchestration и external integration layer. Перед долгим Worker
@@ -599,8 +600,8 @@ HH auth storage и live HH session проверяются только при в
 profile. Если требуемый preflight не проходит, workflow останавливается до
 production pipeline и не отправляет Gmail failure digest. После успешного
 preflight n8n запускает Worker pipeline, создает `pipeline_run_id`, проверяет
-результат Worker, читает текущий run из Orchestrator, синхронизирует CRM и
-отправляет email digest. n8n не выполняет HH parsing, AI inference, semantic
+результат Worker, читает текущий run из Orchestrator и отправляет email digest.
+Daily Search Digest v14 не читает и не изменяет Google Sheets. n8n не выполняет HH parsing, AI inference, semantic
 scoring, final priority calculation или canonical persistence.
 
 Live HH session preflight использует более длинный bounded timeout, чем обычные
@@ -609,10 +610,9 @@ Playwright navigation и DOM stabilization. Это не смешивается �
 Worker timeout.
 
 Orchestrator DB остается source of truth для автоматических данных vacancy
-pipeline. Google Sheets является пользовательской CRM-витриной. Направление
-синхронизации: Orchestrator DB → n8n → Google Sheets. Ошибка Google Sheets не
-теряет результаты pipeline, потому что persistence выполняется раньше внешних
-интеграций.
+pipeline. Daily Search v14 строит Gmail digest из persisted grouped run data;
+Google Sheets не является частью его runtime path. Ошибка Gmail или Telegram
+сохраняется как concrete integration error и не отменяет persistence.
 
 CRM sync проверен на существующей таблице `CRM_поиска_работы_и_заказов`.
 Acceptance выполнялась на отдельном тестовом листе, после приемки workflow
@@ -757,6 +757,8 @@ backlog, а не blockers завершенного MVP.
 Milestone 006 завершён: manual vacancies создаются в DB с identity
 `manual:<UUID>`, поддерживают UserState и Applications и не проходят AI-анализ.
 Phase 3A retirement отключает runtime Google Sheets append для manual create;
-vacancy и initial UserState остаются атомарной DB-операцией. Daily Search v13 и
-dedicated CRM workflows временно сохранены для последующего decommission, а
-sync-state таблицы остаются историческими и больше не получают новые записи.
+vacancy и initial UserState остаются атомарной DB-операцией. Phase 3B вводит
+Daily Search Digest v14: Gmail digest использует grouped result из Orchestrator
+DB, Daily path не читает и не пишет Google Sheets. v13 и dedicated CRM workflows
+временно сохранены для последующего Phase 3C decommission, а sync-state таблицы
+остаются историческими и больше не получают новые записи.

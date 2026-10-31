@@ -1472,8 +1472,10 @@ manual vacancy creation и отдельный идемпотентный append 
 Milestone 006 закрыт. Phase 3A retirement отключает runtime Google Sheets sync
 для Application, VacancyUserState и manual vacancy mutations: DB является
 единственным runtime source of truth, а XLSX/CSV exports доступны как путь
-выгрузки. Daily Search v13, Gmail source и dedicated CRM workflows временно
-не менялись; sync-state schema остаётся исторической до отдельной cleanup phase.
+выгрузки. Phase 3B добавляет Daily Search Digest v14: Gmail получает grouped
+result из Orchestrator DB, а Google Sheets исключён из Daily runtime path. v13 и
+dedicated CRM workflows временно остаются historical/operational exports до
+отдельной Phase 3C; sync-state schema остаётся исторической до cleanup phase.
 
 ---
 

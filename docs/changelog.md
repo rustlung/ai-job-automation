@@ -4,6 +4,9 @@
 
 ### Added
 
+- Daily Search Digest v14: отдельный production workflow без Google Sheets
+  nodes, credentials и CRM matching. Gmail digest теперь формируется из
+  persisted grouped run data Orchestrator; v13 остаётся historical export.
 - Data Exports backend foundation: typed column metadata plus in-memory XLSX and
   CSV downloads for logical Vacancy groups and real Application rows. Period
   filtering shares Statistics cohort-date semantics; the existing Google Sheets
@@ -14,6 +17,9 @@
 
 ### Fixed
 
+- Последовательные Gmail и Telegram integration failures объединяются в
+  `stats_snapshot.integration_errors`, поэтому последующий lifecycle PATCH не
+  теряет уже записанную ошибку внешней интеграции.
 - PipelineRun lifecycle now records Web UI preflight failures as terminal
   `failed`; warnings and vacancy-level processing diagnostics survive Worker,
   n8n and Orchestrator handoff without lowering `completed`. Concrete

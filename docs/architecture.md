@@ -43,8 +43,8 @@ Orchestrator API
 Orchestrator DB
 ↓
 n8n
-├── Google Sheets CRM
-└── Gmail digest
+├── Gmail digest
+└── Telegram notification
 ```
 
 Control plane:
@@ -65,9 +65,10 @@ Public exposure:
 -   Worker и Orchestrator остаются LAN-only;
 -   Orchestrator DB является source of truth для автоматических vacancy
     pipeline данных;
--   Google Sheets временно сохраняется только для Daily Search v13 и legacy
-    workflows; пользовательские Application/UserState/manual mutations больше
-    не используют его как runtime mirror.
+-   Daily Search v14 читает persisted grouped result из Orchestrator DB и не
+    использует Google Sheets. Historical v13 и dedicated CRM workflows временно
+    сохраняются до Phase 3C; пользовательские Application/UserState/manual
+    mutations также не используют Sheets как runtime mirror.
 -   On-demand Data Exports читает Orchestrator DB напрямую и выдаёт XLSX/CSV.
 
 Web backend foundation:
@@ -781,8 +782,9 @@ preliminary local AI filter поверх deduplicated search vacancies, full vac
 enrichment для кандидатов `keep_main`, `keep_alt` и `uncertain`, а также
 persistence bridge в Orchestrator DB через `POST /pipeline-results`.
 Phase 5.10 добавила n8n orchestration поверх Worker persistence endpoint,
-чтение текущего run через Orchestrator API, Google Sheets CRM sync и Gmail
-digest.
+чтение текущего run через Orchestrator API и Gmail digest. Phase 3B выделила
+`Daily Search Digest v14`: Gmail получает persisted grouped result из
+Orchestrator DB, а Google Sheets полностью исключён из daily runtime path.
 
 ## 10.2.1. Preliminary local AI filter
 

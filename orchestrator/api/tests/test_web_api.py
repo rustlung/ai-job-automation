@@ -307,6 +307,44 @@ def test_lifecycle_patch_preserves_existing_diagnostics_and_merges_structured_st
     assert stats_only.json()["stats_snapshot"]["warnings"][0]["code"] == "semantic_fallback"
 
 
+def test_lifecycle_patch_keeps_gmail_and_telegram_integration_errors(db_session) -> None:
+    with make_client(db_session) as (client, _, _):
+        client.post(
+            "/internal/pipeline-runs",
+            json={
+                "run_id": "lifecycle-integration-errors-001",
+                "trigger_source": "manual_n8n",
+                "profile_ids": ["ai_automation_keywords"],
+                "config_snapshot": {},
+            },
+        )
+        gmail = client.patch(
+            "/internal/pipeline-runs/lifecycle-integration-errors-001",
+            json={
+                "status": "completed_with_errors",
+                "error_code": "gmail_digest_failed",
+                "error_summary": "Не удалось отправить Gmail-дайджест.",
+                "stats_snapshot": {"integration_errors": [{"code": "gmail_digest_failed", "count": 1, "summary": "Не удалось отправить Gmail-дайджест."}]},
+            },
+        )
+        telegram = client.patch(
+            "/internal/pipeline-runs/lifecycle-integration-errors-001",
+            json={
+                "status": "completed_with_errors",
+                "error_code": "telegram_notification_failed",
+                "error_summary": "Не удалось отправить Telegram-уведомление.",
+                "stats_snapshot": {"integration_errors": [{"code": "telegram_notification_failed", "count": 1, "summary": "Не удалось отправить Telegram-уведомление."}]},
+            },
+        )
+
+    assert gmail.status_code == 200
+    assert telegram.status_code == 200
+    assert {item["code"] for item in telegram.json()["stats_snapshot"]["integration_errors"]} == {
+        "gmail_digest_failed",
+        "telegram_notification_failed",
+    }
+
+
 def test_lifecycle_accepts_running_then_completed_with_warning_stats(db_session) -> None:
     with make_client(db_session) as (client, _, _):
         client.post(

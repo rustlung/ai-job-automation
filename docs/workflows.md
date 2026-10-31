@@ -81,7 +81,7 @@ workflows/n8n/vacancy-first-slice.json
 
 Промежуточные версии workflow в Git не хранятся.
 
-## Daily Search CRM Digest
+## Daily Search Digest
 
 Статус: Phase 5.10 implemented и принят на целевой инфраструктуре; custom
 keyword profiles и configurable selection также приняты.
@@ -89,17 +89,18 @@ keyword profiles и configurable selection также приняты.
 Актуальный export:
 
 ``` text
-workflows/n8n/AI Job Automation — Daily Search CRM Digest v13.json
+workflows/n8n/AI Job Automation — Daily Search Digest v14.json
 ```
 
 Workflow name:
 
 ``` text
-AI Job Automation — Daily Search CRM Digest v13
+AI Job Automation — Daily Search Digest v14
 ```
 
 Export не содержит credentials. После import activation управляется n8n
-deployment; v10 сохраняется как historical baseline и не перезаписывается.
+deployment; `AI Job Automation — Daily Search CRM Digest v13` сохраняется как
+historical baseline и не перезаписывается.
 `Manual Trigger` остаётся полноценным production entry, а Web UI использует
 внутренний webhook entry. Schedule Trigger в текущем export отсутствует и не
 является частью production process.
@@ -117,8 +118,8 @@ Manual Trigger
 → Worker GET /hh/pipeline-runs/{run_id}
 → Orchestrator DB
 → Orchestrator GET /pipeline-results/runs/{run_id}/grouped
-→ Google Sheets CRM sync
 → Gmail email digest
+→ Telegram notification
 ```
 
 n8n не выполняет HH parsing, AI inference, semantic scoring, final priority
@@ -151,14 +152,10 @@ Manual Trigger
 → Check Worker Result
 → Pipeline OK?
 → Get Current Run
-→ Read CRM Rows
-→ Prepare CRM Rows
-→ Legacy URL Match?
-→ CRM Upsert by CRM Key / temporary legacy CRM key fallback / CRM Upsert Legacy by URL
 → Prepare Success Email
-  ├→ Gmail Send Digest
-  └→ Prepare Telegram Completion Notification
-     → Telegram Send Completion Notification
+→ Gmail Send Digest
+→ Prepare Telegram Completion Notification
+→ Telegram Send Completion Notification
 ```
 
 Failure branch:
@@ -174,9 +171,9 @@ Pipeline OK?
 
 ### Telegram Completion Notification
 
-v13 добавляет независимую best-effort ветку после формирования итоговой
-success-сводки. Она не заменяет Gmail digest и не влияет на результат поиска,
-CRM sync или email delivery. `Telegram Send Completion Notification` отправляет
+v14 сохраняет независимую best-effort ветку после формирования итоговой
+success-сводки. Она не заменяет Gmail digest и не влияет на результат поиска
+или email delivery. `Telegram Send Completion Notification` отправляет
 в Cloudflare Telegram API Gateway только короткий факт завершения и, если уже
 доступны, counts обработанных и отобранных вакансий. Ссылки, полные тексты
 вакансий, персональные данные, диагностические логи и секреты не передаются.
@@ -199,12 +196,11 @@ their `run_id` is available. It is the only context read by the shared Worker
 start and polling path: it carries the run identity, trigger source, normalized
 config, selection, `profile_ids`, resume metadata, Worker request and a single
 polling deadline timestamp created immediately before Worker start.
-Manual `Config` reads `sheet_name` from
-`GOOGLE_SHEETS_CRM_SHEET_NAME`; Web runs preserve the `sheet_name` received in
-the Orchestrator operational-settings config snapshot. Both paths expose the
-same `config.sheet_name` after normalization.
+Manual `Config` хранит только Worker/Orchestrator endpoints, recipient Gmail,
+selection и bounded overrides. Web runs добавляют только runtime endpoints;
+Google Sheets values не входят в v14 config.
 `existing_run_id` replay remains separate and uses replay-safe `Build Run
-Context` only for grouped result, CRM and email processing.
+Context only for grouped result and email processing.
 
 Profile metadata distinguishes `enabled` (technically available) from
 `user_selectable` (allowed in Manual/Web selection). Legacy expanded profiles
@@ -227,8 +223,10 @@ Terminal diagnostics distinguish three classes: warnings (например, sema
 fallback или configured limit), processing diagnostics (фактически пропущенная
 вакансия/страница) и fatal failures. Warnings и processing diagnostics
 сохраняются для успешного `completed`. `completed_with_errors` предназначен
-только для конкретного сбоя post-run integration: Telegram, Gmail или Google
-Sheets CRM; такие ошибки сохраняются в `stats_snapshot.integration_errors`.
+только для конкретного сбоя post-run integration: Telegram или Gmail; такие
+ошибки сохраняются в `stats_snapshot.integration_errors`. Последовательные
+PATCH объединяют Gmail и Telegram diagnostics, поэтому одна ошибка не стирает
+другую.
 
 Timeouts:
 
@@ -262,23 +260,26 @@ routing or the accepted downstream pipeline.
 ### Source of truth
 
 Orchestrator DB является source of truth для автоматических vacancy pipeline
-данных. Google Sheets является пользовательской CRM-витриной. Направление
-синхронизации:
+данных. v14 читает grouped result непосредственно из Orchestrator:
 
 ``` text
-Orchestrator DB → n8n → Google Sheets
+Orchestrator DB → n8n → Gmail / Telegram
 ```
 
-Current-run CRM sync использует:
+Gmail digest использует:
 
 ``` text
 GET /pipeline-results/runs/{run_id}/grouped
 ```
 
-`GET /pipeline-results/analyses/latest` не используется для синхронизации
-конкретного run.
+`GET /pipeline-results/analyses/latest` не используется для дайджеста
+конкретного run. Historical v13 и dedicated CRM workflows остаются до отдельной
+Phase 3C decommission.
 
-### CRM Sync
+### Historical CRM Sync
+
+Ниже описан historical v13 и отдельные CRM workflows. Они не входят в runtime
+path Daily Search v14 и не требуются ему для credentials.
 
 CRM spreadsheet: `CRM_поиска_работы_и_заказов`.
 
