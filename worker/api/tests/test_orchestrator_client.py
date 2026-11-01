@@ -56,3 +56,55 @@ async def test_orchestrator_client_does_not_retry_4xx() -> None:
 
     assert exc_info.value.status_code == 422
     assert calls == 1
+
+
+@pytest.mark.anyio
+async def test_orchestrator_client_retries_only_the_failed_batch() -> None:
+    payload_sizes = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        payload_sizes.append(len(httpx.Response(200, content=request.content).json()["items"]))
+        if len(payload_sizes) == 1:
+            return httpx.Response(503, json={"detail": "temporary"})
+        return httpx.Response(201, json={"stats": {"run_id": "run-001"}})
+
+    client = OrchestratorClient("http://orchestrator", 5, max_retries=1, transport=httpx.MockTransport(handler))
+
+    await client.persist_pipeline_results(
+        {"run_id": "run-001", "items": [{"external_id": "second-batch"}]},
+        batch_index=2,
+        batch_count=2,
+    )
+
+    assert payload_sizes == [1, 1]
+
+
+@pytest.mark.anyio
+async def test_orchestrator_client_logs_safe_422_validation_details(caplog: pytest.LogCaptureFixture) -> None:
+    async def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            422,
+            json={
+                "detail": [
+                    {
+                        "loc": ["body", "items"],
+                        "msg": "List should have at most 100 items",
+                        "type": "too_long",
+                        "ctx": {"max_length": 100},
+                        "input": {"description": "secret vacancy description"},
+                    }
+                ]
+            },
+        )
+
+    client = OrchestratorClient("http://orchestrator", 5, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(OrchestratorClientResponseError) as exc_info:
+        await client.persist_pipeline_results(payload(), batch_index=2, batch_count=2)
+
+    assert exc_info.value.validation_details == [
+        {"loc": ["body", "items"], "msg": "List should have at most 100 items", "type": "too_long", "ctx": {"max_length": 100}}
+    ]
+    assert "orchestrator_validation_failed" in caplog.text
+    assert "secret vacancy description" not in caplog.text
+    assert "input" not in caplog.text

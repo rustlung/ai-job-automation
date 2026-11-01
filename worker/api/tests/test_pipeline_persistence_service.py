@@ -1,5 +1,7 @@
+import json
 from datetime import datetime, timezone
 
+import httpx
 import pytest
 
 from app.schemas.hh_collection import HHSearchCollectionStatus
@@ -28,6 +30,7 @@ from app.schemas.preliminary_filter import (
     PreliminaryRecommendedTrack,
     PreliminaryVacancyAssessment,
 )
+from app.clients.orchestrator import OrchestratorClient, OrchestratorClientResponseError
 from app.services.pipeline_persistence import HHCollectFilterEnrichAndPersistService
 
 
@@ -60,11 +63,53 @@ class FakeOrchestratorClient:
         self.error = error
         self.payloads = []
 
-    async def persist_pipeline_results(self, payload):
+    async def persist_pipeline_results(self, payload, **_kwargs):
         self.payloads.append(payload)
         if self.error is not None:
             raise self.error
         return self.result
+
+
+class BatchOrchestratorClient:
+    def __init__(
+        self,
+        *,
+        fail_batch: int | None = None,
+        already_persisted: bool = False,
+        item_failure_batch: int | None = None,
+    ) -> None:
+        self.fail_batch = fail_batch
+        self.already_persisted = already_persisted
+        self.item_failure_batch = item_failure_batch
+        self.payloads = []
+        self.batch_metadata = []
+
+    async def persist_pipeline_results(self, payload, *, batch_index=None, batch_count=None):
+        self.payloads.append(payload)
+        self.batch_metadata.append((batch_index, batch_count))
+        if batch_index == self.fail_batch:
+            raise OrchestratorClientResponseError("failed", status_code=500)
+
+        item_count = len(payload["items"])
+        failed_count = 1 if batch_index == self.item_failure_batch else 0
+        return {
+            "status": "completed_with_errors" if failed_count else "succeeded",
+            "stats": {
+                "run_id": payload["run_id"],
+                "input_count": item_count,
+                "persisted_count": 0 if self.already_persisted else item_count,
+                "created_vacancy_count": 0 if self.already_persisted else item_count,
+                "updated_vacancy_count": 0,
+                "analysis_created_count": 0 if self.already_persisted else item_count,
+                "already_persisted_count": item_count if self.already_persisted else 0,
+                "failed_count": failed_count,
+                "status": "completed_with_errors" if failed_count else "succeeded",
+                "duration_ms": 1,
+            },
+            "items": [],
+            "errors": ([{"item_index": 0, "error_code": "pipeline_item_persist_failed"}] if failed_count else []),
+            "duration_ms": 1,
+        }
 
 
 def enrichment_result() -> HHCollectFilterAndEnrichResult:
@@ -81,6 +126,7 @@ def enrichment_result() -> HHCollectFilterAndEnrichResult:
         collected_at=datetime(2026, 8, 10, 8, 0, tzinfo=timezone.utc),
         search_is_remote=True,
     )
+
     preliminary = PreliminaryVacancyAssessment(
         source="hh",
         external_id="123",
@@ -172,6 +218,15 @@ def enrichment_result() -> HHCollectFilterAndEnrichResult:
         items=[item],
         duration_ms=5,
     )
+
+
+def enrichment_result_with_items(item_count: int) -> HHCollectFilterAndEnrichResult:
+    result = enrichment_result()
+    result.items = [result.items[0]] * item_count if item_count else []
+    result.enrichment_stats.input_count = item_count
+    result.enrichment_stats.enrich_candidate_count = item_count
+    result.enrichment_stats.enriched_count = item_count
+    return result
 
 
 @pytest.mark.anyio
@@ -273,3 +328,147 @@ async def test_generated_run_id_is_reused_for_enrichment_and_persistence_respons
 
     assert result.pipeline_run_id.startswith("hh-pipeline-")
     assert client.payloads[0]["run_id"] == result.pipeline_run_id
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("item_count", "batch_sizes"),
+    [
+        (1, [1]),
+        (100, [100]),
+        (101, [100, 1]),
+        (121, [100, 21]),
+        (200, [100, 100]),
+        (201, [100, 100, 1]),
+    ],
+)
+async def test_persistence_service_batches_pipeline_results(item_count: int, batch_sizes: list[int]) -> None:
+    client = BatchOrchestratorClient()
+    service = HHCollectFilterEnrichAndPersistService(
+        FakeEnrichmentService(enrichment_result_with_items(item_count)),
+        client,  # type: ignore[arg-type]
+    )
+
+    result = await service.collect_filter_enrich_and_persist(HHCollectFilterEnrichAndPersistRequest(pipeline_run_id="run-001"))
+
+    assert [len(payload["items"]) for payload in client.payloads] == batch_sizes
+    assert client.batch_metadata == [(index, len(batch_sizes)) for index in range(1, len(batch_sizes) + 1)]
+    assert result.persistence_stats is not None
+    assert result.persistence_stats.persisted_count == item_count
+    assert result.persistence_stats.input_count == item_count
+
+
+@pytest.mark.anyio
+async def test_zero_enrichment_items_preserves_current_no_persistence_behavior() -> None:
+    client = BatchOrchestratorClient()
+    service = HHCollectFilterEnrichAndPersistService(
+        FakeEnrichmentService(enrichment_result_with_items(0)),
+        client,  # type: ignore[arg-type]
+    )
+
+    result = await service.collect_filter_enrich_and_persist(HHCollectFilterEnrichAndPersistRequest(pipeline_run_id="run-001"))
+
+    assert result.status == "succeeded"
+    assert result.persistence_stats is None
+    assert client.payloads == []
+
+
+@pytest.mark.anyio
+async def test_persistence_service_aggregates_already_persisted_counts() -> None:
+    client = BatchOrchestratorClient(already_persisted=True)
+    service = HHCollectFilterEnrichAndPersistService(
+        FakeEnrichmentService(enrichment_result_with_items(101)),
+        client,  # type: ignore[arg-type]
+    )
+
+    result = await service.collect_filter_enrich_and_persist(HHCollectFilterEnrichAndPersistRequest(pipeline_run_id="run-001"))
+
+    assert result.persistence_stats is not None
+    assert result.persistence_stats.persisted_count == 0
+    assert result.persistence_stats.already_persisted_count == 101
+    assert result.persistence_stats.failed_count == 0
+
+
+@pytest.mark.anyio
+async def test_persistence_service_aggregates_item_failures_and_errors() -> None:
+    client = BatchOrchestratorClient(item_failure_batch=2)
+    service = HHCollectFilterEnrichAndPersistService(
+        FakeEnrichmentService(enrichment_result_with_items(101)),
+        client,  # type: ignore[arg-type]
+    )
+
+    result = await service.collect_filter_enrich_and_persist(HHCollectFilterEnrichAndPersistRequest(pipeline_run_id="run-001"))
+
+    assert result.persistence_stats is not None
+    assert result.persistence_stats.failed_count == 1
+    assert result.persistence_result is not None
+    assert result.persistence_result["errors"] == [{"item_index": 0, "error_code": "pipeline_item_persist_failed"}]
+
+
+@pytest.mark.anyio
+async def test_second_batch_failure_preserves_aggregated_successful_stats() -> None:
+    client = BatchOrchestratorClient(fail_batch=2)
+    service = HHCollectFilterEnrichAndPersistService(
+        FakeEnrichmentService(enrichment_result_with_items(121)),
+        client,  # type: ignore[arg-type]
+    )
+
+    result = await service.collect_filter_enrich_and_persist(HHCollectFilterEnrichAndPersistRequest(pipeline_run_id="run-001"))
+
+    assert [len(payload["items"]) for payload in client.payloads] == [100, 21]
+    assert result.status == "failed"
+    assert result.persistence_stats is not None
+    assert result.persistence_stats.status == "failed"
+    assert result.persistence_stats.persisted_count == 100
+    assert result.persistence_stats.failed_count == 0
+    assert result.errors[-1].error_code == "orchestrator_persistence_failed"
+    assert result.errors[-1].message == "Не удалось сохранить batch 2 из 2 в Orchestrator"
+
+
+@pytest.mark.anyio
+async def test_persistence_service_retries_only_failed_batch() -> None:
+    request_sizes: list[int] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        item_count = len(json.loads(request.content)["items"])
+        request_sizes.append(item_count)
+        if request_sizes == [100, 1]:
+            return httpx.Response(503, json={"detail": "temporary"})
+        return httpx.Response(
+            201,
+            json={
+                "status": "succeeded",
+                "stats": {
+                    "run_id": "run-001",
+                    "input_count": item_count,
+                    "persisted_count": item_count,
+                    "created_vacancy_count": item_count,
+                    "updated_vacancy_count": 0,
+                    "analysis_created_count": item_count,
+                    "already_persisted_count": 0,
+                    "failed_count": 0,
+                    "status": "succeeded",
+                    "duration_ms": 1,
+                },
+                "items": [],
+                "errors": [],
+                "duration_ms": 1,
+            },
+        )
+
+    client = OrchestratorClient(
+        "http://orchestrator",
+        5,
+        max_retries=1,
+        transport=httpx.MockTransport(handler),
+    )
+    service = HHCollectFilterEnrichAndPersistService(
+        FakeEnrichmentService(enrichment_result_with_items(101)),
+        client,
+    )
+
+    result = await service.collect_filter_enrich_and_persist(HHCollectFilterEnrichAndPersistRequest(pipeline_run_id="run-001"))
+
+    assert request_sizes == [100, 1, 1]
+    assert result.persistence_stats is not None
+    assert result.persistence_stats.persisted_count == 101

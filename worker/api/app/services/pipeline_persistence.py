@@ -18,6 +18,23 @@ from app.services.vacancy_enrichment import HHCollectFilterAndEnrichService
 logger = logging.getLogger(__name__)
 
 
+PIPELINE_RESULTS_BATCH_SIZE = 100
+
+
+class PipelinePersistenceBatchError(Exception):
+    def __init__(
+        self,
+        *,
+        persistence_result: dict,
+        batch_index: int,
+        batch_count: int,
+    ) -> None:
+        super().__init__("Orchestrator pipeline result batch failed")
+        self.persistence_result = persistence_result
+        self.batch_index = batch_index
+        self.batch_count = batch_count
+
+
 class HHCollectFilterEnrichAndPersistService:
     def __init__(
         self,
@@ -74,9 +91,8 @@ class HHCollectFilterEnrichAndPersistService:
         )
 
         if enrichment_result.items:
-            payload = self._build_persistence_payload(run_id, enrichment_result.items)
             try:
-                persistence_result = await self.orchestrator_client.persist_pipeline_results(payload)
+                persistence_result = await self._persist_in_batches(run_id, enrichment_result.items)
                 persistence_stats = PipelinePersistenceStats(**persistence_result["stats"])
                 if persistence_stats.failed_count > 0 or persistence_stats.status == "completed_with_errors":
                     partial_failures.append(
@@ -86,6 +102,33 @@ class HHCollectFilterEnrichAndPersistService:
                             summary="Не все результаты удалось сохранить в Orchestrator",
                         )
                     )
+            except PipelinePersistenceBatchError as exc:
+                failed_stats = PipelinePersistenceStats(**exc.persistence_result["stats"])
+                if failed_stats.input_count > 0:
+                    persistence_result = exc.persistence_result
+                    persistence_stats = failed_stats
+                status = VacancyEnrichmentStatus.FAILED
+                logger.warning(
+                    "pipeline_persistence_failed run_id=%s error_code=orchestrator_persistence_failed "
+                    "batch_index=%s batch_count=%s persisted_count=%s",
+                    run_id,
+                    exc.batch_index,
+                    exc.batch_count,
+                    failed_stats.persisted_count,
+                )
+                errors.append(
+                    PipelinePersistenceError(
+                        error_code="orchestrator_persistence_failed",
+                        message=f"Не удалось сохранить batch {exc.batch_index} из {exc.batch_count} в Orchestrator",
+                    )
+                )
+                partial_failures.append(
+                    WorkerPipelineRunDiagnostic(
+                        code="orchestrator_persistence_failed",
+                        count=1,
+                        summary=f"Не удалось сохранить batch {exc.batch_index} из {exc.batch_count} в Orchestrator",
+                    )
+                )
             except OrchestratorClientError:
                 logger.warning("pipeline_persistence_failed run_id=%s error_code=orchestrator_persistence_failed", run_id)
                 status = VacancyEnrichmentStatus.FAILED
@@ -128,6 +171,62 @@ class HHCollectFilterEnrichAndPersistService:
             partial_failures=self._merge_diagnostics(partial_failures),
             duration_ms=duration_ms,
         )
+
+    async def _persist_in_batches(self, run_id: str, items) -> dict:
+        responses: list[dict] = []
+        batches = [items[index : index + PIPELINE_RESULTS_BATCH_SIZE] for index in range(0, len(items), PIPELINE_RESULTS_BATCH_SIZE)]
+        for batch_offset, batch_items in enumerate(batches, start=1):
+            payload = self._build_persistence_payload(run_id, batch_items)
+            try:
+                response = await self.orchestrator_client.persist_pipeline_results(
+                    payload,
+                    batch_index=batch_offset,
+                    batch_count=len(batches),
+                )
+            except OrchestratorClientError:
+                raise PipelinePersistenceBatchError(
+                    persistence_result=self._aggregate_persistence_results(run_id, responses, failed=True),
+                    batch_index=batch_offset,
+                    batch_count=len(batches),
+                ) from None
+            responses.append(response)
+        return self._aggregate_persistence_results(run_id, responses)
+
+    @staticmethod
+    def _aggregate_persistence_results(run_id: str, responses: list[dict], *, failed: bool = False) -> dict:
+        stats_fields = (
+            "input_count",
+            "persisted_count",
+            "created_vacancy_count",
+            "updated_vacancy_count",
+            "analysis_created_count",
+            "already_persisted_count",
+            "failed_count",
+            "duration_ms",
+        )
+        stats = {field: 0 for field in stats_fields}
+        items: list = []
+        errors: list = []
+        statuses: list[str] = []
+        duration_ms = 0
+        for response in responses:
+            response_stats = response["stats"]
+            for field in stats_fields:
+                stats[field] += int(response_stats.get(field, 0))
+            statuses.append(str(response_stats.get("status", "succeeded")))
+            items.extend(response.get("items", []))
+            errors.extend(response.get("errors", []))
+            duration_ms += int(response.get("duration_ms", 0))
+
+        if failed or "failed" in statuses:
+            status = "failed"
+        elif stats["failed_count"] > 0 or "completed_with_errors" in statuses:
+            status = "completed_with_errors"
+        else:
+            status = "succeeded"
+        stats["run_id"] = run_id
+        stats["status"] = status
+        return {"status": status, "stats": stats, "items": items, "errors": errors, "duration_ms": duration_ms}
 
     @staticmethod
     def _warnings(enrichment_result) -> list[WorkerPipelineRunDiagnostic]:

@@ -20,9 +20,15 @@ class OrchestratorClientTimeoutError(OrchestratorClientError):
 
 
 class OrchestratorClientResponseError(OrchestratorClientError):
-    def __init__(self, message: str, status_code: int | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        status_code: int | None = None,
+        validation_details: list[dict[str, Any]] | None = None,
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
+        self.validation_details = validation_details or []
 
 
 class OrchestratorClient:
@@ -38,10 +44,23 @@ class OrchestratorClient:
         self.max_retries = max_retries
         self.transport = transport
 
-    async def persist_pipeline_results(self, payload: dict[str, Any]) -> dict[str, Any]:
+    async def persist_pipeline_results(
+        self,
+        payload: dict[str, Any],
+        *,
+        batch_index: int | None = None,
+        batch_count: int | None = None,
+    ) -> dict[str, Any]:
         started_at = time.perf_counter()
         run_id = str(payload.get("run_id", "unknown"))
-        logger.info("orchestrator_pipeline_persist_started run_id=%s item_count=%s", run_id, len(payload.get("items", [])))
+        batch_size = len(payload.get("items", []))
+        logger.info(
+            "orchestrator_pipeline_persist_started run_id=%s item_count=%s batch_index=%s batch_count=%s",
+            run_id,
+            batch_size,
+            batch_index,
+            batch_count,
+        )
         last_error: Exception | None = None
 
         for attempt in range(self.max_retries + 1):
@@ -58,9 +77,22 @@ class OrchestratorClient:
                             status_code=response.status_code,
                         )
                     if response.status_code >= 400:
+                        validation_details = self._safe_validation_details(response)
+                        if validation_details:
+                            logger.warning(
+                                "orchestrator_validation_failed run_id=%s endpoint=/pipeline-results status=%s "
+                                "batch_index=%s batch_count=%s batch_size=%s validation_details=%s",
+                                run_id,
+                                response.status_code,
+                                batch_index,
+                                batch_count,
+                                batch_size,
+                                validation_details,
+                            )
                         raise OrchestratorClientResponseError(
                             "Orchestrator rejected pipeline results",
                             status_code=response.status_code,
+                            validation_details=validation_details,
                         )
                     data = response.json()
                 duration_ms = self._duration_ms(started_at)
@@ -115,3 +147,27 @@ class OrchestratorClient:
     @staticmethod
     def _duration_ms(started_at: float) -> int:
         return round((time.perf_counter() - started_at) * 1000)
+
+    @staticmethod
+    def _safe_validation_details(response: httpx.Response) -> list[dict[str, Any]]:
+        try:
+            payload = response.json()
+        except ValueError:
+            return []
+
+        detail = payload.get("detail") if isinstance(payload, dict) else None
+        if not isinstance(detail, list):
+            return []
+
+        safe_details: list[dict[str, Any]] = []
+        for item in detail:
+            if not isinstance(item, dict):
+                continue
+            safe: dict[str, Any] = {}
+            for key in ("loc", "msg", "type", "ctx"):
+                value = item.get(key)
+                if value is not None:
+                    safe[key] = value
+            if safe:
+                safe_details.append(safe)
+        return safe_details

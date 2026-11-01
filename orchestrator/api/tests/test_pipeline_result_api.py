@@ -235,6 +235,19 @@ def test_pipeline_results_partial_failure_does_not_rollback_other_items(db_sessi
     assert response.status_code == 422
 
 
+def test_pipeline_results_rejects_more_than_100_items(db_session) -> None:
+    payload = pipeline_payload()
+    payload["items"] = [pipeline_payload(external_id=str(index))["items"][0] for index in range(101)]
+
+    with make_client(db_session) as client:
+        response = client.post("/pipeline-results", json=payload)
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail[0]["loc"] == ["body", "items"]
+    assert detail[0]["type"] == "too_long"
+
+
 def test_pipeline_latest_analyses_supports_priority_filter(db_session) -> None:
     with make_client(db_session) as client:
         client.post("/pipeline-results", json=pipeline_payload(run_id="run-001", external_id="123"))
