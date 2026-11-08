@@ -24,6 +24,8 @@ class DiscoveredVacancyProvenance(BaseModel):
     profile_ids: list[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)]] = Field(default_factory=list, max_length=100)
     query_variant_ids: list[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)]] = Field(default_factory=list, max_length=100)
     tracks: list[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)]] = Field(default_factory=list, max_length=100)
+    first_profile_id: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)] | None = None
+    first_query_variant_id: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)] | None = None
     occurrence_count: int = Field(default=1, ge=1)
 
 

@@ -117,6 +117,8 @@ class DiscoveredVacancyService:
                     "profile_ids": provenance.profile_ids if provenance else [],
                     "query_variant_ids": provenance.query_variant_ids if provenance else [],
                     "tracks": provenance.tracks if provenance else [],
+                    "first_profile_id": provenance.first_profile_id if provenance else None,
+                    "first_query_variant_id": provenance.first_query_variant_id if provenance else None,
                     "occurrence_count": provenance.occurrence_count if provenance else 1,
                     "is_remote": item.is_remote,
                     "has_responsibility_snippet": item.responsibility_snippet is not None,

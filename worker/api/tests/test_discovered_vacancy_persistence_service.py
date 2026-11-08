@@ -78,6 +78,14 @@ async def test_discovery_persistence_batches_all_collected_vacancies(item_count:
     assert [len(payload["items"]) for payload in client.payloads] == batch_sizes
     assert client.metadata == [(index, len(batch_sizes)) for index in range(1, len(batch_sizes) + 1)]
     assert [item["external_id"] for payload in client.payloads for item in payload["items"]] == [str(index) for index in range(item_count)]
+    assert client.payloads[0]["items"][0]["provenance"] == {
+        "profile_ids": ["python_expanded_search"],
+        "query_variant_ids": ["python_backend"],
+        "tracks": ["main"],
+        "first_profile_id": "python_expanded_search",
+        "first_query_variant_id": "python_backend",
+        "occurrence_count": 1,
+    }
     assert stats.input_count == item_count
     assert stats.persisted_count == item_count
     assert stats.created_count == item_count

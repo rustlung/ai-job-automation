@@ -1,5 +1,9 @@
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+import json
+from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,7 +20,10 @@ from app.models.vacancy_analysis import VacancyAnalysis
 from app.models.vacancy_processing_event import VacancyProcessingEvent
 from app.models.vacancy_user_state import VacancyUserState
 from app.repositories.vacancy_processing_event import VacancyProcessingEventRepository
-from app.schemas.discovered_vacancy import DISCOVERED_VACANCY_BATCH_MAX_ITEMS, DiscoveredVacanciesCreate
+from app.schemas.discovered_vacancy import (
+    DISCOVERED_VACANCY_BATCH_MAX_ITEMS,
+    DiscoveredVacanciesCreate,
+)
 from app.schemas.pipeline_result import PipelineResultsCreate
 from app.services.business_identity import build_business_fingerprint
 from app.services.discovered_vacancy import DiscoveredVacancyDatabaseError, DiscoveredVacancyService
@@ -45,6 +52,8 @@ def discovery_item(external_id: str = "123", *, seen_at: datetime = NOW) -> dict
             "profile_ids": ["python"],
             "query_variant_ids": ["python-main"],
             "tracks": ["main"],
+            "first_profile_id": "python",
+            "first_query_variant_id": "python-main",
             "occurrence_count": 1,
         },
         "seen_at": seen_at.isoformat(),
@@ -83,6 +92,8 @@ def test_discovery_creates_nullable_preview_and_event(db_session) -> None:
     assert event.stage == "discovered"
     assert event.status == "succeeded"
     assert event.metadata_json["profile_ids"] == ["python"]
+    assert event.metadata_json["first_profile_id"] == "python"
+    assert event.metadata_json["first_query_variant_id"] == "python-main"
     assert db_session.scalars(select(VacancyAnalysis)).all() == []
 
 
@@ -183,6 +194,91 @@ def test_discovery_api_enforces_internal_token_and_batch_limit(db_session, monke
         "failed_count": 0,
     }
     assert oversized.status_code == 422
+
+
+def test_discovery_contract_accepts_merged_worker_provenance_and_rejects_unknown_fields(db_session, monkeypatch) -> None:
+    payload = discovery_payload()
+    payload["items"][0]["provenance"] = {
+        "profile_ids": ["python", "ai"],
+        "query_variant_ids": ["python-main", "ai-main"],
+        "tracks": ["main", "alternative"],
+        "first_profile_id": "python",
+        "first_query_variant_id": "python-main",
+        "occurrence_count": 2,
+    }
+    monkeypatch.setenv("ORCHESTRATOR_INTERNAL_API_TOKEN", "secret")
+    get_settings.cache_clear()
+    try:
+        with make_client(db_session) as client:
+            accepted = client.post(
+                "/internal/discovered-vacancies",
+                json=payload,
+                headers={"X-Orchestrator-Internal-Token": "secret"},
+            )
+            malformed = discovery_payload()
+            malformed["items"][0]["provenance"]["unexpected"] = "must-not-be-accepted"
+            rejected = client.post(
+                "/internal/discovered-vacancies",
+                json=malformed,
+                headers={"X-Orchestrator-Internal-Token": "secret"},
+            )
+    finally:
+        get_settings.cache_clear()
+
+    assert accepted.status_code == 201
+    assert accepted.json()["stats"]["created_count"] == 1
+    assert rejected.status_code == 422
+    assert rejected.json()["detail"][0]["loc"] == ["body", "items", 0, "provenance", "unexpected"]
+    assert rejected.json()["detail"][0]["type"] == "extra_forbidden"
+
+
+def test_worker_discovery_serializer_matches_orchestrator_request_schema() -> None:
+    root = Path(__file__).resolve().parents[3]
+    worker_api = root / "worker" / "api"
+    script = """
+import json
+from datetime import datetime, timezone
+from app.schemas.hh_collection import HHSearchCollectedVacancy, HHSearchVacancyProvenance, SearchProfileTrack
+from app.services.discovered_vacancy import DiscoveredVacancyPersistenceService
+
+vacancy = HHSearchCollectedVacancy(
+    external_id='123',
+    url='https://hh.ru/vacancy/123',
+    title='Python Backend Developer',
+    company='Test Company',
+    is_remote=True,
+    provenance=HHSearchVacancyProvenance(
+        profile_ids=['python', 'ai'],
+        query_variant_ids=['python-main', 'ai-main'],
+        tracks=[SearchProfileTrack.MAIN, SearchProfileTrack.ALTERNATIVE],
+        first_profile_id='python',
+        first_query_variant_id='python-main',
+        occurrence_count=2,
+    ),
+)
+payload = DiscoveredVacancyPersistenceService._payload(
+    'worker-contract-run', [vacancy], datetime(2026, 11, 8, 8, tzinfo=timezone.utc)
+)
+print(json.dumps(payload))
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=worker_api,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    request = DiscoveredVacanciesCreate.model_validate(payload)
+    provenance = request.items[0].provenance
+    assert provenance is not None
+    assert provenance.profile_ids == ["python", "ai"]
+    assert provenance.query_variant_ids == ["python-main", "ai-main"]
+    assert provenance.tracks == ["main", "alternative"]
+    assert provenance.first_profile_id == "python"
+    assert provenance.first_query_variant_id == "python-main"
+    assert provenance.occurrence_count == 2
 
 
 def test_discovered_vacancy_becomes_enriched_without_second_seen_count_and_keeps_relations(db_session) -> None:
