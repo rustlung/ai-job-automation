@@ -221,6 +221,7 @@ class PipelineResultService:
 
     def _persist_item(self, run_id: str, item: PipelineResultItem) -> PipelineResultItemRead:
         vacancy = self.vacancy_repository.get_by_source_external_id(item.vacancy.source, item.vacancy.external_id)
+        discovery_recorded_for_run = False
         if vacancy is not None:
             existing_analysis = self.analysis_repository.get_by_vacancy_run_id(vacancy.id, run_id)
             if existing_analysis is not None:
@@ -250,16 +251,31 @@ class PipelineResultService:
             )
         else:
             before_presentation = self.user_state_reconciliation.snapshot_before_change(vacancy)
+            discovery_recorded_for_run = self.event_repository.exists_for_vacancy_run_stage(
+                vacancy.id,
+                run_id,
+                VacancyProcessingStage.DISCOVERED,
+                VacancyProcessingStatus.SUCCEEDED,
+            )
             self.vacancy_repository.update_from_input(
                 vacancy,
                 vacancy_input,
                 item.vacancy.collected_at.astimezone(timezone.utc),
                 business_fingerprint=self._business_fingerprint(item),
+                # Collection and full enrichment are one HH observation. A Phase 1
+                # discovery event proves that this run has already counted it.
+                record_observation=not discovery_recorded_for_run,
             )
             self.user_state_reconciliation.reconcile_after_change(before_presentation, vacancy)
 
         analysis = self.analysis_repository.create(vacancy.id, self._analysis_create(run_id, item))
-        self._create_processing_events(vacancy.id, analysis.id, run_id, item)
+        self._create_processing_events(
+            vacancy.id,
+            analysis.id,
+            run_id,
+            item,
+            discovery_already_recorded=vacancy_created is False and discovery_recorded_for_run,
+        )
         self.session.commit()
         self.session.refresh(vacancy)
         self.session.refresh(analysis)
@@ -335,7 +351,15 @@ class PipelineResultService:
             vacancy_snapshot=item.vacancy.model_dump(mode="json"),
         )
 
-    def _create_processing_events(self, vacancy_id: int, analysis_id: int, run_id: str, item: PipelineResultItem) -> None:
+    def _create_processing_events(
+        self,
+        vacancy_id: int,
+        analysis_id: int,
+        run_id: str,
+        item: PipelineResultItem,
+        *,
+        discovery_already_recorded: bool = False,
+    ) -> None:
         preliminary = item.preliminary_assessment
         semantic = item.semantic_assessment
         preliminary_model = str(preliminary.get("model") or "unknown")
@@ -343,13 +367,17 @@ class PipelineResultService:
         semantic_model = str(semantic.get("model") or "unknown")
         semantic_prompt_version = str(semantic.get("prompt_version") or "unknown")
 
-        events = [
-            VacancyProcessingEventCreate(
-                run_id=run_id,
-                stage=VacancyProcessingStage.DISCOVERED,
-                status=VacancyProcessingStatus.SUCCEEDED,
-                metadata={"profile_ids": item.provenance.profile_ids, "occurrence_count": item.provenance.occurrence_count},
-            ),
+        events = []
+        if not discovery_already_recorded:
+            events.append(
+                VacancyProcessingEventCreate(
+                    run_id=run_id,
+                    stage=VacancyProcessingStage.DISCOVERED,
+                    status=VacancyProcessingStatus.SUCCEEDED,
+                    metadata={"profile_ids": item.provenance.profile_ids, "occurrence_count": item.provenance.occurrence_count},
+                )
+            )
+        events.extend([
             VacancyProcessingEventCreate(
                 run_id=run_id,
                 stage=VacancyProcessingStage.DEDUPLICATED,
@@ -403,7 +431,7 @@ class PipelineResultService:
                 status=VacancyProcessingStatus.SUCCEEDED,
                 metadata={"analysis_id": analysis_id},
             ),
-        ]
+        ])
         for event in events:
             self.event_repository.create(vacancy_id, event)
 

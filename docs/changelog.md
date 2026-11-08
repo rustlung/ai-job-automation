@@ -4,6 +4,12 @@
 
 ### Added
 
+- Discovery persistence foundation: internal batch endpoint
+  `POST /internal/discovered-vacancies` сохраняет deduplicated HH preview по
+  canonical identity до enrichment, не создаёт AI analysis и не понижает уже
+  enriched row. `Vacancy.description = NULL` обозначает modern discovered
+  preview; Worker будет подключён отдельной следующей фазой.
+
 - Daily Search Digest v14: отдельный production workflow без Google Sheets
   nodes, credentials и CRM matching. Gmail digest теперь формируется из
   persisted grouped run data Orchestrator; v13 остаётся historical export.

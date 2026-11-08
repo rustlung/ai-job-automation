@@ -26,8 +26,10 @@ def logical_vacancy_cohort_date(group: BusinessVacancyGroup) -> date | None:
 
 
 def has_reliable_discovery_date(vacancy: object) -> bool:
-    # Historical backfill deliberately records an empty description and import-time dates.
-    return bool(getattr(vacancy, "description", "") and vacancy.description.strip())
+    # NULL is a modern collected preview. Historical backfill deliberately used
+    # an empty description together with import-time dates, which remains unreliable.
+    description = getattr(vacancy, "description", "")
+    return description is None or bool(description.strip())
 
 
 def as_utc(value: datetime) -> datetime:

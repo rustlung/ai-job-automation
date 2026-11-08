@@ -380,6 +380,20 @@ sync. Именно этот endpoint используется production workflo
 `GET /pipeline-results/analyses/latest` предоставляет обзорный read API с
 фильтром по priority и pagination; он не заменяет current-run sync.
 
+### Internal Discovered Vacancies
+
+```text
+POST /internal/discovered-vacancies
+```
+
+Internal Worker-only endpoint для Phase 1 ранней фиксации коротких HH search
+cards. Он использует тот же `X-Orchestrator-Internal-Token`, что lifecycle
+pipeline runs, принимает до 100 items за request и создаёт/обновляет canonical
+`source + external_id` без `VacancyAnalysis`. Новая карточка хранит
+`description = null` и `business_fingerprint = null`; повтор в том же `run_id`
+идемпотентен по discovery event. На этой фазе Worker этот endpoint ещё не
+вызывает.
+
 ### Manual Vacancy Create
 
 ``` text

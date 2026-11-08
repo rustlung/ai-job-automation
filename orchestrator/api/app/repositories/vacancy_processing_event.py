@@ -95,6 +95,21 @@ class VacancyProcessingEventRepository:
         )
         return int(self.session.scalar(statement) or 0)
 
+    def exists_for_vacancy_run_stage(
+        self,
+        vacancy_id: int,
+        run_id: str,
+        stage: VacancyProcessingStage,
+        status: VacancyProcessingStatus,
+    ) -> bool:
+        statement = select(VacancyProcessingEvent.id).where(
+            VacancyProcessingEvent.vacancy_id == vacancy_id,
+            VacancyProcessingEvent.run_id == run_id,
+            VacancyProcessingEvent.stage == stage.value,
+            VacancyProcessingEvent.status == status.value,
+        )
+        return self.session.scalar(statement.limit(1)) is not None
+
     @staticmethod
     def _apply_filters(
         statement: Select,

@@ -80,7 +80,7 @@ class VacancyRead(BaseModel):
     company: str
     location: str | None
     salary_text: str | None
-    description: str
+    description: str | None
     published_at: datetime | None
     first_seen_at: datetime
     last_seen_at: datetime

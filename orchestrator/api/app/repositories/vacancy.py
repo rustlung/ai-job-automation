@@ -62,6 +62,74 @@ class VacancyRepository:
             raise
         return vacancy
 
+    def create_discovered(
+        self,
+        *,
+        source: str,
+        external_id: str,
+        url: str,
+        title: str,
+        company: str,
+        location: str | None,
+        salary_text: str | None,
+        seen_at: datetime,
+    ) -> Vacancy:
+        vacancy = Vacancy(
+            source=source,
+            external_id=external_id,
+            url=url,
+            title=title,
+            company=company,
+            location=location,
+            salary_text=salary_text,
+            description=None,
+            business_fingerprint=None,
+            first_seen_at=seen_at,
+            last_seen_at=seen_at,
+            seen_count=1,
+            collected_at=self._now(),
+        )
+        self.session.add(vacancy)
+        self.session.flush()
+        return vacancy
+
+    def update_discovered_preview(
+        self,
+        vacancy: Vacancy,
+        *,
+        url: str,
+        title: str,
+        company: str,
+        location: str | None,
+        salary_text: str | None,
+        seen_at: datetime,
+        record_observation: bool,
+    ) -> bool:
+        """Update a preview without ever downgrading an enriched canonical row."""
+        changed = False
+        last_seen_at = self._ensure_utc(vacancy.last_seen_at)
+        if vacancy.description is None and vacancy.business_fingerprint is None and seen_at >= last_seen_at:
+            for field, value in {
+                "url": url,
+                "title": title,
+                "company": company,
+                "location": location,
+                "salary_text": salary_text,
+            }.items():
+                if not self._values_equal(getattr(vacancy, field), value):
+                    setattr(vacancy, field, value)
+                    changed = True
+
+        if last_seen_at < seen_at:
+            vacancy.last_seen_at = seen_at
+            changed = True
+        if record_observation:
+            vacancy.seen_count += 1
+        vacancy.collected_at = self._now()
+        vacancy.updated_at = self._now()
+        self.session.flush()
+        return changed
+
     def update_from_input(
         self,
         vacancy: Vacancy,
@@ -69,6 +137,7 @@ class VacancyRepository:
         seen_at: datetime | None = None,
         *,
         business_fingerprint: str | None | object = _UNSET,
+        record_observation: bool = True,
     ) -> bool:
         changed = False
         for field, value in vacancy_input.model_dump(exclude={"seen_at"}).items():
@@ -84,7 +153,8 @@ class VacancyRepository:
         last_seen_at = self._ensure_utc(vacancy.last_seen_at)
         if last_seen_at < effective_seen_at:
             vacancy.last_seen_at = effective_seen_at
-        vacancy.seen_count += 1
+        if record_observation:
+            vacancy.seen_count += 1
         vacancy.collected_at = self._now()
         vacancy.updated_at = self._now()
         self.session.flush()

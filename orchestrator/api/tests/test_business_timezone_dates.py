@@ -18,7 +18,7 @@ SAMARA_MIDNIGHT_CASE = datetime(2026, 10, 30, 22, tzinfo=UTC)
 NEXT_SAMARA_DAY = datetime(2026, 10, 31, 4, tzinfo=UTC)
 
 
-def add_vacancy(db_session, *, source: str, external_id: str, timestamp: datetime, description: str = "Полное описание") -> Vacancy:
+def add_vacancy(db_session, *, source: str, external_id: str, timestamp: datetime, description: str | None = "Полное описание") -> Vacancy:
     vacancy = Vacancy(
         source=source,
         external_id=external_id,
@@ -134,3 +134,34 @@ def test_samara_presets_include_a_cohort_created_on_previous_utc_day(db_session)
         exported = ExportService(db_session, today=today).vacancies_dataset(ExportRequest(period=export_period))
 
         assert list_total(db_session, date_from, date_to) == statistics.found == len(exported.rows) == 1
+
+
+def test_modern_discovered_null_description_uses_first_seen_but_legacy_empty_description_does_not(db_session) -> None:
+    discovered = add_vacancy(
+        db_session,
+        source="hh",
+        external_id="discovered-null-description",
+        timestamp=SAMARA_MIDNIGHT_CASE,
+        description=None,
+    )
+    add_vacancy(
+        db_session,
+        source="hh",
+        external_id="legacy-empty-description",
+        timestamp=SAMARA_MIDNIGHT_CASE,
+        description="",
+    )
+    db_session.commit()
+
+    day = date(2026, 10, 31)
+    statistics = VacancyStatisticsService(db_session, today=day).get(
+        period=StatisticsPeriod.CUSTOM,
+        date_from=day,
+        date_to=day,
+    )
+    exported = ExportService(db_session, today=day).vacancies_dataset(
+        ExportRequest(period=ExportPeriod.CUSTOM, date_from=day, date_to=day)
+    )
+
+    assert logical_vacancy_cohort_date(group_business_vacancies([discovered])[0]) == day
+    assert list_total(db_session, day, day) == statistics.found == len(exported.rows) == 1

@@ -781,6 +781,10 @@ n8n / collector
 preliminary local AI filter поверх deduplicated search vacancies, full vacancy
 enrichment для кандидатов `keep_main`, `keep_alt` и `uncertain`, а также
 persistence bridge в Orchestrator DB через `POST /pipeline-results`.
+Подготовлена Phase 1 foundation `POST /internal/discovered-vacancies`: она
+сохраняет deduplicated preview по canonical identity без анализа и без business
+fingerprint. Worker будет подключён к ней отдельной следующей фазой; текущий
+production flow ещё использует только final persistence.
 Phase 5.10 добавила n8n orchestration поверх Worker persistence endpoint,
 чтение текущего run через Orchestrator API и Gmail digest. Phase 3B выделила
 `Daily Search Digest v14`: Gmail получает persisted grouped result из

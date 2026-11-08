@@ -38,7 +38,9 @@ class Vacancy(Base):
     company: Mapped[str] = mapped_column(String(255), nullable=False)
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     salary_text: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    description: Mapped[str] = mapped_column(Text, nullable=False)
+    # NULL is a collected HH preview whose full details have not been fetched yet.
+    # Historical empty strings retain their separate legacy meaning.
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     business_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

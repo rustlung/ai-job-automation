@@ -117,6 +117,7 @@
 ✅ Worker → Orchestrator persistence bridge
 ✅ POST /hh/collect-filter-enrich-and-persist
 ✅ POST /pipeline-results
+✅ Phase 1 discovery persistence foundation в Orchestrator (Worker пока не вызывает endpoint)
 ✅ Orchestrator DB source of truth для vacancy pipeline
 ✅ Batch persistence в Orchestrator DB
 ✅ VacancyAnalysis history by run_id
@@ -491,6 +492,13 @@ Worker и сохраняет `Vacancy`, `VacancyAnalysis`, provenance, processin
 `run_id`, final score / priority и snapshots анализа. Orchestrator DB теперь
 является постоянным source of truth для автоматических данных vacancy pipeline.
 Worker остается stateless processing node и не имеет прямого доступа к SQLite.
+
+Phase 1 раннего persistence добавила internal `POST /internal/discovered-vacancies`.
+Он принимает до 100 deduplicated preview-карточек за batch, использует internal
+token и фиксирует canonical identity до AI-обработки. `description = NULL`
+означает современную discovered vacancy без full details, а historical
+`description = ""` сохраняет прежнюю legacy-семантику. Пока Worker не вызывает
+этот endpoint, поэтому production flow не меняется до следующей фазы.
 
 Identity вакансии остается `source + external_id`. Повторное обнаружение той же
 вакансии не создает новую `Vacancy` row. Same-run persistence retry по той же

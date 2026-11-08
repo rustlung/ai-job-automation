@@ -42,6 +42,7 @@ def test_vacancy_migration_upgrade_and_downgrade(tmp_path, monkeypatch) -> None:
     assert vacancy_columns["last_seen_at"]["nullable"] is False
     assert vacancy_columns["seen_count"]["nullable"] is False
     assert vacancy_columns["business_fingerprint"]["nullable"] is True
+    assert vacancy_columns["description"]["nullable"] is True
     check_constraints = {constraint["name"] for constraint in inspector.get_check_constraints("vacancies")}
     assert "ck_vacancies_seen_count_positive" in check_constraints
     analysis_indexes = {index["name"] for index in inspector.get_indexes("vacancy_analyses")}
@@ -486,3 +487,78 @@ def test_alembic_has_single_head() -> None:
     script = ScriptDirectory.from_config(make_alembic_config("sqlite:///unused.db"))
 
     assert len(script.get_heads()) == 1
+
+
+def test_nullable_description_migration_preserves_related_rows_and_downgrades_without_nulls(tmp_path, monkeypatch) -> None:
+    database_url = f"sqlite:///{tmp_path / 'nullable-description.db'}"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    get_settings.cache_clear()
+    config = make_alembic_config(database_url)
+    command.upgrade(config, "20260910_0005")
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        connection.execute(
+            text(
+                """
+                INSERT INTO vacancies (
+                    id, source, external_id, url, title, company, description,
+                    first_seen_at, last_seen_at, seen_count, collected_at, created_at, updated_at
+                ) VALUES (
+                    1, 'hh', 'nullable-description-001', 'https://hh.ru/vacancy/1',
+                    'Python Developer', 'Test Company', 'Existing description',
+                    '2026-11-08T00:00:00+00:00', '2026-11-08T00:00:00+00:00', 1,
+                    '2026-11-08T00:00:00+00:00', '2026-11-08T00:00:00+00:00', '2026-11-08T00:00:00+00:00'
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO vacancy_processing_events (
+                    vacancy_id, run_id, stage, status, metadata_json, created_at
+                ) VALUES (1, 'run-1', 'discovered', 'succeeded', '{}', '2026-11-08T00:00:00+00:00')
+                """
+            )
+        )
+
+    command.upgrade(config, "head")
+    assert {column["name"]: column for column in inspect(engine).get_columns("vacancies")}["description"]["nullable"] is True
+    with engine.connect() as connection:
+        assert connection.scalar(text("SELECT description FROM vacancies WHERE id = 1")) == "Existing description"
+        assert connection.scalar(text("SELECT COUNT(*) FROM vacancy_processing_events")) == 1
+
+    command.downgrade(config, "20260910_0005")
+    assert {column["name"]: column for column in inspect(engine).get_columns("vacancies")}["description"]["nullable"] is False
+    with engine.connect() as connection:
+        assert connection.scalar(text("SELECT COUNT(*) FROM vacancy_processing_events")) == 1
+    engine.dispose()
+
+
+def test_nullable_description_downgrade_refuses_discovered_rows(tmp_path, monkeypatch) -> None:
+    database_url = f"sqlite:///{tmp_path / 'nullable-description-null.db'}"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    get_settings.cache_clear()
+    config = make_alembic_config(database_url)
+    command.upgrade(config, "head")
+    engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO vacancies (
+                    source, external_id, url, title, company, description,
+                    first_seen_at, last_seen_at, seen_count, collected_at, created_at, updated_at
+                ) VALUES (
+                    'hh', 'nullable-description-null', 'https://hh.ru/vacancy/2', 'Python Developer', 'Test Company', NULL,
+                    '2026-11-08T00:00:00+00:00', '2026-11-08T00:00:00+00:00', 1,
+                    '2026-11-08T00:00:00+00:00', '2026-11-08T00:00:00+00:00', '2026-11-08T00:00:00+00:00'
+                )
+                """
+            )
+        )
+
+    with pytest.raises(RuntimeError, match="Cannot downgrade"):
+        command.downgrade(config, "20260910_0005")
+    engine.dispose()

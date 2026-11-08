@@ -188,7 +188,7 @@ class VacancyDetail(BaseModel):
     first_seen_at: datetime
     last_seen_at: datetime
     url: str | None
-    description: str
+    description: str | None
     skills: list[str]
     analysis: VacancyAnalysisDetail
     profile_ids: list[str]
