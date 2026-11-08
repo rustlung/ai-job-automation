@@ -9,6 +9,7 @@ from app.schemas.preliminary_filter import (
     PreliminaryFilterStats,
     PreliminaryFilterStatus,
 )
+from app.schemas.hh_collection import HHSearchCollectionResult
 from app.schemas.vacancy_enrichment import (
     EnrichedVacancyAssessment,
     HHCollectFilterAndEnrichRequest,
@@ -74,11 +75,32 @@ class HHCollectFilterAndEnrichService:
         self,
         request: HHCollectFilterAndEnrichRequest,
     ) -> HHCollectFilterAndEnrichResult:
+        collection = await self.collect_collection(request)
+        return await self.filter_and_enrich_collection(collection, request)
+
+    async def collect_collection(self, request: HHCollectFilterAndEnrichRequest) -> HHSearchCollectionResult:
+        return await self.collect_and_filter_service.collect(
+            HHCollectAndPreliminaryFilterRequest(
+                profile_ids=request.profile_ids,
+                max_pages_override=request.max_pages_override,
+                max_filter_items_override=request.max_filter_items_override,
+            )
+        )
+
+    def collection_stats(self, collection: HHSearchCollectionResult) -> HHCollectionStats:
+        return self.collect_and_filter_service.collection_stats(collection)
+
+    async def filter_and_enrich_collection(
+        self,
+        collection: HHSearchCollectionResult,
+        request: HHCollectFilterAndEnrichRequest,
+    ) -> HHCollectFilterAndEnrichResult:
         started_at = time.perf_counter()
         errors: list[VacancyEnrichmentError] = []
         logger.info("vacancy_enrichment_started")
 
-        preliminary_result = await self.collect_and_filter_service.collect_and_filter(
+        preliminary_result = await self.collect_and_filter_service.filter_collection(
+            collection,
             HHCollectAndPreliminaryFilterRequest(
                 profile_ids=request.profile_ids,
                 max_pages_override=request.max_pages_override,

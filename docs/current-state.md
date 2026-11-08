@@ -117,7 +117,9 @@
 ✅ Worker → Orchestrator persistence bridge
 ✅ POST /hh/collect-filter-enrich-and-persist
 ✅ POST /pipeline-results
-✅ Phase 1 discovery persistence foundation в Orchestrator (Worker пока не вызывает endpoint)
+✅ Discovery persistence foundation в Orchestrator и Worker до preliminary/enrichment: deduplicated HH preview
+сохраняются batch-ами до 100 до processing limits; discovery failure останавливает
+run, а deferred processing пока не реализован
 ✅ Orchestrator DB source of truth для vacancy pipeline
 ✅ Batch persistence в Orchestrator DB
 ✅ VacancyAnalysis history by run_id

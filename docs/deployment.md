@@ -321,6 +321,7 @@ FULL_ENRICHMENT_MAX_ITEMS=30
 FULL_ANALYSIS_BATCH_SIZE=1
 ORCHESTRATOR_API_URL=http://localhost:8000
 ORCHESTRATOR_REQUEST_TIMEOUT_SECONDS=30
+ORCHESTRATOR_INTERNAL_API_TOKEN=replace-locally
 ```
 
 Не коммитить локальный `.env`.
@@ -361,8 +362,9 @@ FULL_ANALYSIS_BATCH_SIZE=1
 `ORCHESTRATOR_API_URL` задает базовый URL Orchestrator API для Worker
 persistence bridge. `ORCHESTRATOR_REQUEST_TIMEOUT_SECONDS` задает timeout
 запроса к Orchestrator. Worker должен иметь сетевой доступ к Orchestrator
-внутри trusted LAN. Реальные IP-адреса, локальные URL и секреты не фиксировать
-в Git.
+внутри trusted LAN. `ORCHESTRATOR_INTERNAL_API_TOKEN` должен совпадать с
+Orchestrator: он защищает раннюю discovery persistence перед preliminary
+processing. Реальные IP-адреса, локальные URL и секреты не фиксировать в Git.
 
 HH проверяется на Worker без VPN. С текущим VPN-маршрутом HH возвращал HTTP 451.
 Public HH endpoints используют `httpx`. Authenticated resume profiles используют

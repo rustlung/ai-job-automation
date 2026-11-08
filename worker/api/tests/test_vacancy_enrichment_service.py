@@ -14,7 +14,7 @@ from app.schemas.preliminary_filter import (
     PreliminaryRecommendedTrack,
     PreliminaryVacancyAssessment,
 )
-from app.schemas.hh_collection import HHSearchCollectionStatus
+from app.schemas.hh_collection import HHSearchCollectionResult, HHSearchCollectionStatus
 from app.schemas.vacancy_enrichment import HHCollectFilterAndEnrichRequest
 from app.services.vacancy_enrichment import HHCollectFilterAndEnrichService
 from app.services.vacancy_feature_extraction import VacancyFeatureExtractionService
@@ -28,7 +28,31 @@ class FakeCollectAndFilterService:
         self.result = result
         self.requests = []
 
-    async def collect_and_filter(self, request):
+    async def collect(self, request):
+        self.requests.append(request)
+        vacancies = [item.vacancy for item in self.result.items]
+        return HHSearchCollectionResult(
+            status=self.result.collection_stats.status,
+            configured_profile_count=self.result.collection_stats.requested_profile_count,
+            requested_profile_count=self.result.collection_stats.requested_profile_count,
+            processed_profile_count=self.result.collection_stats.requested_profile_count,
+            skipped_profile_count=0,
+            failed_profile_count=0,
+            pages_requested=self.result.collection_stats.pages_requested,
+            pages_succeeded=self.result.collection_stats.pages_succeeded,
+            pages_failed=self.result.collection_stats.pages_failed,
+            raw_vacancy_count=len(vacancies),
+            unique_vacancy_count=len(vacancies),
+            duplicate_count=0,
+            vacancies=vacancies,
+            profile_results=[],
+            page_results=[],
+        )
+
+    def collection_stats(self, collection):
+        return self.result.collection_stats
+
+    async def filter_collection(self, collection, request):
         self.requests.append(request)
         return self.result
 

@@ -29,6 +29,10 @@ class WorkerPipelineRunSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     collection_unique_vacancy_count: int | None = Field(default=None, ge=0)
+    discovery_input_count: int | None = Field(default=None, ge=0)
+    discovery_persisted_count: int | None = Field(default=None, ge=0)
+    discovery_created_count: int | None = Field(default=None, ge=0)
+    discovery_updated_count: int | None = Field(default=None, ge=0)
     filter_processed_count: int | None = Field(default=None, ge=0)
     enriched_count: int | None = Field(default=None, ge=0)
     persisted_count: int | None = Field(default=None, ge=0)

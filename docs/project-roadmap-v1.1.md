@@ -21,12 +21,12 @@
 
 Внешние AI API используются для задач, где требуется дополнительное качество анализа.
 
-## Discovery persistence — Phase 1
+## Discovery persistence — Phases 1--2
 
-Статус: реализована foundation в Orchestrator. Nullable `Vacancy.description`
-различает современную preview-запись (`NULL`) и legacy historical data (`""`).
-Следующая фаза подключит Worker до preliminary/enrichment; очередь deferred
-processing в этот этап не входит.
+Статус: реализованы Orchestrator foundation и Worker integration. Nullable
+`Vacancy.description` различает современную preview-запись (`NULL`) и legacy
+historical data (`""`). Worker сохраняет deduplicated HH preview до
+preliminary/enrichment; очередь deferred processing в этот этап не входит.
 
 ---
 

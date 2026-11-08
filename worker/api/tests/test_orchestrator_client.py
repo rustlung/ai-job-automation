@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 
@@ -6,6 +8,22 @@ from app.clients.orchestrator import OrchestratorClient, OrchestratorClientRespo
 
 def payload() -> dict:
     return {"run_id": "run-001", "items": []}
+
+
+def discovery_payload() -> dict:
+    return {
+        "run_id": "run-001",
+        "items": [
+            {
+                "source": "hh",
+                "external_id": "123",
+                "url": "https://hh.ru/vacancy/123",
+                "title": "Python Developer",
+                "company": "Example",
+                "seen_at": "2026-11-08T08:00:00+00:00",
+            }
+        ],
+    }
 
 
 @pytest.mark.anyio
@@ -101,6 +119,70 @@ async def test_orchestrator_client_logs_safe_422_validation_details(caplog: pyte
 
     with pytest.raises(OrchestratorClientResponseError) as exc_info:
         await client.persist_pipeline_results(payload(), batch_index=2, batch_count=2)
+
+    assert exc_info.value.validation_details == [
+        {"loc": ["body", "items"], "msg": "List should have at most 100 items", "type": "too_long", "ctx": {"max_length": 100}}
+    ]
+    assert "orchestrator_validation_failed" in caplog.text
+    assert "secret vacancy description" not in caplog.text
+    assert "input" not in caplog.text
+
+
+@pytest.mark.anyio
+async def test_orchestrator_client_persists_discovered_vacancies_with_internal_token() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/internal/discovered-vacancies"
+        assert request.headers["X-Orchestrator-Internal-Token"] == "internal-secret"
+        assert json.loads(request.content) == discovery_payload()
+        return httpx.Response(
+            201,
+            json={
+                "stats": {
+                    "run_id": "run-001",
+                    "input_count": 1,
+                    "created_count": 1,
+                    "updated_count": 0,
+                    "already_seen_count": 0,
+                    "failed_count": 0,
+                },
+                "errors": [],
+            },
+        )
+
+    client = OrchestratorClient(
+        "http://orchestrator",
+        5,
+        internal_api_token="internal-secret",
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await client.persist_discovered_vacancies(discovery_payload(), batch_index=1, batch_count=1)
+
+    assert result["stats"]["created_count"] == 1
+
+
+@pytest.mark.anyio
+async def test_orchestrator_client_logs_safe_discovery_422_details(caplog: pytest.LogCaptureFixture) -> None:
+    async def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            422,
+            json={
+                "detail": [
+                    {
+                        "loc": ["body", "items"],
+                        "msg": "List should have at most 100 items",
+                        "type": "too_long",
+                        "ctx": {"max_length": 100},
+                        "input": {"description": "secret vacancy description"},
+                    }
+                ]
+            },
+        )
+
+    client = OrchestratorClient("http://orchestrator", 5, transport=httpx.MockTransport(handler))
+
+    with pytest.raises(OrchestratorClientResponseError) as exc_info:
+        await client.persist_discovered_vacancies(discovery_payload(), batch_index=2, batch_count=2)
 
     assert exc_info.value.validation_details == [
         {"loc": ["body", "items"], "msg": "List should have at most 100 items", "type": "too_long", "ctx": {"max_length": 100}}

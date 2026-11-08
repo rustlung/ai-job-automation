@@ -145,6 +145,26 @@ async def test_failure_releases_active_run_for_next_start() -> None:
 
 
 @pytest.mark.anyio
+async def test_failed_result_preserves_discovery_persistence_diagnostic() -> None:
+    failed_result = result(status="failed", persistence=False)
+    failed_result.errors = [
+        SimpleNamespace(
+            error_code="orchestrator_discovery_persistence_failed",
+            message="Не удалось сохранить discovery batch 2 из 2 в Orchestrator",
+        )
+    ]
+    manager = WorkerPipelineRunManager(lambda: FakePipelineService(result=failed_result), lambda _: None)
+
+    await manager.start(request("discovery-failed"))
+    state = await wait_for_terminal(manager, "discovery-failed")
+
+    assert state.status == WorkerPipelineRunStatus.FAILED
+    assert state.result_available is False
+    assert state.error_code == "orchestrator_discovery_persistence_failed"
+    assert state.error_summary == "Не удалось сохранить discovery batch 2 из 2 в Orchestrator"
+
+
+@pytest.mark.anyio
 async def test_same_active_run_is_idempotent_and_second_run_is_busy() -> None:
     release = asyncio.Event()
     service = FakePipelineService(release=release)

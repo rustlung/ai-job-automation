@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from app.clients.orchestrator import OrchestratorClient, OrchestratorClientError
 from app.core.config import Settings
+from app.schemas.discovered_vacancy import DiscoveryPersistenceStats
 from app.schemas.pipeline_persistence import (
     HHCollectFilterEnrichAndPersistRequest,
     HHCollectFilterEnrichAndPersistResult,
@@ -12,8 +13,12 @@ from app.schemas.pipeline_persistence import (
     PipelinePersistenceStats,
 )
 from app.schemas.pipeline_run import WorkerPipelineRunDiagnostic
-from app.schemas.vacancy_enrichment import HHCollectFilterAndEnrichRequest, VacancyEnrichmentStatus
+from app.schemas.vacancy_enrichment import HHCollectFilterAndEnrichRequest, VacancyEnrichmentStats, VacancyEnrichmentStatus
 from app.services.vacancy_enrichment import HHCollectFilterAndEnrichService
+from app.services.discovered_vacancy import (
+    DiscoveredVacancyPersistenceService,
+    DiscoveryPersistenceBatchError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +45,11 @@ class HHCollectFilterEnrichAndPersistService:
         self,
         enrichment_service: HHCollectFilterAndEnrichService,
         orchestrator_client: OrchestratorClient,
+        discovery_persistence_service: DiscoveredVacancyPersistenceService | None = None,
     ) -> None:
         self.enrichment_service = enrichment_service
         self.orchestrator_client = orchestrator_client
+        self.discovery_persistence_service = discovery_persistence_service or DiscoveredVacancyPersistenceService(orchestrator_client)
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "HHCollectFilterEnrichAndPersistService":
@@ -51,6 +58,7 @@ class HHCollectFilterEnrichAndPersistService:
             orchestrator_client=OrchestratorClient(
                 base_url=settings.orchestrator_api_url,
                 timeout_seconds=settings.orchestrator_request_timeout_seconds,
+                internal_api_token=settings.orchestrator_internal_api_token,
             ),
         )
 
@@ -62,14 +70,29 @@ class HHCollectFilterEnrichAndPersistService:
         run_id = request.pipeline_run_id or f"hh-pipeline-{uuid4()}"
         logger.info("pipeline_collect_enrich_persist_started run_id=%s", run_id)
 
-        enrichment_result = await self.enrichment_service.collect_filter_and_enrich(
-            HHCollectFilterAndEnrichRequest(
-                profile_ids=request.profile_ids,
-                max_pages_override=request.max_pages_override,
-                max_filter_items_override=request.max_filter_items_override,
-                max_enrich_items_override=request.max_enrich_items_override,
-            )
+        enrichment_request = HHCollectFilterAndEnrichRequest(
+            profile_ids=request.profile_ids,
+            max_pages_override=request.max_pages_override,
+            max_filter_items_override=request.max_filter_items_override,
+            max_enrich_items_override=request.max_enrich_items_override,
         )
+        collection = await self.enrichment_service.collect_collection(enrichment_request)
+        collection_stats = self.enrichment_service.collection_stats(collection)
+        discovery_stats: DiscoveryPersistenceStats | None = None
+        try:
+            discovery_stats = await self.discovery_persistence_service.persist(run_id, collection.vacancies)
+        except DiscoveryPersistenceBatchError as exc:
+            return self._discovery_failure_result(
+                run_id=run_id,
+                collection_stats=collection_stats,
+                discovery_stats=exc.stats,
+                batch_index=exc.batch_index,
+                batch_count=exc.batch_count,
+                batch_size=exc.batch_size,
+                duration_ms=self._duration_ms(started_at),
+            )
+
+        enrichment_result = await self.enrichment_service.filter_and_enrich_collection(collection, enrichment_request)
         persistence_result: dict | None = None
         persistence_stats: PipelinePersistenceStats | None = None
         errors: list[PipelinePersistenceError] = [
@@ -159,6 +182,7 @@ class HHCollectFilterEnrichAndPersistService:
             status=status,
             pipeline_run_id=run_id,
             collection_stats=enrichment_result.collection_stats,
+            discovery_stats=discovery_stats,
             filter_stats=enrichment_result.filter_stats,
             enrichment_stats=enrichment_result.enrichment_stats,
             persistence_stats=persistence_stats,
@@ -169,6 +193,63 @@ class HHCollectFilterEnrichAndPersistService:
             errors=errors,
             warnings=warnings,
             partial_failures=self._merge_diagnostics(partial_failures),
+            duration_ms=duration_ms,
+        )
+
+    @staticmethod
+    def _discovery_failure_result(
+        *,
+        run_id: str,
+        collection_stats,
+        discovery_stats: DiscoveryPersistenceStats,
+        batch_index: int,
+        batch_count: int,
+        batch_size: int,
+        duration_ms: int,
+    ) -> HHCollectFilterEnrichAndPersistResult:
+        summary = f"Не удалось сохранить discovery batch {batch_index} из {batch_count} в Orchestrator"
+        logger.warning(
+            "pipeline_discovery_persistence_failed run_id=%s error_code=orchestrator_discovery_persistence_failed "
+            "batch_index=%s batch_count=%s batch_size=%s persisted_count=%s",
+            run_id,
+            batch_index,
+            batch_count,
+            batch_size,
+            discovery_stats.persisted_count,
+        )
+        return HHCollectFilterEnrichAndPersistResult(
+            status=VacancyEnrichmentStatus.FAILED,
+            pipeline_run_id=run_id,
+            collection_stats=collection_stats,
+            discovery_stats=discovery_stats,
+            enrichment_stats=VacancyEnrichmentStats(
+                status=VacancyEnrichmentStatus.FAILED,
+                input_count=0,
+                enrich_candidate_count=0,
+                enriched_count=0,
+                failed_fetch_count=0,
+                failed_normalization_count=0,
+                semantic_fallback_count=0,
+                p1_count=0,
+                p2_count=0,
+                p3_count=0,
+                alt_count=0,
+                duration_ms=0,
+            ),
+            items=[],
+            errors=[
+                PipelinePersistenceError(
+                    error_code="orchestrator_discovery_persistence_failed",
+                    message=summary,
+                )
+            ],
+            partial_failures=[
+                WorkerPipelineRunDiagnostic(
+                    code="orchestrator_discovery_persistence_failed",
+                    count=1,
+                    summary=summary,
+                )
+            ],
             duration_ms=duration_ms,
         )
 

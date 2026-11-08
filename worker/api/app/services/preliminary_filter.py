@@ -6,7 +6,12 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.clients.ollama import OllamaClient, OllamaError, OllamaResponseError
 from app.core.config import Settings
-from app.schemas.hh_collection import HHSearchCollectedVacancy, HHSearchCollectionRequest, HHSearchCollectionStatus
+from app.schemas.hh_collection import (
+    HHSearchCollectedVacancy,
+    HHSearchCollectionRequest,
+    HHSearchCollectionResult,
+    HHSearchCollectionStatus,
+)
 from app.schemas.preliminary_filter import (
     HHCollectAndPreliminaryFilterRequest,
     HHCollectAndPreliminaryFilterResult,
@@ -568,13 +573,31 @@ class HHCollectAndPreliminaryFilterService:
     ) -> HHCollectAndPreliminaryFilterResult:
         started_at = time.perf_counter()
         logger.info("hh_collect_and_filter_started")
-        collection = await self.collection_service.collect(
+        collection = await self.collect(request)
+        return await self.filter_collection(collection, request, started_at=started_at)
+
+    async def collect(self, request: HHCollectAndPreliminaryFilterRequest) -> HHSearchCollectionResult:
+        return await self.collection_service.collect(
             HHSearchCollectionRequest(
                 profile_ids=request.profile_ids,
                 max_pages_override=request.max_pages_override,
             )
         )
-        collection_stats = HHCollectionStats(
+
+    async def filter_collection(
+        self,
+        collection: HHSearchCollectionResult,
+        request: HHCollectAndPreliminaryFilterRequest,
+        *,
+        started_at: float | None = None,
+    ) -> HHCollectAndPreliminaryFilterResult:
+        started_at = started_at if started_at is not None else time.perf_counter()
+        collection_stats = self.collection_stats(collection)
+        return await self._filter_collection(collection, collection_stats, request, started_at)
+
+    @staticmethod
+    def collection_stats(collection: HHSearchCollectionResult) -> HHCollectionStats:
+        return HHCollectionStats(
             status=collection.status,
             requested_profile_count=collection.requested_profile_count,
             pages_requested=collection.pages_requested,
@@ -584,6 +607,14 @@ class HHCollectAndPreliminaryFilterService:
             unique_vacancy_count=collection.unique_vacancy_count,
             duplicate_count=collection.duplicate_count,
         )
+
+    async def _filter_collection(
+        self,
+        collection: HHSearchCollectionResult,
+        collection_stats: HHCollectionStats,
+        request: HHCollectAndPreliminaryFilterRequest,
+        started_at: float,
+    ) -> HHCollectAndPreliminaryFilterResult:
         if collection.status == HHSearchCollectionStatus.FAILED and not collection.vacancies:
             result = HHCollectAndPreliminaryFilterResult(
                 status=PreliminaryFilterStatus.FAILED,

@@ -161,9 +161,12 @@ HH collection, preliminary filter, full vacancy fetch, normalization,
 deterministic feature extraction, compact semantic analysis, final scoring и
 priority assignment `P1/P2/P3/ALT`. Endpoint не сохраняет данные в Orchestrator.
 
-`POST /hh/collect-filter-enrich-and-persist` выполняет тот же pipeline и затем
-передает результат в Orchestrator через persistence bridge. Это основной
-endpoint production n8n workflow.
+`POST /hh/collect-filter-enrich-and-persist` после collection и in-memory
+deduplication сначала сохраняет short discovered HH cards в Orchestrator, затем
+выполняет preliminary/full pipeline и передает enriched result через persistence
+bridge. Discovery выполняется batch-ами до 100 под внутренним токеном; его
+ошибка является fatal и не запускает processing. Это основной endpoint
+production n8n workflow. Stateless endpoint не записывает discovery data.
 
 Pipeline поддерживает controlled partial failure semantics. Отдельные ошибки
 fetch, normalization, deterministic feature extraction или semantic analysis по
@@ -386,13 +389,14 @@ sync. Именно этот endpoint используется production workflo
 POST /internal/discovered-vacancies
 ```
 
-Internal Worker-only endpoint для Phase 1 ранней фиксации коротких HH search
+Internal Worker-only endpoint для ранней фиксации коротких HH search
 cards. Он использует тот же `X-Orchestrator-Internal-Token`, что lifecycle
 pipeline runs, принимает до 100 items за request и создаёт/обновляет canonical
 `source + external_id` без `VacancyAnalysis`. Новая карточка хранит
 `description = null` и `business_fingerprint = null`; повтор в том же `run_id`
-идемпотентен по discovery event. На этой фазе Worker этот endpoint ещё не
-вызывает.
+идемпотентен по discovery event. Persistent Worker pipeline вызывает endpoint
+после collection/deduplication и до preliminary limits; stateless Worker
+endpoints его не вызывают.
 
 ### Manual Vacancy Create
 

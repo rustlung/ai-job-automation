@@ -265,6 +265,9 @@ class WorkerPipelineRunManager:
             if getattr(result, "persistence_stats", None) is not None:
                 return WorkerPipelineRunStatus.COMPLETED, True, None, None
             return WorkerPipelineRunStatus.FAILED, False, "critical_persistence_failure", "Worker не сохранил полезный результат"
+        errors = list(getattr(result, "errors", []))
+        if errors:
+            return WorkerPipelineRunStatus.FAILED, False, errors[0].error_code, errors[0].message
         return WorkerPipelineRunStatus.FAILED, False, "pipeline_failed", "Pipeline не завершился с полезным результатом"
 
     @staticmethod
@@ -273,9 +276,14 @@ class WorkerPipelineRunManager:
         filter_stats = getattr(result, "filter_stats", None)
         enrichment_stats = getattr(result, "enrichment_stats", None)
         persistence_stats = getattr(result, "persistence_stats", None)
+        discovery_stats = getattr(result, "discovery_stats", None)
         persistence_status = getattr(persistence_stats, "status", None)
         return WorkerPipelineRunSummary(
             collection_unique_vacancy_count=getattr(collection_stats, "unique_vacancy_count", None),
+            discovery_input_count=getattr(discovery_stats, "input_count", None),
+            discovery_persisted_count=getattr(discovery_stats, "persisted_count", None),
+            discovery_created_count=getattr(discovery_stats, "created_count", None),
+            discovery_updated_count=getattr(discovery_stats, "updated_count", None),
             filter_processed_count=getattr(filter_stats, "processed_count", None),
             enriched_count=getattr(enrichment_stats, "enriched_count", None),
             persisted_count=getattr(persistence_stats, "persisted_count", None),

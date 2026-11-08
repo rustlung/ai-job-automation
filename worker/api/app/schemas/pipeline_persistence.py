@@ -2,6 +2,7 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
+from app.schemas.discovered_vacancy import DiscoveryPersistenceStats
 from app.schemas.preliminary_filter import HHCollectionStats, PreliminaryFilterStats
 from app.schemas.pipeline_run import WorkerPipelineRunDiagnostic
 from app.schemas.vacancy_enrichment import EnrichedVacancyAssessment, VacancyEnrichmentStats, VacancyEnrichmentStatus
@@ -51,6 +52,7 @@ class HHCollectFilterEnrichAndPersistResult(BaseModel):
     status: VacancyEnrichmentStatus
     pipeline_run_id: str
     collection_stats: HHCollectionStats
+    discovery_stats: DiscoveryPersistenceStats | None = None
     filter_stats: PreliminaryFilterStats | None = None
     enrichment_stats: VacancyEnrichmentStats
     persistence_stats: PipelinePersistenceStats | None = None

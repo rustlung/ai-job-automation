@@ -30,6 +30,7 @@ HH
 ↓
 Worker
 ├── collection
+├── discovery persistence
 ├── preliminary local AI
 ├── full fetch
 ├── normalization
@@ -71,6 +72,13 @@ Public exposure:
     Application/UserState/manual mutations также не используют Sheets как runtime
     mirror.
 -   On-demand Data Exports читает Orchestrator DB напрямую и выдаёт XLSX/CSV.
+
+После collection и in-memory deduplication Worker фиксирует все canonical HH
+preview в Orchestrator до preliminary и full enrichment. Лимиты обработки
+ограничивают только текущую обработку, а не попадание собранной вакансии в
+историю. Discovery batch содержит до 100 карточек, использует внутреннюю
+авторизацию Orchestrator и не создаёт `VacancyAnalysis`; deferred processing
+очередь пока не реализована.
 
 Web backend foundation:
 

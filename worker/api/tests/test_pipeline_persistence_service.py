@@ -4,7 +4,13 @@ from datetime import datetime, timezone
 import httpx
 import pytest
 
-from app.schemas.hh_collection import HHSearchCollectionStatus
+from app.schemas.hh_collection import (
+    HHSearchCollectedVacancy,
+    HHSearchCollectionResult,
+    HHSearchCollectionStatus,
+    HHSearchVacancyProvenance,
+    SearchProfileTrack,
+)
 from app.schemas.pipeline_persistence import HHCollectFilterEnrichAndPersistRequest
 from app.schemas.preliminary_filter import HHCollectionStats, PreliminaryFilterStats, PreliminaryFilterStatus
 from app.schemas.vacancy import NormalizedVacancy
@@ -35,17 +41,44 @@ from app.services.pipeline_persistence import HHCollectFilterEnrichAndPersistSer
 
 
 class FakeEnrichmentService:
-    def __init__(self, result: HHCollectFilterAndEnrichResult) -> None:
+    def __init__(self, result: HHCollectFilterAndEnrichResult, collection: HHSearchCollectionResult | None = None) -> None:
         self.result = result
         self.requests = []
+        self.collection_requests = []
+        self.filter_requests = []
+        self.collection = collection or collection_for_count(
+            result.collection_stats,
+            max(result.collection_stats.unique_vacancy_count, len(result.items)),
+        )
 
-    async def collect_filter_and_enrich(self, request):
-        self.requests.append(request)
+    async def collect_collection(self, request):
+        self.collection_requests.append(request)
+        return self.collection
+
+    def collection_stats(self, collection):
+        return HHCollectionStats(
+            status=collection.status,
+            requested_profile_count=collection.requested_profile_count,
+            pages_requested=collection.pages_requested,
+            pages_succeeded=collection.pages_succeeded,
+            pages_failed=collection.pages_failed,
+            raw_vacancy_count=collection.raw_vacancy_count,
+            unique_vacancy_count=collection.unique_vacancy_count,
+            duplicate_count=collection.duplicate_count,
+        )
+
+    async def filter_and_enrich_collection(self, collection, request):
+        self.filter_requests.append((collection, request))
         return self.result
 
 
 class FakeOrchestratorClient:
-    def __init__(self, result: dict | None = None, error: Exception | None = None) -> None:
+    def __init__(
+        self,
+        result: dict | None = None,
+        error: Exception | None = None,
+        discovery_error: Exception | None = None,
+    ) -> None:
         self.result = result or {
             "stats": {
                 "run_id": "run-001",
@@ -61,13 +94,32 @@ class FakeOrchestratorClient:
             }
         }
         self.error = error
+        self.discovery_error = discovery_error
         self.payloads = []
+        self.discovery_payloads = []
 
     async def persist_pipeline_results(self, payload, **_kwargs):
         self.payloads.append(payload)
         if self.error is not None:
             raise self.error
         return self.result
+
+    async def persist_discovered_vacancies(self, payload, **_kwargs):
+        self.discovery_payloads.append(payload)
+        if self.discovery_error is not None:
+            raise self.discovery_error
+        item_count = len(payload["items"])
+        return {
+            "stats": {
+                "run_id": payload["run_id"],
+                "input_count": item_count,
+                "created_count": item_count,
+                "updated_count": 0,
+                "already_seen_count": 0,
+                "failed_count": 0,
+            },
+            "errors": [],
+        }
 
 
 class BatchOrchestratorClient:
@@ -83,6 +135,7 @@ class BatchOrchestratorClient:
         self.item_failure_batch = item_failure_batch
         self.payloads = []
         self.batch_metadata = []
+        self.discovery_payloads = []
 
     async def persist_pipeline_results(self, payload, *, batch_index=None, batch_count=None):
         self.payloads.append(payload)
@@ -110,6 +163,57 @@ class BatchOrchestratorClient:
             "errors": ([{"item_index": 0, "error_code": "pipeline_item_persist_failed"}] if failed_count else []),
             "duration_ms": 1,
         }
+
+    async def persist_discovered_vacancies(self, payload, **_kwargs):
+        self.discovery_payloads.append(payload)
+        item_count = len(payload["items"])
+        return {
+            "stats": {
+                "run_id": payload["run_id"],
+                "input_count": item_count,
+                "created_count": item_count,
+                "updated_count": 0,
+                "already_seen_count": 0,
+                "failed_count": 0,
+            },
+            "errors": [],
+        }
+
+
+def collection_for_count(stats: HHCollectionStats, item_count: int) -> HHSearchCollectionResult:
+    vacancies = [
+        HHSearchCollectedVacancy(
+            external_id=str(index + 1),
+            url=f"https://hh.ru/vacancy/{index + 1}",
+            title="Python Backend Developer",
+            company="Test",
+            is_remote=True,
+            provenance=HHSearchVacancyProvenance(
+                profile_ids=["ai_resume_recommendations"],
+                tracks=[SearchProfileTrack.MAIN],
+                first_profile_id="ai_resume_recommendations",
+                occurrence_count=1,
+            ),
+        )
+        for index in range(item_count)
+    ]
+    return HHSearchCollectionResult(
+        status=stats.status,
+        configured_profile_count=stats.requested_profile_count,
+        requested_profile_count=stats.requested_profile_count,
+        processed_profile_count=stats.requested_profile_count,
+        skipped_profile_count=0,
+        failed_profile_count=0,
+        pages_requested=stats.pages_requested,
+        pages_succeeded=stats.pages_succeeded,
+        pages_failed=stats.pages_failed,
+        raw_vacancy_count=item_count,
+        unique_vacancy_count=item_count,
+        duplicate_count=0,
+        vacancies=vacancies,
+        profile_results=[],
+        page_results=[],
+    )
 
 
 def enrichment_result() -> HHCollectFilterAndEnrichResult:
@@ -431,6 +535,21 @@ async def test_persistence_service_retries_only_failed_batch() -> None:
 
     async def handler(request: httpx.Request) -> httpx.Response:
         item_count = len(json.loads(request.content)["items"])
+        if request.url.path == "/internal/discovered-vacancies":
+            return httpx.Response(
+                201,
+                json={
+                    "stats": {
+                        "run_id": "run-001",
+                        "input_count": item_count,
+                        "created_count": item_count,
+                        "updated_count": 0,
+                        "already_seen_count": 0,
+                        "failed_count": 0,
+                    },
+                    "errors": [],
+                },
+            )
         request_sizes.append(item_count)
         if request_sizes == [100, 1]:
             return httpx.Response(503, json={"detail": "temporary"})
@@ -472,3 +591,65 @@ async def test_persistence_service_retries_only_failed_batch() -> None:
     assert request_sizes == [100, 1, 1]
     assert result.persistence_stats is not None
     assert result.persistence_stats.persisted_count == 101
+
+
+@pytest.mark.anyio
+async def test_discovery_persistence_happens_before_filter_and_persists_collection_before_preliminary_limit() -> None:
+    enrichment = enrichment_result_with_items(100)
+    enrichment.filter_stats.input_count = 100
+    enrichment.filter_stats.processed_count = 100
+    collection = collection_for_count(enrichment.collection_stats, 150)
+    client = FakeOrchestratorClient()
+    enrichment_service = FakeEnrichmentService(enrichment, collection)
+    service = HHCollectFilterEnrichAndPersistService(enrichment_service, client)  # type: ignore[arg-type]
+
+    result = await service.collect_filter_enrich_and_persist(
+        HHCollectFilterEnrichAndPersistRequest(pipeline_run_id="run-001", max_filter_items_override=100)
+    )
+
+    assert [len(payload["items"]) for payload in client.discovery_payloads] == [100, 50]
+    assert result.discovery_stats is not None
+    assert result.discovery_stats.persisted_count == 150
+    assert result.filter_stats is not None
+    assert result.filter_stats.processed_count == 100
+    assert len(enrichment_service.filter_requests) == 1
+    assert enrichment_service.filter_requests[0][0] is collection
+
+
+@pytest.mark.anyio
+async def test_discovery_failure_blocks_preliminary_and_preserves_prior_batch_stats() -> None:
+    from app.clients.orchestrator import OrchestratorClientConnectionError
+
+    enrichment = enrichment_result_with_items(100)
+    collection = collection_for_count(enrichment.collection_stats, 150)
+    client = FakeOrchestratorClient(discovery_error=OrchestratorClientConnectionError("down"))
+    enrichment_service = FakeEnrichmentService(enrichment, collection)
+    service = HHCollectFilterEnrichAndPersistService(enrichment_service, client)  # type: ignore[arg-type]
+
+    result = await service.collect_filter_enrich_and_persist(HHCollectFilterEnrichAndPersistRequest(pipeline_run_id="run-001"))
+
+    assert result.status == VacancyEnrichmentStatus.FAILED
+    assert result.errors[0].error_code == "orchestrator_discovery_persistence_failed"
+    assert enrichment_service.filter_requests == []
+    assert len(client.discovery_payloads) == 1
+
+
+@pytest.mark.anyio
+async def test_enrichment_limit_does_not_reduce_discovery_persistence() -> None:
+    enrichment = enrichment_result_with_items(150)
+    enrichment.enrichment_stats.input_count = 355
+    enrichment.enrichment_stats.enrich_candidate_count = 355
+    enrichment.enrichment_stats.enriched_count = 150
+    collection = collection_for_count(enrichment.collection_stats, 355)
+    client = FakeOrchestratorClient()
+    service = HHCollectFilterEnrichAndPersistService(
+        FakeEnrichmentService(enrichment, collection),
+        client,  # type: ignore[arg-type]
+    )
+
+    result = await service.collect_filter_enrich_and_persist(HHCollectFilterEnrichAndPersistRequest(pipeline_run_id="run-001"))
+
+    assert [len(payload["items"]) for payload in client.discovery_payloads] == [100, 100, 100, 55]
+    assert result.discovery_stats is not None
+    assert result.discovery_stats.persisted_count == 355
+    assert result.enrichment_stats.enriched_count == 150

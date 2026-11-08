@@ -126,7 +126,9 @@ Manual Trigger
 ```
 
 n8n не выполняет HH parsing, AI inference, semantic scoring, final priority
-calculation или canonical persistence.
+calculation или canonical persistence. Внутри persistent Worker pipeline после
+collection/deduplication все discovered HH preview сохраняются в Orchestrator
+до preliminary/enrichment limits; n8n contract от этого не меняется.
 
 ### Topology
 

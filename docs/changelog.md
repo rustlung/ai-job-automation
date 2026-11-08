@@ -4,11 +4,18 @@
 
 ### Added
 
+- Worker discovery persistence: production persistent pipeline после HH
+  collection/deduplication отправляет все discovered preview в
+  `/internal/discovered-vacancies` batch-ами до 100 и только затем запускает
+  preliminary/full enrichment. Ошибка текущего batch останавливает run без
+  повтора уже успешных batch; processing limits больше не отбрасывают collected
+  vacancy из Orchestrator DB history.
+
 - Discovery persistence foundation: internal batch endpoint
   `POST /internal/discovered-vacancies` сохраняет deduplicated HH preview по
   canonical identity до enrichment, не создаёт AI analysis и не понижает уже
   enriched row. `Vacancy.description = NULL` обозначает modern discovered
-  preview; Worker будет подключён отдельной следующей фазой.
+  preview.
 
 - Daily Search Digest v14: отдельный production workflow без Google Sheets
   nodes, credentials и CRM matching. Gmail digest теперь формируется из
