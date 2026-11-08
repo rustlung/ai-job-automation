@@ -243,12 +243,12 @@ export interface VacancyApplicationDetail {
 export interface VacancyAnalysisDetail {
   priority: VacancyPriority | null;
   final_score: number | null;
-  relevance: number;
+  relevance: number | null;
   track: string | null;
-  summary: string;
-  reason: string;
-  risks: string[];
-  hard_blockers: string[];
+  summary: string | null;
+  reason: string | null;
+  risks: string[] | null;
+  hard_blockers: string[] | null;
 }
 
 export interface VacancyDetail {
@@ -269,9 +269,9 @@ export interface VacancyDetail {
   first_seen_at: string;
   last_seen_at: string;
   url: string | null;
-  description: string;
+  description: string | null;
   skills: string[];
-  analysis: VacancyAnalysisDetail;
+  analysis: VacancyAnalysisDetail | null;
   profile_ids: string[];
   query_variant_ids: string[];
   provenance_tracks: string[];

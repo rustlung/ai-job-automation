@@ -134,6 +134,15 @@ describe("VacancyDetailPage", () => {
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });
 
+  it("renders a discovered vacancy without description or analysis", () => {
+    useVacancyDetail.mockReturnValue({ data: { ...vacancy, description: null, analysis: null, salary_text: null, url: null }, isLoading: false, isError: false });
+    renderPage();
+
+    expect(screen.getByText("Полное описание ещё не загружено.")).toBeInTheDocument();
+    expect(screen.getByText("Оценка ещё не сформирована.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Открыть оригинал" })).not.toBeInTheDocument();
+  });
+
   it("renders loading, not found and generic error states", () => {
     useVacancyDetail.mockReturnValue({ data: undefined, isLoading: true, isError: false });
     const { unmount } = renderPage();
