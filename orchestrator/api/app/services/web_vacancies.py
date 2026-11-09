@@ -392,9 +392,10 @@ class WebVacancyListService:
     def _matches_processing_filter(processing: VacancyProcessingFilter, outcome) -> bool:
         if processing == VacancyProcessingFilter.ALL:
             return True
-        # Rows predating Phase B have no outcome. Keep them visible by default.
+        # Historical rows have no trustworthy preliminary outcome. They remain
+        # available only through the explicit all-history view.
         if outcome is None:
-            return processing == VacancyProcessingFilter.WORKING
+            return False
         if processing == VacancyProcessingFilter.WORKING:
             return outcome.processing_state in {"preliminary_kept", "enriched"}
         if processing == VacancyProcessingFilter.REJECTED:

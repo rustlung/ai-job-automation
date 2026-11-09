@@ -243,9 +243,10 @@ and `asc`/`desc` direction. It does not return full descriptions.
 
 The backend-only `processing=working|rejected|errors|all` filter uses the
 latest persisted preliminary outcome for each logical group. `working` is the
-default: it includes preliminary-kept/enriched groups and legacy rows without
-an outcome; rejected and terminal processing-error rows remain available for
-audit. The list and detail payload expose the compact preliminary outcome when
+default: it includes only preliminary-kept/enriched groups. Rows without an
+outcome are historical/unknown and are returned only by `processing=all`;
+rejected and terminal processing-error rows remain available for audit. The
+list and detail payload expose the compact preliminary outcome when
 one exists.
 
 `application_status=submitted`, `response_received`, and `interview` are

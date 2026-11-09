@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from datetime import date
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -108,7 +109,7 @@ def test_preliminary_outcomes_api_requires_internal_token_and_enforces_batch_lim
 
 
 def test_preliminary_outcome_state_is_visible_to_web_filters(db_session) -> None:
-    persist_discovered(db_session, "rejected", "kept", "failed")
+    persist_discovered(db_session, "rejected", "kept", "failed", "legacy")
     service = PreliminaryOutcomeService(db_session)
     service.persist(
         PreliminaryOutcomesCreate(
@@ -130,7 +131,23 @@ def test_preliminary_outcome_state_is_visible_to_web_filters(db_session) -> None
     assert [item.external_id for item in working.items] == ["kept"]
     assert [item.external_id for item in rejected.items] == ["rejected"]
     assert [item.external_id for item in errors.items] == ["failed"]
-    assert {item.external_id for item in all_items.items} == {"rejected", "kept", "failed"}
+    assert {item.external_id for item in all_items.items} == {"rejected", "kept", "failed", "legacy"}
+
+
+def test_processing_filter_combines_with_date_and_pagination(db_session) -> None:
+    persist_discovered(db_session, "kept", "legacy")
+    PreliminaryOutcomeService(db_session).persist(
+        PreliminaryOutcomesCreate(**outcome_payload(outcome_item("kept", outcome="keep_alt", state="preliminary_kept")))
+    )
+    web = WebVacancyListService(db_session)
+    common = {"date_from": date(2026, 11, 8), "date_to": date(2026, 11, 8), "priorities": None, "track": None, "profile_id": None, "application_status": None, "vacancy_status": None, "user_priority": None, "run_id": None, "search": None, "sort": VacancyListSort.FIRST_SEEN, "sort_direction": SortDirection.DESC}
+
+    working = web.list(**common, processing=VacancyProcessingFilter.WORKING, limit=25, offset=0)
+    all_page = web.list(**common, processing=VacancyProcessingFilter.ALL, limit=1, offset=1)
+
+    assert [item.external_id for item in working.items] == ["kept"]
+    assert all_page.total == 2
+    assert len(all_page.items) == 1
 
 
 def test_final_persistence_marks_same_run_kept_outcome_enriched(db_session) -> None:

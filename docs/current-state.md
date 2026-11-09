@@ -515,7 +515,8 @@ endpoint после collection/deduplication и до preliminary processing.
 `POST /internal/preliminary-outcomes`. Outcome не создаёт искусственный
 `VacancyAnalysis`: он хранится отдельно и уникален по `vacancy_id + run_id`.
 Отказ policy и AI reject остаются в истории, но default Vacancy List скрывает
-их из рабочего shortlist; legacy rows без outcome остаются видимы.
+их из рабочего shortlist; legacy rows без outcome доступны только через
+processing filter «Все».
 
 Identity вакансии остается `source + external_id`. Повторное обнаружение той же
 вакансии не создает новую `Vacancy` row. Same-run persistence retry по той же

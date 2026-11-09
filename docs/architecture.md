@@ -85,7 +85,7 @@ Phase B сохраняет terminal preliminary outcome отдельно от п
 `vacancy_id + run_id`; её current-state обновляется до `enriched` после полной
 persistence. Это даёт быстрый backend filter рабочего shortlist, rejected и
 processing errors без сложного чтения append-only событий. Legacy vacancy без
-outcome остаётся видимой в default working view. Resume/backlog после crash не
+outcome не получает выдуманный state и доступна только в explicit all-history view. Resume/backlog после crash не
 появляется и в этой фазе.
 
 После collection и in-memory deduplication Worker фиксирует все canonical HH

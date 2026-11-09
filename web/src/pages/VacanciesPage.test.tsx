@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -151,6 +151,23 @@ describe("VacanciesPage", () => {
     expect(screen.getByTestId("location")).toHaveTextContent("profile_id=ai_automation_keywords");
     fireEvent.change(dropdown, { target: { value: "" } });
     expect(screen.getByTestId("location")).not.toHaveTextContent("profile_id");
+  });
+
+  it("renders the processing filter, defaults to working, and synchronizes every option with the URL", () => {
+    renderPage();
+    const dropdown = screen.getByRole("combobox", { name: "Обработка" });
+
+    expect(dropdown).toHaveValue("working");
+    expect(within(dropdown).getByRole("option", { name: "Рабочие" })).toBeInTheDocument();
+    expect(within(dropdown).getByRole("option", { name: "Отклонённые" })).toBeInTheDocument();
+    expect(within(dropdown).getByRole("option", { name: "Ошибки обработки" })).toBeInTheDocument();
+    expect(within(dropdown).getByRole("option", { name: "Все" })).toBeInTheDocument();
+
+    for (const value of ["rejected", "errors", "all"]) {
+      fireEvent.change(dropdown, { target: { value } });
+      expect(screen.getByTestId("location")).toHaveTextContent(`processing=${value}`);
+      expect(useVacancies).toHaveBeenLastCalledWith(expect.objectContaining({ processing: value }));
+    }
   });
 
   it("restores valid profile ids and safely clears invalid ones", async () => {
