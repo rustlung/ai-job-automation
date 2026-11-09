@@ -4,6 +4,13 @@
 
 ### Added
 
+- Phase A guaranteed processing: `PRELIMINARY_FILTER_MAX_ITEMS` и
+  `FULL_ENRICHMENT_MAX_ITEMS` стали размерами последовательных Worker chunks,
+  поэтому нормально завершившийся run покрывает весь discovered cohort и всех
+  preliminary-approved candidates. Final persistence выполняется после каждого
+  enrichment chunk; неполное подтверждение Orchestrator завершает run ошибкой.
+  Persistent restart recovery и DB-backed backlog пока не реализованы.
+
 - Worker discovery persistence: production persistent pipeline после HH
   collection/deduplication отправляет все discovered preview в
   `/internal/discovered-vacancies` batch-ами до 100 и только затем запускает

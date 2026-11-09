@@ -300,7 +300,7 @@ async def test_semantic_fallback_preserves_vacancy() -> None:
 
 
 @pytest.mark.anyio
-async def test_limits_truncate_without_silent_drop() -> None:
+async def test_enrichment_limit_is_a_chunk_size_and_covers_all_candidates() -> None:
     items = [
         filtered(vacancy("1"), PreliminaryDecision.KEEP_MAIN),
         filtered(vacancy("2"), PreliminaryDecision.KEEP_MAIN),
@@ -311,10 +311,41 @@ async def test_limits_truncate_without_silent_drop() -> None:
         HHCollectFilterAndEnrichRequest(max_enrich_items_override=10)
     )
 
-    assert result.truncated is True
-    assert result.unprocessed_count == 1
-    assert result.enrichment_stats.enriched_count == 2
+    assert result.truncated is False
+    assert result.unprocessed_count == 0
+    assert result.enrichment_stats.enriched_count == 3
+    assert result.enrichment_stats.enrich_candidate_count == 3
     assert result.status == "succeeded"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("item_count", [50, 51, 150, 170])
+async def test_enrichment_chunking_gives_every_candidate_a_terminal_outcome(item_count: int) -> None:
+    items = [filtered(vacancy(str(index)), PreliminaryDecision.KEEP_MAIN) for index in range(item_count)]
+    enrichment_service = service(preliminary_result(items), max_items=50)
+
+    result = await enrichment_service.collect_filter_and_enrich(HHCollectFilterAndEnrichRequest())
+
+    stats = result.enrichment_stats
+    assert stats.enrich_candidate_count == item_count
+    assert stats.enriched_count + stats.terminal_failed_count == item_count
+    assert result.unprocessed_count == 0
+    assert len({item.vacancy.external_id for item in result.items}) == item_count
+
+
+@pytest.mark.anyio
+async def test_enrichment_callback_runs_once_per_outer_chunk_in_candidate_order() -> None:
+    items = [filtered(vacancy(str(index)), PreliminaryDecision.KEEP_MAIN) for index in range(170)]
+    enrichment_service = service(preliminary_result(items), max_items=50)
+    persisted_chunks: list[list[str]] = []
+
+    async def record_chunk(chunk, _chunk_index, _chunk_count) -> None:
+        persisted_chunks.append([item.vacancy.external_id for item in chunk])
+
+    await enrichment_service.collect_filter_and_enrich(HHCollectFilterAndEnrichRequest(), on_enriched_chunk=record_chunk)
+
+    assert [len(chunk) for chunk in persisted_chunks] == [50, 50, 50, 20]
+    assert [external_id for chunk in persisted_chunks for external_id in chunk] == [str(index) for index in range(170)]
 
 
 @pytest.mark.anyio

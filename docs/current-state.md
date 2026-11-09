@@ -120,6 +120,11 @@
 ✅ Discovery persistence foundation в Orchestrator и Worker до preliminary/enrichment: deduplicated HH preview
 сохраняются batch-ами до 100 до processing limits; discovery failure останавливает
 run, а deferred processing пока не реализован
+✅ Phase A guaranteed processing: в нормально завершившемся Worker run весь
+discovered cohort проходит preliminary processing, а все допустимые кандидаты —
+full enrichment. `PRELIMINARY_FILTER_MAX_ITEMS` и
+`FULL_ENRICHMENT_MAX_ITEMS` теперь задают размер последовательных outer chunks,
+а не coverage limit; persistent restart recovery пока отсутствует
 ✅ Orchestrator DB source of truth для vacancy pipeline
 ✅ Batch persistence в Orchestrator DB
 ✅ VacancyAnalysis history by run_id
@@ -702,8 +707,8 @@ batch, сохранил результаты в Orchestrator, обновил pro
 Основной n8n `HTTP Worker Pipeline` имеет timeout `7200000 ms` как safety
 margin. Старый `1800000 ms` оказался недостаточным: Worker продолжил обработку и
 сохранил результаты в Orchestrator даже после n8n timeout, затем workflow был
-исправлен. `PRELIMINARY_FILTER_MAX_ITEMS=1000` является production safety cap,
-а не целевым размером batch. `PRELIMINARY_FILTER_BATCH_SIZE=1` остается текущим
+исправлен. `PRELIMINARY_FILTER_MAX_ITEMS=1000` является размером
+последовательного outer chunk, а не coverage cap. `PRELIMINARY_FILTER_BATCH_SIZE=1` остается текущим
 стабильным production-решением для локальной модели.
 
 Production workflow запускается вручную: пользователь включает или будит Windows

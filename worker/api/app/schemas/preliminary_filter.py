@@ -206,6 +206,14 @@ class PreliminaryFilterStats(BaseModel):
     model: str
     prompt_version: str
     duration_ms: int = Field(ge=0)
+    # Coverage counters describe terminal outcomes for the complete discovered cohort.
+    # `succeeded` includes deterministic policy rejects and validated AI decisions.
+    discovered_count: int = Field(default=0, ge=0)
+    preliminary_succeeded_count: int = Field(default=0, ge=0)
+    preliminary_rejected_count: int = Field(default=0, ge=0)
+    preliminary_policy_rejected_count: int = Field(default=0, ge=0)
+    preliminary_fallback_count: int = Field(default=0, ge=0)
+    preliminary_terminal_failed_count: int = Field(default=0, ge=0)
 
 
 class HHCollectAndPreliminaryFilterResult(BaseModel):

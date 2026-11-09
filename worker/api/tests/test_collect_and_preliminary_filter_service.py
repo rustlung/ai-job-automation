@@ -42,7 +42,7 @@ class FakeFilterService:
 
     async def filter_vacancies(self, items, max_items_override=None):
         self.calls.append((items, max_items_override))
-        return self.result
+        return filter_result(items)
 
 
 def vacancy(external_id: str) -> HHSearchCollectedVacancy:
@@ -157,7 +157,7 @@ async def test_collection_completed_with_errors_still_filters_available_vacancie
 
 
 @pytest.mark.anyio
-async def test_filter_limit_truncates_without_silent_drop() -> None:
+async def test_filter_limit_is_a_chunk_size_and_covers_the_full_collection() -> None:
     vacancies = [vacancy("1"), vacancy("2"), vacancy("3")]
     collection = FakeCollectionService(collection_result(HHSearchCollectionStatus.SUCCEEDED, vacancies))
     filter_service = FakeFilterService(filter_result(vacancies[:2]), limit=2)
@@ -167,8 +167,30 @@ async def test_filter_limit_truncates_without_silent_drop() -> None:
         HHCollectAndPreliminaryFilterRequest(profile_ids=["python_expanded_search"], max_filter_items_override=2)
     )
 
-    assert result.truncated is True
-    assert result.unprocessed_count == 1
-    assert result.status == "completed_with_errors"
-    assert [error.error_code for error in result.errors] == ["filter_input_truncated"]
-    assert filter_service.calls[0][0] == vacancies[:2]
+    assert result.truncated is False
+    assert result.unprocessed_count == 0
+    assert result.status == "succeeded"
+    assert result.filter_stats is not None
+    assert result.filter_stats.discovered_count == 3
+    assert result.filter_stats.processed_count == 3
+    assert result.filter_stats.preliminary_succeeded_count == 3
+    assert [call[0] for call in filter_service.calls] == [vacancies[:2], vacancies[2:]]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("item_count", [50, 100, 101, 250, 355])
+async def test_filter_chunking_gives_every_discovered_vacancy_a_terminal_outcome(item_count: int) -> None:
+    vacancies = [vacancy(str(index)) for index in range(item_count)]
+    collection = FakeCollectionService(collection_result(HHSearchCollectionStatus.SUCCEEDED, vacancies))
+    filter_service = FakeFilterService(filter_result(vacancies[: min(item_count, 100)]), limit=100)
+    service = HHCollectAndPreliminaryFilterService(collection, filter_service)  # type: ignore[arg-type]
+
+    result = await service.collect_and_filter(HHCollectAndPreliminaryFilterRequest(profile_ids=["python_expanded_search"]))
+
+    assert result.filter_stats is not None
+    assert result.filter_stats.discovered_count == item_count
+    assert result.filter_stats.processed_count == item_count
+    assert result.filter_stats.preliminary_succeeded_count + result.filter_stats.preliminary_fallback_count == item_count
+    assert result.unprocessed_count == 0
+    assert len(result.items) == item_count
+    assert len({item.vacancy.external_id for item in result.items}) == item_count

@@ -67,8 +67,24 @@ class FakeEnrichmentService:
             duplicate_count=collection.duplicate_count,
         )
 
-    async def filter_and_enrich_collection(self, collection, request):
+    async def filter_and_enrich_collection(self, collection, request, on_enriched_chunk=None):
         self.filter_requests.append((collection, request))
+        if on_enriched_chunk is not None and self.result.items:
+            await on_enriched_chunk(self.result.items, 1, 1)
+        return self.result
+
+
+class ChunkedFakeEnrichmentService(FakeEnrichmentService):
+    def __init__(self, result: HHCollectFilterAndEnrichResult, chunk_size: int) -> None:
+        super().__init__(result)
+        self.chunk_size = chunk_size
+
+    async def filter_and_enrich_collection(self, collection, request, on_enriched_chunk=None):
+        self.filter_requests.append((collection, request))
+        if on_enriched_chunk is not None:
+            chunks = [self.result.items[index : index + self.chunk_size] for index in range(0, len(self.result.items), self.chunk_size)]
+            for index, chunk in enumerate(chunks, start=1):
+                await on_enriched_chunk(chunk, index, len(chunks))
         return self.result
 
 
@@ -178,6 +194,20 @@ class BatchOrchestratorClient:
             },
             "errors": [],
         }
+
+
+class FailSecondEnrichmentChunkClient(BatchOrchestratorClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.request_count = 0
+
+    async def persist_pipeline_results(self, payload, *, batch_index=None, batch_count=None):
+        self.request_count += 1
+        if self.request_count == 2:
+            self.payloads.append(payload)
+            self.batch_metadata.append((batch_index, batch_count))
+            raise OrchestratorClientResponseError("failed", status_code=500)
+        return await super().persist_pipeline_results(payload, batch_index=batch_index, batch_count=batch_count)
 
 
 def collection_for_count(stats: HHCollectionStats, item_count: int) -> HHSearchCollectionResult:
@@ -463,6 +493,38 @@ async def test_persistence_service_batches_pipeline_results(item_count: int, bat
 
 
 @pytest.mark.anyio
+async def test_persistence_runs_after_each_enrichment_chunk() -> None:
+    client = BatchOrchestratorClient()
+    service = HHCollectFilterEnrichAndPersistService(
+        ChunkedFakeEnrichmentService(enrichment_result_with_items(170), chunk_size=50),
+        client,  # type: ignore[arg-type]
+    )
+
+    result = await service.collect_filter_enrich_and_persist(HHCollectFilterEnrichAndPersistRequest(pipeline_run_id="run-001"))
+
+    assert [len(payload["items"]) for payload in client.payloads] == [50, 50, 50, 20]
+    assert result.persistence_stats is not None
+    assert result.persistence_stats.persisted_count == 170
+
+
+@pytest.mark.anyio
+async def test_second_enrichment_chunk_failure_keeps_first_chunk_persisted_and_stops_coverage() -> None:
+    client = FailSecondEnrichmentChunkClient()
+    service = HHCollectFilterEnrichAndPersistService(
+        ChunkedFakeEnrichmentService(enrichment_result_with_items(150), chunk_size=50),
+        client,  # type: ignore[arg-type]
+    )
+
+    result = await service.collect_filter_enrich_and_persist(HHCollectFilterEnrichAndPersistRequest(pipeline_run_id="run-001"))
+
+    assert [len(payload["items"]) for payload in client.payloads] == [50, 50]
+    assert result.status == "failed"
+    assert result.persistence_stats is not None
+    assert result.persistence_stats.persisted_count == 50
+    assert result.errors[0].message == "Не удалось сохранить enrichment chunk 2 из 3: batch 1 из 1 в Orchestrator"
+
+
+@pytest.mark.anyio
 async def test_zero_enrichment_items_preserves_current_no_persistence_behavior() -> None:
     client = BatchOrchestratorClient()
     service = HHCollectFilterEnrichAndPersistService(
@@ -503,6 +565,7 @@ async def test_persistence_service_aggregates_item_failures_and_errors() -> None
 
     result = await service.collect_filter_enrich_and_persist(HHCollectFilterEnrichAndPersistRequest(pipeline_run_id="run-001"))
 
+    assert result.status == "failed"
     assert result.persistence_stats is not None
     assert result.persistence_stats.failed_count == 1
     assert result.persistence_result is not None
@@ -526,7 +589,7 @@ async def test_second_batch_failure_preserves_aggregated_successful_stats() -> N
     assert result.persistence_stats.persisted_count == 100
     assert result.persistence_stats.failed_count == 0
     assert result.errors[-1].error_code == "orchestrator_persistence_failed"
-    assert result.errors[-1].message == "Не удалось сохранить batch 2 из 2 в Orchestrator"
+    assert result.errors[-1].message == "Не удалось сохранить enrichment chunk 1 из 1: batch 2 из 2 в Orchestrator"
 
 
 @pytest.mark.anyio

@@ -632,25 +632,37 @@ class HHCollectAndPreliminaryFilterService:
             logger.warning("hh_collect_and_filter_failed error_code=collection_failed duration_ms=%s", result.duration_ms)
             return result
 
-        limit = self.filter_service._effective_limit(request.max_filter_items_override)
-        filter_items = collection.vacancies[:limit]
-        unprocessed_count = max(len(collection.vacancies) - len(filter_items), 0)
-        filter_result = await self.filter_service.filter_vacancies(filter_items, max_items_override=request.max_filter_items_override)
-        result_status = filter_result.status
-        result_errors = list(filter_result.errors)
-
-        if unprocessed_count:
-            result_errors.append(
-                PreliminaryFilterError(
-                    error_code="filter_input_truncated",
-                    message="Preliminary filter input was truncated by configured limit.",
-                )
+        chunk_size = self.filter_service._effective_limit(request.max_filter_items_override)
+        chunks = [
+            collection.vacancies[index : index + chunk_size]
+            for index in range(0, len(collection.vacancies), chunk_size)
+        ]
+        chunk_results: list[PreliminaryFilterBatchResult] = []
+        for chunk_index, chunk in enumerate(chunks, start=1):
+            chunk_started_at = time.perf_counter()
+            logger.info(
+                "preliminary_coverage_chunk_started chunk_index=%s chunk_count=%s chunk_size=%s",
+                chunk_index,
+                len(chunks),
+                len(chunk),
+            )
+            chunk_result = await self.filter_service.filter_vacancies(
+                chunk,
+                max_items_override=request.max_filter_items_override,
+            )
+            chunk_results.append(chunk_result)
+            logger.info(
+                "preliminary_coverage_chunk_completed chunk_index=%s chunk_count=%s chunk_size=%s duration_ms=%s",
+                chunk_index,
+                len(chunks),
+                len(chunk),
+                self._duration_ms(chunk_started_at),
             )
 
-        if (
-            collection.status != HHSearchCollectionStatus.SUCCEEDED
-            or unprocessed_count
-        ) and result_status == PreliminaryFilterStatus.SUCCEEDED:
+        filter_result = self._aggregate_filter_results(collection.vacancies, chunk_results)
+        result_status = filter_result.status
+        result_errors = list(filter_result.errors)
+        if collection.status != HHSearchCollectionStatus.SUCCEEDED and result_status == PreliminaryFilterStatus.SUCCEEDED:
             result_status = PreliminaryFilterStatus.COMPLETED_WITH_ERRORS
 
         result = HHCollectAndPreliminaryFilterResult(
@@ -669,10 +681,21 @@ class HHCollectAndPreliminaryFilterService:
                 model=filter_result.model,
                 prompt_version=filter_result.prompt_version,
                 duration_ms=filter_result.duration_ms,
+                discovered_count=len(collection.vacancies),
+                preliminary_succeeded_count=filter_result.processed_count - filter_result.fallback_count,
+                preliminary_rejected_count=filter_result.reject_count,
+                preliminary_policy_rejected_count=sum(
+                    1
+                    for item in filter_result.items
+                    if item.assessment.decision == PreliminaryDecision.REJECT
+                    and evaluate_preliminary_role_policy(item.vacancy).should_reject
+                ),
+                preliminary_fallback_count=filter_result.fallback_count,
+                preliminary_terminal_failed_count=0,
             ),
             items=filter_result.items,
-            truncated=unprocessed_count > 0,
-            unprocessed_count=unprocessed_count,
+            truncated=False,
+            unprocessed_count=0,
             errors=result_errors,
             duration_ms=self._duration_ms(started_at),
         )
@@ -682,10 +705,68 @@ class HHCollectAndPreliminaryFilterService:
             result.status.value,
             collection.status.value,
             filter_result.input_count,
-            unprocessed_count,
+            0,
             result.duration_ms,
         )
         return result
+
+    def _aggregate_filter_results(
+        self,
+        vacancies: list[HHSearchCollectedVacancy],
+        results: list[PreliminaryFilterBatchResult],
+    ) -> PreliminaryFilterBatchResult:
+        if not results:
+            return PreliminaryFilterBatchResult(
+                status=PreliminaryFilterStatus.SUCCEEDED,
+                input_count=0,
+                processed_count=0,
+                keep_main_count=0,
+                keep_alt_count=0,
+                uncertain_count=0,
+                reject_count=0,
+                fallback_count=0,
+                failed_batch_count=0,
+                model=getattr(getattr(self.filter_service, "ollama_client", None), "model", "unknown"),
+                prompt_version=getattr(self.filter_service, "prompt_version", "unknown"),
+                duration_ms=0,
+                items=[],
+                errors=[],
+            )
+
+        original_order = {(vacancy.source, vacancy.external_id): index for index, vacancy in enumerate(vacancies)}
+        items = [item for result in results for item in result.items]
+        items.sort(
+            key=lambda item: (
+                DECISION_SORT_ORDER[item.assessment.decision],
+                -item.assessment.score,
+                -item.assessment.confidence,
+                original_order[(item.vacancy.source, item.vacancy.external_id)],
+            )
+        )
+        statuses = [result.status for result in results]
+        status = (
+            PreliminaryFilterStatus.FAILED
+            if PreliminaryFilterStatus.FAILED in statuses
+            else PreliminaryFilterStatus.COMPLETED_WITH_ERRORS
+            if PreliminaryFilterStatus.COMPLETED_WITH_ERRORS in statuses
+            else PreliminaryFilterStatus.SUCCEEDED
+        )
+        return PreliminaryFilterBatchResult(
+            status=status,
+            input_count=sum(result.input_count for result in results),
+            processed_count=sum(result.processed_count for result in results),
+            keep_main_count=sum(result.keep_main_count for result in results),
+            keep_alt_count=sum(result.keep_alt_count for result in results),
+            uncertain_count=sum(result.uncertain_count for result in results),
+            reject_count=sum(result.reject_count for result in results),
+            fallback_count=sum(result.fallback_count for result in results),
+            failed_batch_count=sum(result.failed_batch_count for result in results),
+            model=results[0].model,
+            prompt_version=results[0].prompt_version,
+            duration_ms=sum(result.duration_ms for result in results),
+            items=items,
+            errors=[error for result in results for error in result.errors],
+        )
 
     @staticmethod
     def _duration_ms(started_at: float) -> int:

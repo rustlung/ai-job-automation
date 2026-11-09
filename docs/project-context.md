@@ -415,8 +415,8 @@ CRM and external integration decisions:
   Worker и Ollama всегда; HH auth storage и live HH session — только при
   выбранном resume profile;
 - основной n8n Worker request имеет timeout `7200000 ms` как safety margin;
-- `PRELIMINARY_FILTER_MAX_ITEMS=1000` является production safety cap, а не
-  целевым размером batch;
+- `PRELIMINARY_FILTER_MAX_ITEMS=1000` задает размер последовательного outer
+  processing chunk, а не coverage cap полного run;
 - controlled partial errors и per-vacancy isolation являются частью production
   behavior;
 - Schedule Trigger не входит в текущий production process и не является

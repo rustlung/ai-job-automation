@@ -249,6 +249,8 @@ class VacancyEnrichmentStats(BaseModel):
     enriched_count: int = Field(ge=0)
     failed_fetch_count: int = Field(ge=0)
     failed_normalization_count: int = Field(ge=0)
+    failed_feature_extraction_count: int = Field(default=0, ge=0)
+    terminal_failed_count: int = Field(default=0, ge=0)
     semantic_fallback_count: int = Field(ge=0)
     p1_count: int = Field(ge=0)
     p2_count: int = Field(ge=0)

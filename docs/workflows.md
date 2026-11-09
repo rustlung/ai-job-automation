@@ -429,7 +429,8 @@ and `max_enrich_items_override` as `null`/absent so Worker runtime config is use
 
 Production Worker runtime:
 
-- `PRELIMINARY_FILTER_MAX_ITEMS=1000` is a safety cap, not a target batch size;
+- `PRELIMINARY_FILTER_MAX_ITEMS=1000` is an outer processing chunk size, not a
+  coverage cap for the run;
 - `PRELIMINARY_FILTER_BATCH_SIZE=1` is the current stable setting for the local
   model;
 - production run uses the two resume recommendation profiles currently present

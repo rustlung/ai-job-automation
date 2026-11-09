@@ -1,5 +1,6 @@
 import logging
 import time
+from collections.abc import Awaitable, Callable
 
 from app.core.config import Settings
 from app.schemas.preliminary_filter import (
@@ -74,9 +75,10 @@ class HHCollectFilterAndEnrichService:
     async def collect_filter_and_enrich(
         self,
         request: HHCollectFilterAndEnrichRequest,
+        on_enriched_chunk: Callable[[list[EnrichedVacancyAssessment], int, int], Awaitable[None]] | None = None,
     ) -> HHCollectFilterAndEnrichResult:
         collection = await self.collect_collection(request)
-        return await self.filter_and_enrich_collection(collection, request)
+        return await self.filter_and_enrich_collection(collection, request, on_enriched_chunk=on_enriched_chunk)
 
     async def collect_collection(self, request: HHCollectFilterAndEnrichRequest) -> HHSearchCollectionResult:
         return await self.collect_and_filter_service.collect(
@@ -94,6 +96,7 @@ class HHCollectFilterAndEnrichService:
         self,
         collection: HHSearchCollectionResult,
         request: HHCollectFilterAndEnrichRequest,
+        on_enriched_chunk: Callable[[list[EnrichedVacancyAssessment], int, int], Awaitable[None]] | None = None,
     ) -> HHCollectFilterAndEnrichResult:
         started_at = time.perf_counter()
         errors: list[VacancyEnrichmentError] = []
@@ -110,22 +113,139 @@ class HHCollectFilterAndEnrichService:
         collection_stats = preliminary_result.collection_stats
         filter_stats = preliminary_result.filter_stats
 
+        if preliminary_result.status == PreliminaryFilterStatus.FAILED:
+            return HHCollectFilterAndEnrichResult(
+                status=VacancyEnrichmentStatus.FAILED,
+                collection_stats=collection_stats,
+                filter_stats=filter_stats,
+                enrichment_stats=VacancyEnrichmentStats(
+                    status=VacancyEnrichmentStatus.FAILED,
+                    input_count=len(preliminary_result.items),
+                    enrich_candidate_count=0,
+                    enriched_count=0,
+                    failed_fetch_count=0,
+                    failed_normalization_count=0,
+                    semantic_fallback_count=0,
+                    p1_count=0,
+                    p2_count=0,
+                    p3_count=0,
+                    alt_count=0,
+                    duration_ms=self._duration_ms(started_at),
+                ),
+                items=[],
+                errors=[
+                    VacancyEnrichmentError(
+                        stage="preliminary_filter",
+                        error_code="preliminary_coverage_failed",
+                        message="Preliminary processing did not reach a terminal outcome for the complete cohort",
+                    )
+                ],
+                duration_ms=self._duration_ms(started_at),
+            )
+
         candidates = [
             item
             for item in preliminary_result.items
             if item.assessment.decision
             in {PreliminaryDecision.KEEP_MAIN, PreliminaryDecision.KEEP_ALT, PreliminaryDecision.UNCERTAIN}
         ]
-        limit = self._effective_limit(request.max_enrich_items_override)
-        truncated = preliminary_result.truncated or len(candidates) > limit
-        unprocessed_count = preliminary_result.unprocessed_count + max(0, len(candidates) - limit)
-        candidates = candidates[:limit]
+        chunk_size = self._effective_limit(request.max_enrich_items_override)
+        chunks = [candidates[index : index + chunk_size] for index in range(0, len(candidates), chunk_size)]
+        enriched_items: list[EnrichedVacancyAssessment] = []
+        failed_fetch_count = 0
+        failed_normalization_count = 0
+        failed_feature_extraction_count = 0
+        semantic_fallback_count = 0
+        for chunk_index, chunk in enumerate(chunks, start=1):
+            chunk_started_at = time.perf_counter()
+            logger.info(
+                "vacancy_enrichment_chunk_started chunk_index=%s chunk_count=%s chunk_size=%s",
+                chunk_index,
+                len(chunks),
+                len(chunk),
+            )
+            chunk_result = await self._enrich_candidates(chunk, item_index_offset=(chunk_index - 1) * chunk_size)
+            enriched_items.extend(chunk_result[0])
+            errors.extend(chunk_result[1])
+            failed_fetch_count += chunk_result[2]
+            failed_normalization_count += chunk_result[3]
+            failed_feature_extraction_count += chunk_result[4]
+            semantic_fallback_count += chunk_result[5]
+            if chunk_result[0] and on_enriched_chunk is not None:
+                await on_enriched_chunk(chunk_result[0], chunk_index, len(chunks))
+            logger.info(
+                "vacancy_enrichment_chunk_completed chunk_index=%s chunk_count=%s chunk_size=%s duration_ms=%s",
+                chunk_index,
+                len(chunks),
+                len(chunk),
+                self._duration_ms(chunk_started_at),
+            )
 
+        sorted_items = self._sort_items(enriched_items)
+        status = self._status(
+            input_count=len(candidates),
+            enriched_count=len(sorted_items),
+            errors=errors,
+        )
+        terminal_failed_count = failed_fetch_count + failed_normalization_count + failed_feature_extraction_count
+        stats = VacancyEnrichmentStats(
+            status=status,
+            input_count=len(preliminary_result.items),
+            enrich_candidate_count=len(candidates),
+            enriched_count=len(sorted_items),
+            failed_fetch_count=failed_fetch_count,
+            failed_normalization_count=failed_normalization_count,
+            failed_feature_extraction_count=failed_feature_extraction_count,
+            terminal_failed_count=terminal_failed_count,
+            semantic_fallback_count=semantic_fallback_count,
+            p1_count=self._priority_count(sorted_items, VacancyPriority.P1),
+            p2_count=self._priority_count(sorted_items, VacancyPriority.P2),
+            p3_count=self._priority_count(sorted_items, VacancyPriority.P3),
+            alt_count=self._priority_count(sorted_items, VacancyPriority.ALT),
+            duration_ms=self._duration_ms(started_at),
+        )
+        logger.info(
+            "vacancy_enrichment_completed status=%s input_count=%s enriched_count=%s failed_fetch_count=%s "
+            "failed_normalization_count=%s failed_feature_extraction_count=%s semantic_fallback_count=%s "
+            "p1_count=%s p2_count=%s alt_count=%s p3_count=%s duration_ms=%s",
+            status.value,
+            stats.input_count,
+            stats.enriched_count,
+            failed_fetch_count,
+            failed_normalization_count,
+            failed_feature_extraction_count,
+            semantic_fallback_count,
+            stats.p1_count,
+            stats.p2_count,
+            stats.alt_count,
+            stats.p3_count,
+            stats.duration_ms,
+        )
+        return HHCollectFilterAndEnrichResult(
+            status=status,
+            collection_stats=collection_stats,
+            filter_stats=filter_stats,
+            enrichment_stats=stats,
+            items=sorted_items,
+            truncated=False,
+            unprocessed_count=0,
+            errors=errors,
+            duration_ms=self._duration_ms(started_at),
+        )
+
+    async def _enrich_candidates(
+        self,
+        candidates,
+        *,
+        item_index_offset: int,
+    ) -> tuple[list[EnrichedVacancyAssessment], list[VacancyEnrichmentError], int, int, int, int]:
+        errors: list[VacancyEnrichmentError] = []
         prepared = []
         failed_fetch_count = 0
         failed_normalization_count = 0
         failed_feature_extraction_count = 0
-        for item_index, item in enumerate(candidates):
+        for local_index, item in enumerate(candidates):
+            item_index = item_index_offset + local_index
             logger.info("vacancy_full_fetch_started item_index=%s", item_index)
             try:
                 details = await self.vacancy_service.get_vacancy_details(item.vacancy.url)
@@ -222,53 +342,13 @@ class HHCollectFilterAndEnrichService:
                 )
             )
 
-        sorted_items = self._sort_items(enriched_items)
-        status = self._status(
-            input_count=len(candidates),
-            enriched_count=len(sorted_items),
-            errors=errors,
-        )
-        stats = VacancyEnrichmentStats(
-            status=status,
-            input_count=len(preliminary_result.items),
-            enrich_candidate_count=len(candidates),
-            enriched_count=len(sorted_items),
-            failed_fetch_count=failed_fetch_count,
-            failed_normalization_count=failed_normalization_count,
-            semantic_fallback_count=semantic_fallback_count,
-            p1_count=self._priority_count(sorted_items, VacancyPriority.P1),
-            p2_count=self._priority_count(sorted_items, VacancyPriority.P2),
-            p3_count=self._priority_count(sorted_items, VacancyPriority.P3),
-            alt_count=self._priority_count(sorted_items, VacancyPriority.ALT),
-            duration_ms=self._duration_ms(started_at),
-        )
-        logger.info(
-            "vacancy_enrichment_completed status=%s input_count=%s enriched_count=%s failed_fetch_count=%s "
-            "failed_normalization_count=%s failed_feature_extraction_count=%s semantic_fallback_count=%s "
-            "p1_count=%s p2_count=%s alt_count=%s p3_count=%s duration_ms=%s",
-            status.value,
-            stats.input_count,
-            stats.enriched_count,
+        return (
+            enriched_items,
+            errors,
             failed_fetch_count,
             failed_normalization_count,
             failed_feature_extraction_count,
             semantic_fallback_count,
-            stats.p1_count,
-            stats.p2_count,
-            stats.alt_count,
-            stats.p3_count,
-            stats.duration_ms,
-        )
-        return HHCollectFilterAndEnrichResult(
-            status=status,
-            collection_stats=collection_stats,
-            filter_stats=filter_stats,
-            enrichment_stats=stats,
-            items=sorted_items,
-            truncated=truncated,
-            unprocessed_count=unprocessed_count,
-            errors=errors,
-            duration_ms=self._duration_ms(started_at),
         )
 
     def _effective_limit(self, override: int | None) -> int:

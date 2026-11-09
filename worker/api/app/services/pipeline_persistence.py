@@ -40,6 +40,15 @@ class PipelinePersistenceBatchError(Exception):
         self.batch_count = batch_count
 
 
+class EnrichmentChunkPersistenceError(Exception):
+    def __init__(self, persistence_result: dict, items, error_code: str, summary: str) -> None:
+        super().__init__("Orchestrator did not persist an enrichment chunk completely")
+        self.persistence_result = persistence_result
+        self.items = items
+        self.error_code = error_code
+        self.summary = summary
+
+
 class HHCollectFilterEnrichAndPersistService:
     def __init__(
         self,
@@ -92,9 +101,55 @@ class HHCollectFilterEnrichAndPersistService:
                 duration_ms=self._duration_ms(started_at),
             )
 
-        enrichment_result = await self.enrichment_service.filter_and_enrich_collection(collection, enrichment_request)
         persistence_result: dict | None = None
         persistence_stats: PipelinePersistenceStats | None = None
+        persisted_chunk_results: list[dict] = []
+
+        async def persist_enrichment_chunk(items, chunk_index: int, chunk_count: int) -> None:
+            try:
+                chunk_result = await self._persist_in_batches(run_id, items)
+            except PipelinePersistenceBatchError as exc:
+                persisted_chunk_results.append(exc.persistence_result)
+                raise EnrichmentChunkPersistenceError(
+                    self._aggregate_persistence_results(run_id, persisted_chunk_results, failed=True),
+                    items,
+                    "orchestrator_persistence_failed",
+                    (
+                        f"Не удалось сохранить enrichment chunk {chunk_index} из {chunk_count}: "
+                        f"batch {exc.batch_index} из {exc.batch_count} в Orchestrator"
+                    ),
+                ) from None
+            persisted_chunk_results.append(chunk_result)
+            chunk_stats = PipelinePersistenceStats(**chunk_result["stats"])
+            if chunk_stats.failed_count > 0 or chunk_stats.status == "completed_with_errors":
+                raise EnrichmentChunkPersistenceError(
+                    self._aggregate_persistence_results(run_id, persisted_chunk_results, failed=True),
+                    items,
+                    "orchestrator_persistence_partial_failure",
+                    f"Orchestrator не подтвердил полное сохранение enrichment chunk {chunk_index} из {chunk_count}",
+                )
+
+        try:
+            enrichment_result = await self.enrichment_service.filter_and_enrich_collection(
+                collection,
+                enrichment_request,
+                on_enriched_chunk=persist_enrichment_chunk,
+            )
+        except EnrichmentChunkPersistenceError as exc:
+            return self._enrichment_persistence_failure_result(
+                run_id=run_id,
+                collection_stats=collection_stats,
+                discovery_stats=discovery_stats,
+                persistence_result=exc.persistence_result,
+                items=exc.items,
+                error_code=exc.error_code,
+                error_summary=exc.summary,
+                duration_ms=self._duration_ms(started_at),
+            )
+
+        if persisted_chunk_results:
+            persistence_result = self._aggregate_persistence_results(run_id, persisted_chunk_results)
+            persistence_stats = PipelinePersistenceStats(**persistence_result["stats"])
         errors: list[PipelinePersistenceError] = [
             PipelinePersistenceError(
                 error_code=error.error_code,
@@ -113,16 +168,23 @@ class HHCollectFilterEnrichAndPersistService:
             else VacancyEnrichmentStatus.SUCCEEDED
         )
 
-        if enrichment_result.items:
+        if enrichment_result.items and not persisted_chunk_results:
             try:
                 persistence_result = await self._persist_in_batches(run_id, enrichment_result.items)
                 persistence_stats = PipelinePersistenceStats(**persistence_result["stats"])
                 if persistence_stats.failed_count > 0 or persistence_stats.status == "completed_with_errors":
+                    status = VacancyEnrichmentStatus.FAILED
                     partial_failures.append(
                         WorkerPipelineRunDiagnostic(
                             code="persistence_partial_failure",
                             count=max(persistence_stats.failed_count, 1),
                             summary="Не все результаты удалось сохранить в Orchestrator",
+                        )
+                    )
+                    errors.append(
+                        PipelinePersistenceError(
+                            error_code="orchestrator_persistence_partial_failure",
+                            message="Orchestrator подтвердил неполное сохранение результатов pipeline",
                         )
                     )
             except PipelinePersistenceBatchError as exc:
@@ -193,6 +255,58 @@ class HHCollectFilterEnrichAndPersistService:
             errors=errors,
             warnings=warnings,
             partial_failures=self._merge_diagnostics(partial_failures),
+            duration_ms=duration_ms,
+        )
+
+    @staticmethod
+    def _enrichment_persistence_failure_result(
+        *,
+        run_id: str,
+        collection_stats,
+        discovery_stats: DiscoveryPersistenceStats | None,
+        persistence_result: dict,
+        items,
+        error_code: str,
+        error_summary: str,
+        duration_ms: int,
+    ) -> HHCollectFilterEnrichAndPersistResult:
+        raw_stats = persistence_result["stats"]
+        persistence_stats = PipelinePersistenceStats(**raw_stats) if raw_stats["input_count"] > 0 else None
+        return HHCollectFilterEnrichAndPersistResult(
+            status=VacancyEnrichmentStatus.FAILED,
+            pipeline_run_id=run_id,
+            collection_stats=collection_stats,
+            discovery_stats=discovery_stats,
+            enrichment_stats=VacancyEnrichmentStats(
+                status=VacancyEnrichmentStatus.FAILED,
+                input_count=0,
+                enrich_candidate_count=0,
+                enriched_count=0,
+                failed_fetch_count=0,
+                failed_normalization_count=0,
+                semantic_fallback_count=0,
+                p1_count=0,
+                p2_count=0,
+                p3_count=0,
+                alt_count=0,
+                duration_ms=0,
+            ),
+            persistence_stats=persistence_stats,
+            items=items,
+            persistence_result=persistence_result,
+            errors=[
+                PipelinePersistenceError(
+                    error_code=error_code,
+                    message=error_summary,
+                )
+            ],
+            partial_failures=[
+                WorkerPipelineRunDiagnostic(
+                    code=error_code,
+                    count=max(persistence_stats.failed_count if persistence_stats is not None else 0, 1),
+                    summary=error_summary,
+                )
+            ],
             duration_ms=duration_ms,
         )
 

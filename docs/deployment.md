@@ -338,15 +338,15 @@ PRELIMINARY_FILTER_BATCH_SIZE=1
 ```
 
 `worker/api/.env.example` содержит generic/default values и не является полным
-production `.env`. `PRELIMINARY_FILTER_MAX_ITEMS=1000` является safety cap, а не
-целевым размером batch. `batch_size=1` не является постоянным финальным
+production `.env`. `PRELIMINARY_FILTER_MAX_ITEMS=1000` является размером
+последовательного outer chunk, а не лимитом полного cohort run. `batch_size=1` не является постоянным финальным
 performance-решением, но принят для текущего production MVP ради стабильности.
 Увеличение batch size до `3`, `5` или выше требует повторной target acceptance.
 
-`FULL_ENRICHMENT_MAX_ITEMS` ограничивает число вакансий, которые integrated
-endpoint `POST /hh/collect-filter-and-enrich` отправляет на full vacancy fetch,
-normalization, full semantic assessment и scoring. Request
-`max_enrich_items_override` может только уменьшить этот лимит.
+`FULL_ENRICHMENT_MAX_ITEMS` задает размер последовательного outer chunk для full
+vacancy fetch, normalization, full semantic assessment и scoring. Все candidates
+текущего нормально завершившегося run проходят такие chunks; request
+`max_enrich_items_override` может только уменьшить размер chunk.
 
 `FULL_ANALYSIS_BATCH_SIZE` управляет batch size compact full-vacancy semantic
 assessment. Для текущей локальной модели и ограниченных ресурсов допустима

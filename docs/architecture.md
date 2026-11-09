@@ -31,8 +31,8 @@ HH
 Worker
 ├── collection
 ├── discovery persistence
-├── preliminary local AI
-├── full fetch
+├── preliminary local AI (all discovered vacancies in sequential outer chunks)
+├── full fetch / enrichment (all approved candidates in sequential outer chunks)
 ├── normalization
 ├── deterministic extraction
 ├── semantic local AI
@@ -72,6 +72,12 @@ Public exposure:
     Application/UserState/manual mutations также не используют Sheets как runtime
     mirror.
 -   On-demand Data Exports читает Orchestrator DB напрямую и выдаёт XLSX/CSV.
+
+`PRELIMINARY_FILTER_MAX_ITEMS` и `FULL_ENRICHMENT_MAX_ITEMS` ограничивают
+throughput одного outer chunk, а не coverage run. Внутренние Ollama batch sizes
+остаются отдельными настройками. Гарантия полного coverage относится только к
+run, который дошёл до terminal completion: Phase A не реализует resume после
+crash/restart и DB-backed backlog.
 
 После collection и in-memory deduplication Worker фиксирует все canonical HH
 preview в Orchestrator до preliminary и full enrichment. Лимиты обработки

@@ -28,6 +28,14 @@
 historical data (`""`). Worker сохраняет deduplicated HH preview до
 preliminary/enrichment; очередь deferred processing в этот этап не входит.
 
+## Guaranteed processing — Phase A
+
+Статус: реализован current-run coverage. Worker последовательно обрабатывает
+весь discovered cohort preliminary outer chunks и все допустимые candidates
+full-enrichment outer chunks. Эти limits больше не отбрасывают vacancy из
+обработки run. Гарантия не включает crash/restart recovery: persistent state,
+DB backlog и resume остаются следующей фазой.
+
 ---
 
 # Phase 0. Project foundation
