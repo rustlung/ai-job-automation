@@ -19,6 +19,7 @@ from app.services.discovered_vacancy import (
     DiscoveredVacancyPersistenceService,
     DiscoveryPersistenceBatchError,
 )
+from app.services.preliminary_outcome_persistence import PreliminaryOutcomePersistenceError, PreliminaryOutcomePersistenceService
 
 logger = logging.getLogger(__name__)
 
@@ -55,10 +56,12 @@ class HHCollectFilterEnrichAndPersistService:
         enrichment_service: HHCollectFilterAndEnrichService,
         orchestrator_client: OrchestratorClient,
         discovery_persistence_service: DiscoveredVacancyPersistenceService | None = None,
+        preliminary_outcome_persistence_service: PreliminaryOutcomePersistenceService | None = None,
     ) -> None:
         self.enrichment_service = enrichment_service
         self.orchestrator_client = orchestrator_client
         self.discovery_persistence_service = discovery_persistence_service or DiscoveredVacancyPersistenceService(orchestrator_client)
+        self.preliminary_outcome_persistence_service = preliminary_outcome_persistence_service or PreliminaryOutcomePersistenceService(orchestrator_client)
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "HHCollectFilterEnrichAndPersistService":
@@ -105,6 +108,31 @@ class HHCollectFilterEnrichAndPersistService:
         persistence_stats: PipelinePersistenceStats | None = None
         persisted_chunk_results: list[dict] = []
 
+        async def persist_preliminary_outcomes(items) -> None:
+            try:
+                await self.preliminary_outcome_persistence_service.persist(run_id, items)
+            except PreliminaryOutcomePersistenceError as exc:
+                raise EnrichmentChunkPersistenceError(
+                    self._aggregate_persistence_results(run_id, [], failed=True),
+                    [],
+                    "orchestrator_preliminary_outcome_persistence_failed",
+                    f"Не удалось сохранить preliminary outcomes batch {exc.batch_index} из {exc.batch_count} в Orchestrator",
+                ) from None
+
+        async def persist_enrichment_failures(failures, chunk_index: int, chunk_count: int) -> None:
+            try:
+                await self.preliminary_outcome_persistence_service.persist_enrichment_failures(run_id, failures)
+            except PreliminaryOutcomePersistenceError as exc:
+                raise EnrichmentChunkPersistenceError(
+                    self._aggregate_persistence_results(run_id, [], failed=True),
+                    [],
+                    "orchestrator_enrichment_outcome_persistence_failed",
+                    (
+                        f"Не удалось сохранить outcomes ошибок enrichment chunk {chunk_index} из {chunk_count}: "
+                        f"batch {exc.batch_index} из {exc.batch_count} в Orchestrator"
+                    ),
+                ) from None
+
         async def persist_enrichment_chunk(items, chunk_index: int, chunk_count: int) -> None:
             try:
                 chunk_result = await self._persist_in_batches(run_id, items)
@@ -134,6 +162,8 @@ class HHCollectFilterEnrichAndPersistService:
                 collection,
                 enrichment_request,
                 on_enriched_chunk=persist_enrichment_chunk,
+                on_preliminary_complete=persist_preliminary_outcomes,
+                on_enrichment_failures=persist_enrichment_failures,
             )
         except EnrichmentChunkPersistenceError as exc:
             return self._enrichment_persistence_failure_result(

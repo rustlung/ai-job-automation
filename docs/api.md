@@ -241,6 +241,13 @@ application filter (including `application_status=none` for groups with no
 Application), run id, company/title text search, `first_seen`/`final_score`/`priority` sort
 and `asc`/`desc` direction. It does not return full descriptions.
 
+The backend-only `processing=working|rejected|errors|all` filter uses the
+latest persisted preliminary outcome for each logical group. `working` is the
+default: it includes preliminary-kept/enriched groups and legacy rows without
+an outcome; rejected and terminal processing-error rows remain available for
+audit. The list and detail payload expose the compact preliminary outcome when
+one exists.
+
 `application_status=submitted`, `response_received`, and `interview` are
 reached-stage facts, not exact current statuses: respectively any Application,
 employer-response evidence or an implied response stage, and interview-date
@@ -397,6 +404,16 @@ pipeline runs, принимает до 100 items за request и создаёт/
 идемпотентен по discovery event. Persistent Worker pipeline вызывает endpoint
 после collection/deduplication и до preliminary limits; stateless Worker
 endpoints его не вызывают.
+
+``` text
+POST /internal/preliminary-outcomes
+```
+
+Internal Worker-only endpoint for terminal preliminary outcomes. It uses the
+same `X-Orchestrator-Internal-Token`, accepts up to 100 outcomes per request,
+and upserts strictly by canonical vacancy identity plus `run_id`. It does not
+create a fake full `VacancyAnalysis`; persistence failure is fatal for the
+current Worker run before enrichment begins.
 
 ### Manual Vacancy Create
 

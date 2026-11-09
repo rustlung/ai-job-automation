@@ -108,17 +108,17 @@ describe("VacanciesPage", () => {
     const { container } = renderPage();
     const headers = Array.from(container.querySelectorAll("thead th")).map((header) => header.textContent);
     const cells = Array.from(container.querySelectorAll("tbody tr:first-child > td"));
-    const vacancyStatusSelect = cells[4]?.querySelector("select") as HTMLSelectElement | null;
-    const userPrioritySelect = cells[7]?.querySelector("select") as HTMLSelectElement | null;
+    const vacancyStatusSelect = cells[5]?.querySelector("select") as HTMLSelectElement | null;
+    const userPrioritySelect = cells[8]?.querySelector("select") as HTMLSelectElement | null;
 
-    expect(headers).toEqual(["Дата", "Компания", "Вакансия", "Зарплата", "Статус вакансии", "Статус отклика", "AI Priority", "Мой приоритет", "Мой комментарий", "Score", "Track", "Профили поиска"]);
+    expect(headers).toEqual(["Дата", "Компания", "Вакансия", "Обработка", "Зарплата", "Статус вакансии", "Статус отклика", "AI Priority", "Мой приоритет", "Мой комментарий", "Score", "Track", "Профили поиска"]);
     expect(cells).toHaveLength(headers.length);
     expect(vacancyStatusSelect).toHaveValue("active");
-    expect(cells[5]).toHaveTextContent("Без отклика");
-    expect(cells[6]).toHaveTextContent("P1");
+    expect(cells[6]).toHaveTextContent("Без отклика");
+    expect(cells[7]).toHaveTextContent("P1");
     expect(userPrioritySelect).toHaveValue("");
-    expect(cells[8]).toHaveTextContent("Добавить комментарий");
-    expect(cells[9]).toHaveTextContent("95");
+    expect(cells[9]).toHaveTextContent("Добавить комментарий");
+    expect(cells[10]).toHaveTextContent("95");
   });
 
   it("clears both dates and activates all time", () => {

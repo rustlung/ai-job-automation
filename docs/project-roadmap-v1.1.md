@@ -36,6 +36,15 @@ full-enrichment outer chunks. Эти limits больше не отбрасыва
 обработки run. Гарантия не включает crash/restart recovery: persistent state,
 DB backlog и resume остаются следующей фазой.
 
+## Persisted preliminary outcomes — Phase B
+
+Статус: реализована persistence terminal preliminary outcome до full enrichment.
+Отдельная таблица хранит decision/source/score/confidence/summary и current
+processing state по `vacancy + run_id`; она не подменяет полный
+`VacancyAnalysis`. Default Vacancy List показывает working shortlist, а
+rejected и processing errors доступны через backend filter. DB-backed resume,
+reprocess и deferred queue остаются Phase C.
+
 ---
 
 # Phase 0. Project foundation

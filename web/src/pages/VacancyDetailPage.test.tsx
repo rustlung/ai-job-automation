@@ -135,11 +135,12 @@ describe("VacancyDetailPage", () => {
   });
 
   it("renders a discovered vacancy without description or analysis", () => {
-    useVacancyDetail.mockReturnValue({ data: { ...vacancy, description: null, analysis: null, salary_text: null, url: null }, isLoading: false, isError: false });
+    useVacancyDetail.mockReturnValue({ data: { ...vacancy, description: null, analysis: null, salary_text: null, url: null, preliminary_outcome: { outcome: "rejected_by_policy", outcome_source: "policy", processing_state: "preliminary_rejected", score: null, confidence: null, summary: null, provider: null, model: null, prompt_version: null, error_code: null, run_id: "run-1", updated_at: "2026-11-09T10:00:00Z" } }, isLoading: false, isError: false });
     renderPage();
 
     expect(screen.getByText("Полное описание ещё не загружено.")).toBeInTheDocument();
     expect(screen.getByText("Оценка ещё не сформирована.")).toBeInTheDocument();
+    expect(screen.getByText("Отклонено правилом")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Открыть оригинал" })).not.toBeInTheDocument();
   });
 

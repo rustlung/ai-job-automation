@@ -67,7 +67,7 @@ class FakeEnrichmentService:
             duplicate_count=collection.duplicate_count,
         )
 
-    async def filter_and_enrich_collection(self, collection, request, on_enriched_chunk=None):
+    async def filter_and_enrich_collection(self, collection, request, on_enriched_chunk=None, on_preliminary_complete=None, on_enrichment_failures=None):
         self.filter_requests.append((collection, request))
         if on_enriched_chunk is not None and self.result.items:
             await on_enriched_chunk(self.result.items, 1, 1)
@@ -79,7 +79,7 @@ class ChunkedFakeEnrichmentService(FakeEnrichmentService):
         super().__init__(result)
         self.chunk_size = chunk_size
 
-    async def filter_and_enrich_collection(self, collection, request, on_enriched_chunk=None):
+    async def filter_and_enrich_collection(self, collection, request, on_enriched_chunk=None, on_preliminary_complete=None, on_enrichment_failures=None):
         self.filter_requests.append((collection, request))
         if on_enriched_chunk is not None:
             chunks = [self.result.items[index : index + self.chunk_size] for index in range(0, len(self.result.items), self.chunk_size)]

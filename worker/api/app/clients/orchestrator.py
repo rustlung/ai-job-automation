@@ -162,6 +162,22 @@ class OrchestratorClient:
             rejection_message="Orchestrator rejected discovered vacancies",
         )
 
+    async def persist_preliminary_outcomes(
+        self,
+        payload: dict[str, Any],
+        *,
+        batch_index: int | None = None,
+        batch_count: int | None = None,
+    ) -> dict[str, Any]:
+        return await self._post_with_retry(
+            endpoint="/internal/preliminary-outcomes",
+            payload=payload,
+            batch_index=batch_index,
+            batch_count=batch_count,
+            event_prefix="orchestrator_preliminary_outcome_persist",
+            rejection_message="Orchestrator rejected preliminary outcomes",
+        )
+
     async def _post_with_retry(
         self,
         *,

@@ -125,6 +125,10 @@ discovered cohort проходит preliminary processing, а все допус�
 full enrichment. `PRELIMINARY_FILTER_MAX_ITEMS` и
 `FULL_ENRICHMENT_MAX_ITEMS` теперь задают размер последовательных outer chunks,
 а не coverage limit; persistent restart recovery пока отсутствует
+✅ Phase B persisted preliminary outcomes: отдельная history/current-state
+запись хранит policy/AI reject, keep, fallback или terminal preliminary error;
+default `/vacancies` показывает рабочий shortlist, а rejected/errors доступны
+через backend filter `processing`
 ✅ Orchestrator DB source of truth для vacancy pipeline
 ✅ Batch persistence в Orchestrator DB
 ✅ VacancyAnalysis history by run_id
@@ -504,8 +508,14 @@ Phase 1 раннего persistence добавила internal `POST /internal/dis
 Он принимает до 100 deduplicated preview-карточек за batch, использует internal
 token и фиксирует canonical identity до AI-обработки. `description = NULL`
 означает современную discovered vacancy без full details, а historical
-`description = ""` сохраняет прежнюю legacy-семантику. Пока Worker не вызывает
-этот endpoint, поэтому production flow не меняется до следующей фазы.
+`description = ""` сохраняет прежнюю legacy-семантику. Worker вызывает этот
+endpoint после collection/deduplication и до preliminary processing.
+
+После terminal preliminary result Worker batch-ами до 100 вызывает
+`POST /internal/preliminary-outcomes`. Outcome не создаёт искусственный
+`VacancyAnalysis`: он хранится отдельно и уникален по `vacancy_id + run_id`.
+Отказ policy и AI reject остаются в истории, но default Vacancy List скрывает
+их из рабочего shortlist; legacy rows без outcome остаются видимы.
 
 Identity вакансии остается `source + external_id`. Повторное обнаружение той же
 вакансии не создает новую `Vacancy` row. Same-run persistence retry по той же

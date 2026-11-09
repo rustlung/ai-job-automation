@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.repositories.vacancy import VacancyRepository
 from app.repositories.vacancy_analysis import VacancyAnalysisRepository
 from app.repositories.vacancy_processing_event import VacancyProcessingEventRepository
+from app.repositories.vacancy_preliminary_outcome import VacancyPreliminaryOutcomeRepository
 from app.services.business_identity import build_business_fingerprint
 from app.schemas.pipeline_result import (
     GroupedPipelineAnalysisRead,
@@ -47,6 +48,7 @@ class PipelineResultService:
         self.vacancy_repository = VacancyRepository(session)
         self.analysis_repository = VacancyAnalysisRepository(session)
         self.event_repository = VacancyProcessingEventRepository(session)
+        self.preliminary_outcomes = VacancyPreliminaryOutcomeRepository(session)
         self.user_state_reconciliation = VacancyUserStateReconciliationService(session)
 
     def persist(self, payload: PipelineResultsCreate) -> PipelineResultsCreateResponse:
@@ -269,6 +271,7 @@ class PipelineResultService:
             self.user_state_reconciliation.reconcile_after_change(before_presentation, vacancy)
 
         analysis = self.analysis_repository.create(vacancy.id, self._analysis_create(run_id, item))
+        self.preliminary_outcomes.mark_enriched(vacancy.id, run_id)
         self._create_processing_events(
             vacancy.id,
             analysis.id,

@@ -7,6 +7,7 @@ from app.schemas.application import ApplicationRead, ApplicationStatus
 from app.schemas.pipeline_run import PipelineRunRead
 from app.schemas.vacancy_analysis import VacancyAnalysisPriority
 from app.schemas.vacancy_user_state import VacancyStatus, VacancyUserPriority, VacancyUserStateRead
+from app.schemas.vacancy_preliminary_outcome import VacancyPreliminaryOutcomeRead, VacancyProcessingState
 
 
 class SearchProfileTrack(str, Enum):
@@ -94,6 +95,13 @@ class VacancyUserPriorityFilter(str, Enum):
     P3 = VacancyUserPriority.P3.value
 
 
+class VacancyProcessingFilter(str, Enum):
+    WORKING = "working"
+    REJECTED = "rejected"
+    ERRORS = "errors"
+    ALL = "all"
+
+
 class VacancyListItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -121,6 +129,8 @@ class VacancyListItem(BaseModel):
     vacancy_status: VacancyStatus
     user_priority: VacancyUserPriority | None
     user_comment: str | None
+    processing_state: VacancyProcessingState | None
+    preliminary_outcome: VacancyPreliminaryOutcomeRead | None
 
 
 class VacancyListResponse(BaseModel):
@@ -191,6 +201,7 @@ class VacancyDetail(BaseModel):
     description: str | None
     skills: list[str]
     analysis: VacancyAnalysisDetail
+    preliminary_outcome: VacancyPreliminaryOutcomeRead | None
     profile_ids: list[str]
     query_variant_ids: list[str]
     provenance_tracks: list[str]

@@ -4,6 +4,14 @@
 
 ### Added
 
+- Phase B preliminary processing state: Orchestrator stores strict, idempotent
+  terminal preliminary outcomes in `vacancy_preliminary_outcomes`, keyed by
+  canonical vacancy and run. Worker persists them before full enrichment in
+  batches of 100; failed outcome persistence stops the run. The Web Vacancy
+  List adds backend `processing=working|rejected|errors|all` filtering and
+  Detail displays the compact preliminary result without fabricating a full
+  analysis. Legacy rows without an outcome remain visible in the default view.
+
 - Phase A guaranteed processing: `PRELIMINARY_FILTER_MAX_ITEMS` и
   `FULL_ENRICHMENT_MAX_ITEMS` стали размерами последовательных Worker chunks,
   поэтому нормально завершившийся run покрывает весь discovered cohort и всех

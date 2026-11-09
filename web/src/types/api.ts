@@ -111,6 +111,9 @@ export type StatisticsPeriod = "today" | "7d" | "14d" | "30d" | "all" | "custom"
 export type VacancyApplicationStatusFilter = ApplicationStatus | "none";
 export type VacancyListSort = "first_seen" | "final_score" | "priority";
 export type SortDirection = "asc" | "desc";
+export type VacancyProcessingFilter = "working" | "rejected" | "errors" | "all";
+export type PreliminaryOutcome = "rejected_by_policy" | "rejected_by_ai" | "keep_main" | "keep_alt" | "uncertain" | "preliminary_fallback" | "preliminary_failed";
+export type VacancyProcessingState = "preliminary_rejected" | "preliminary_kept" | "enrichment_failed" | "enriched" | "processing_failed";
 
 export interface VacancyListItem {
   presentation_key: string;
@@ -137,6 +140,8 @@ export interface VacancyListItem {
   vacancy_status: VacancyStatus;
   user_priority: VacancyUserPriority | null;
   user_comment: string | null;
+  processing_state: VacancyProcessingState | null;
+  preliminary_outcome: VacancyPreliminaryOutcome | null;
 }
 
 export interface VacancyListResponse {
@@ -157,6 +162,7 @@ export interface VacancyFilters {
   application_status?: VacancyApplicationStatusFilter;
   vacancy_status?: VacancyStatusFilter;
   user_priority?: VacancyUserPriorityFilter;
+  processing?: VacancyProcessingFilter;
   limit: number;
   offset: number;
   sort: VacancyListSort;
@@ -251,6 +257,21 @@ export interface VacancyAnalysisDetail {
   hard_blockers: string[] | null;
 }
 
+export interface VacancyPreliminaryOutcome {
+  outcome: PreliminaryOutcome;
+  outcome_source: "policy" | "ai" | "fallback" | "error";
+  processing_state: VacancyProcessingState;
+  score: number | null;
+  confidence: number | null;
+  summary: string | null;
+  provider: string | null;
+  model: string | null;
+  prompt_version: string | null;
+  error_code: string | null;
+  run_id: string;
+  updated_at: string;
+}
+
 export interface VacancyDetail {
   presentation_key: string;
   vacancy_id: number;
@@ -272,6 +293,7 @@ export interface VacancyDetail {
   description: string | null;
   skills: string[];
   analysis: VacancyAnalysisDetail | null;
+  preliminary_outcome: VacancyPreliminaryOutcome | null;
   profile_ids: string[];
   query_variant_ids: string[];
   provenance_tracks: string[];

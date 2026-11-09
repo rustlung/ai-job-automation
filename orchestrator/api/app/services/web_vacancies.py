@@ -10,6 +10,7 @@ from app.repositories.application import ApplicationRepository
 from app.repositories.vacancy import VacancyRepository
 from app.repositories.vacancy_analysis import VacancyAnalysisRepository
 from app.repositories.vacancy_user_state import VacancyUserStateRepository
+from app.repositories.vacancy_preliminary_outcome import VacancyPreliminaryOutcomeRepository
 from app.schemas.vacancy_analysis import VacancyAnalysisPriority
 from app.schemas.web import (
     SortDirection,
@@ -23,7 +24,9 @@ from app.schemas.web import (
     VacancyApplicationStatusFilter,
     VacancyStatusFilter,
     VacancyUserPriorityFilter,
+    VacancyProcessingFilter,
 )
+from app.schemas.vacancy_preliminary_outcome import VacancyPreliminaryOutcomeRead, VacancyProcessingState
 from app.schemas.vacancy_user_state import VacancyStatus, VacancyUserStateRead
 from app.services.application import ApplicationService
 from app.services.application_stage import matches_application_filter
@@ -39,6 +42,7 @@ class WebVacancyListService:
         self.analysis_repository = VacancyAnalysisRepository(session)
         self.application_repository = ApplicationRepository(session)
         self.vacancy_user_state_repository = VacancyUserStateRepository(session)
+        self.preliminary_outcome_repository = VacancyPreliminaryOutcomeRepository(session)
 
     def list(
         self,
@@ -51,6 +55,7 @@ class WebVacancyListService:
         application_status: VacancyApplicationStatusFilter | None,
         vacancy_status: VacancyStatusFilter | None,
         user_priority: VacancyUserPriorityFilter | None,
+        processing: VacancyProcessingFilter = VacancyProcessingFilter.WORKING,
         run_id: str | None,
         search: str | None,
         limit: int,
@@ -60,6 +65,9 @@ class WebVacancyListService:
     ) -> VacancyListResponse:
         vacancies = self.vacancy_repository.list_all()
         analyses = self.analysis_repository.list_by_vacancy_ids([vacancy.id for vacancy in vacancies])
+        outcomes_by_vacancy_id = self._latest_outcomes_by_vacancy_id(
+            self.preliminary_outcome_repository.list_by_vacancy_ids([vacancy.id for vacancy in vacancies])
+        )
         applications_by_vacancy_id = self._applications_by_vacancy_id(
             self.application_repository.list_by_vacancy_ids([vacancy.id for vacancy in vacancies])
         )
@@ -78,6 +86,7 @@ class WebVacancyListService:
         for group in groups:
             cohort_date = logical_vacancy_cohort_date(group)
             representative_analysis = latest_analyses.get(group.representative.id)
+            group_outcome = self._group_outcome(group.members, outcomes_by_vacancy_id)
 
             member_analyses = [
                 analysis
@@ -119,6 +128,8 @@ class WebVacancyListService:
                 vacancy_status=user_state.vacancy_status if user_state is not None else VacancyStatus.ACTIVE,
                 user_priority=user_state.user_priority if user_state is not None else None,
                 user_comment=user_state.comment if user_state is not None else None,
+                processing_state=group_outcome.processing_state if group_outcome is not None else None,
+                preliminary_outcome=VacancyPreliminaryOutcomeRead.model_validate(group_outcome) if group_outcome is not None else None,
             )
             if self._matches_filters(
                 item,
@@ -132,6 +143,8 @@ class WebVacancyListService:
                 application_status=application_status,
                 vacancy_status=vacancy_status,
                 user_priority=user_priority,
+                processing=processing,
+                preliminary_outcome=group_outcome,
                 current_application=current_application,
                 run_id=run_id,
                 search=search,
@@ -150,6 +163,7 @@ class WebVacancyListService:
         group = self.find_group(presentation_key)
         member_ids = [member.id for member in group.members]
         analyses = self.analysis_repository.list_by_vacancy_ids(member_ids)
+        outcomes_by_vacancy_id = self._latest_outcomes_by_vacancy_id(self.preliminary_outcome_repository.list_by_vacancy_ids(member_ids))
         applications_by_vacancy_id = self._applications_by_vacancy_id(
             self.application_repository.list_by_vacancy_ids(member_ids)
         )
@@ -158,6 +172,7 @@ class WebVacancyListService:
             latest_analyses[analysis.vacancy_id] = analysis
 
         representative_analysis = latest_analyses.get(group.representative.id)
+        group_outcome = self._group_outcome(group.members, outcomes_by_vacancy_id)
 
         member_analyses = analyses
         group_applications = [
@@ -203,6 +218,7 @@ class WebVacancyListService:
                 risks=list(representative_analysis.risks or []) if representative_analysis is not None else [],
                 hard_blockers=list(representative_analysis.hard_blockers or []) if representative_analysis is not None else [],
             ),
+            preliminary_outcome=VacancyPreliminaryOutcomeRead.model_validate(group_outcome) if group_outcome is not None else None,
             profile_ids=merge_profile_ids(member_analyses),
             query_variant_ids=self._merge_provenance_values(member_analyses, "query_variant_ids"),
             provenance_tracks=self._merge_provenance_values(member_analyses, "tracks"),
@@ -308,6 +324,8 @@ class WebVacancyListService:
         application_status: VacancyApplicationStatusFilter | None,
         vacancy_status: VacancyStatusFilter | None,
         user_priority: VacancyUserPriorityFilter | None,
+        processing: VacancyProcessingFilter,
+        preliminary_outcome,
         current_application: Application | None,
         run_id: str | None,
         search: str | None,
@@ -337,6 +355,8 @@ class WebVacancyListService:
                 return False
             if user_priority != VacancyUserPriorityFilter.NONE and item.user_priority != user_priority.value:
                 return False
+        if not WebVacancyListService._matches_processing_filter(processing, preliminary_outcome):
+            return False
         if run_id and not any(getattr(analysis, "run_id", None) == run_id for analysis in member_analyses):
             return False
         if search:
@@ -344,6 +364,42 @@ class WebVacancyListService:
             if normalized_search and normalized_search not in item.company.casefold() and normalized_search not in item.title.casefold():
                 return False
         return True
+
+    @staticmethod
+    def _latest_outcomes_by_vacancy_id(outcomes):
+        latest = {}
+        for outcome in outcomes:
+            current = latest.get(outcome.vacancy_id)
+            if current is None or (outcome.updated_at, outcome.id) > (current.updated_at, current.id):
+                latest[outcome.vacancy_id] = outcome
+        return latest
+
+    @staticmethod
+    def _group_outcome(members, outcomes_by_vacancy_id):
+        outcomes = [outcomes_by_vacancy_id.get(member.id) for member in members]
+        outcomes = [outcome for outcome in outcomes if outcome is not None]
+        if not outcomes:
+            return None
+        working = [outcome for outcome in outcomes if outcome.processing_state in {"preliminary_kept", "enriched"}]
+        if working:
+            return max(working, key=lambda outcome: (outcome.updated_at, outcome.id))
+        errors = [outcome for outcome in outcomes if outcome.processing_state in {"enrichment_failed", "processing_failed"}]
+        if errors:
+            return max(errors, key=lambda outcome: (outcome.updated_at, outcome.id))
+        return max(outcomes, key=lambda outcome: (outcome.updated_at, outcome.id))
+
+    @staticmethod
+    def _matches_processing_filter(processing: VacancyProcessingFilter, outcome) -> bool:
+        if processing == VacancyProcessingFilter.ALL:
+            return True
+        # Rows predating Phase B have no outcome. Keep them visible by default.
+        if outcome is None:
+            return processing == VacancyProcessingFilter.WORKING
+        if processing == VacancyProcessingFilter.WORKING:
+            return outcome.processing_state in {"preliminary_kept", "enriched"}
+        if processing == VacancyProcessingFilter.REJECTED:
+            return outcome.processing_state == "preliminary_rejected"
+        return outcome.processing_state in {"enrichment_failed", "processing_failed"}
 
     @staticmethod
     def _applications_by_vacancy_id(applications: Iterable[Application]) -> dict[int, list[Application]]:

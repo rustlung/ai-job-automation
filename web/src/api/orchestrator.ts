@@ -27,6 +27,7 @@ function vacancyQuery(filters: VacancyFilters): string {
     ["application_status", filters.application_status]
     , ["vacancy_status", filters.vacancy_status]
     , ["user_priority", filters.user_priority]
+    , ["processing", filters.processing]
   ];
   optionalFilters.forEach(([key, value]) => {
     if (value) params.set(key, value);

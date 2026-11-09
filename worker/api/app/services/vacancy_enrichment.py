@@ -7,6 +7,7 @@ from app.schemas.preliminary_filter import (
     HHCollectAndPreliminaryFilterRequest,
     HHCollectionStats,
     PreliminaryDecision,
+    PreliminaryFilteredVacancy,
     PreliminaryFilterStats,
     PreliminaryFilterStatus,
 )
@@ -97,6 +98,8 @@ class HHCollectFilterAndEnrichService:
         collection: HHSearchCollectionResult,
         request: HHCollectFilterAndEnrichRequest,
         on_enriched_chunk: Callable[[list[EnrichedVacancyAssessment], int, int], Awaitable[None]] | None = None,
+        on_preliminary_complete: Callable[[list[PreliminaryFilteredVacancy]], Awaitable[None]] | None = None,
+        on_enrichment_failures: Callable[[list[tuple[PreliminaryFilteredVacancy, VacancyEnrichmentError]], int, int], Awaitable[None]] | None = None,
     ) -> HHCollectFilterAndEnrichResult:
         started_at = time.perf_counter()
         errors: list[VacancyEnrichmentError] = []
@@ -112,6 +115,9 @@ class HHCollectFilterAndEnrichService:
         )
         collection_stats = preliminary_result.collection_stats
         filter_stats = preliminary_result.filter_stats
+
+        if on_preliminary_complete is not None:
+            await on_preliminary_complete(preliminary_result.items)
 
         if preliminary_result.status == PreliminaryFilterStatus.FAILED:
             return HHCollectFilterAndEnrichResult(
@@ -171,6 +177,14 @@ class HHCollectFilterAndEnrichService:
             failed_normalization_count += chunk_result[3]
             failed_feature_extraction_count += chunk_result[4]
             semantic_fallback_count += chunk_result[5]
+            if on_enrichment_failures is not None:
+                failed_items = [
+                    (chunk[error.item_index - (chunk_index - 1) * chunk_size], error)
+                    for error in chunk_result[1]
+                    if error.item_index is not None and (chunk_index - 1) * chunk_size <= error.item_index < (chunk_index - 1) * chunk_size + len(chunk)
+                ]
+                if failed_items:
+                    await on_enrichment_failures(failed_items, chunk_index, len(chunks))
             if chunk_result[0] and on_enriched_chunk is not None:
                 await on_enriched_chunk(chunk_result[0], chunk_index, len(chunks))
             logger.info(

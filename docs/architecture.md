@@ -32,6 +32,7 @@ Worker
 ├── collection
 ├── discovery persistence
 ├── preliminary local AI (all discovered vacancies in sequential outer chunks)
+├── preliminary outcome persistence
 ├── full fetch / enrichment (all approved candidates in sequential outer chunks)
 ├── normalization
 ├── deterministic extraction
@@ -78,6 +79,14 @@ throughput одного outer chunk, а не coverage run. Внутренние 
 остаются отдельными настройками. Гарантия полного coverage относится только к
 run, который дошёл до terminal completion: Phase A не реализует resume после
 crash/restart и DB-backed backlog.
+
+Phase B сохраняет terminal preliminary outcome отдельно от полного
+`VacancyAnalysis` в `vacancy_preliminary_outcomes`. Запись уникальна по
+`vacancy_id + run_id`; её current-state обновляется до `enriched` после полной
+persistence. Это даёт быстрый backend filter рабочего shortlist, rejected и
+processing errors без сложного чтения append-only событий. Legacy vacancy без
+outcome остаётся видимой в default working view. Resume/backlog после crash не
+появляется и в этой фазе.
 
 После collection и in-memory deduplication Worker фиксирует все canonical HH
 preview в Orchestrator до preliminary и full enrichment. Лимиты обработки
