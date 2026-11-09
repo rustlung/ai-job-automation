@@ -4,14 +4,22 @@
 
 ### Added
 
+- Phase C1 DB-backed processing backlog foundation: new
+  `vacancy_processing_states` stores exactly one durable work item per canonical
+  vacancy/run, including immutable safe discovery preview, state, attempts,
+  safe error metadata and SQLite-compatible lease fields. Discovery, terminal
+  preliminary outcome persistence and successful/failing final persistence now
+  keep it synchronized. Internal token-only backlog and claim endpoints are
+  available for Phase C2; no Worker resume, scheduler or n8n change is enabled.
+
 - Phase B preliminary processing state: Orchestrator stores strict, idempotent
   terminal preliminary outcomes in `vacancy_preliminary_outcomes`, keyed by
   canonical vacancy and run. Worker persists them before full enrichment in
   batches of 100; failed outcome persistence stops the run. The Web Vacancy
   List adds backend `processing=working|rejected|errors|all` filtering and
   Detail displays the compact preliminary result without fabricating a full
-  analysis. Legacy rows without an outcome are historical/unknown and appear
-  only in the explicit `all` view.
+  analysis. Legacy raw rows without both outcome and full analysis are
+  historical/unknown and appear only in the explicit `all` view.
 
 - Phase A guaranteed processing: `PRELIMINARY_FILTER_MAX_ITEMS` и
   `FULL_ENRICHMENT_MAX_ITEMS` стали размерами последовательных Worker chunks,

@@ -243,8 +243,9 @@ and `asc`/`desc` direction. It does not return full descriptions.
 
 The backend-only `processing=working|rejected|errors|all` filter uses the
 latest persisted preliminary outcome for each logical group. `working` is the
-default: it includes only preliminary-kept/enriched groups. Rows without an
-outcome are historical/unknown and are returned only by `processing=all`;
+default: it includes preliminary-kept/enriched groups, historical groups with a
+full analysis and manual vacancies. Rows without both outcome and full analysis
+are historical/unknown and are returned only by `processing=all`;
 rejected and terminal processing-error rows remain available for audit. The
 list and detail payload expose the compact preliminary outcome when
 one exists.
@@ -415,6 +416,19 @@ same `X-Orchestrator-Internal-Token`, accepts up to 100 outcomes per request,
 and upserts strictly by canonical vacancy identity plus `run_id`. It does not
 create a fake full `VacancyAnalysis`; persistence failure is fatal for the
 current Worker run before enrichment begins.
+
+### Internal Processing Backlog
+
+```text
+GET /internal/processing-runs/{run_id}/backlog?stage=preliminary|enrichment
+POST /internal/processing-runs/{run_id}/claim
+```
+
+Internal-token-only foundation for Phase C2 recovery. The read endpoint returns
+the run summary and pending (including expired-lease) durable work items. Claim
+atomically assigns a bounded SQLite-compatible lease for one stage and returns
+only the claimed safe preview snapshots. These endpoints do not start Worker
+resume automatically and are not public Web API.
 
 ### Manual Vacancy Create
 

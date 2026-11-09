@@ -18,6 +18,7 @@ from app.models.application import Application
 from app.models.vacancy import Vacancy
 from app.models.vacancy_analysis import VacancyAnalysis
 from app.models.vacancy_processing_event import VacancyProcessingEvent
+from app.models.vacancy_processing_state import VacancyProcessingState
 from app.models.vacancy_user_state import VacancyUserState
 from app.repositories.vacancy_processing_event import VacancyProcessingEventRepository
 from app.schemas.discovered_vacancy import (
@@ -162,6 +163,7 @@ def test_discovery_batch_is_atomic_on_database_failure(db_session, monkeypatch) 
             )
         )
     assert db_session.scalars(select(Vacancy)).all() == []
+    assert db_session.scalars(select(VacancyProcessingState)).all() == []
 
 
 def test_discovery_api_enforces_internal_token_and_batch_limit(db_session, monkeypatch) -> None:
@@ -320,7 +322,7 @@ def test_web_detail_handles_discovered_vacancy_without_analysis(db_session) -> N
     DiscoveredVacancyService(db_session).persist(DiscoveredVacanciesCreate(**discovery_payload()))
 
     with make_client(db_session) as client:
-        listed = client.get("/api/vacancies")
+        listed = client.get("/api/vacancies?processing=all")
         detail = client.get("/api/vacancies/hh:123")
 
     assert listed.status_code == 200

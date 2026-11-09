@@ -27,6 +27,7 @@ def test_vacancy_migration_upgrade_and_downgrade(tmp_path, monkeypatch) -> None:
     assert "vacancy_analyses" in inspector.get_table_names()
     assert "vacancy_processing_events" in inspector.get_table_names()
     assert "vacancy_preliminary_outcomes" in inspector.get_table_names()
+    assert "vacancy_processing_states" in inspector.get_table_names()
     assert "applications" in inspector.get_table_names()
     assert "application_crm_sync_states" in inspector.get_table_names()
     assert "vacancy_user_states" in inspector.get_table_names()
@@ -78,6 +79,22 @@ def test_vacancy_migration_upgrade_and_downgrade(tmp_path, monkeypatch) -> None:
     } <= preliminary_indexes
     preliminary_columns = {column["name"] for column in inspector.get_columns("vacancy_preliminary_outcomes")}
     assert {"vacancy_id", "run_id", "outcome", "outcome_source", "processing_state", "updated_at"} <= preliminary_columns
+    processing_state_indexes = {index["name"] for index in inspector.get_indexes("vacancy_processing_states")}
+    assert {
+        "ix_vacancy_processing_states_run_state",
+        "ix_vacancy_processing_states_state_claim_expires_at",
+        "ix_vacancy_processing_states_vacancy_id",
+    } <= processing_state_indexes
+    processing_state_columns = {column["name"] for column in inspector.get_columns("vacancy_processing_states")}
+    assert {
+        "vacancy_id",
+        "run_id",
+        "state",
+        "preview_snapshot",
+        "preliminary_attempts",
+        "enrichment_attempts",
+        "claim_expires_at",
+    } <= processing_state_columns
     application_indexes = {index["name"] for index in inspector.get_indexes("applications")}
     assert {"ix_applications_vacancy_id", "ix_applications_status", "ix_applications_applied_at"} <= application_indexes
     application_columns = {column["name"]: column for column in inspector.get_columns("applications")}

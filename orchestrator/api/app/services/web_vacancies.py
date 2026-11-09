@@ -128,7 +128,13 @@ class WebVacancyListService:
                 vacancy_status=user_state.vacancy_status if user_state is not None else VacancyStatus.ACTIVE,
                 user_priority=user_state.user_priority if user_state is not None else None,
                 user_comment=user_state.comment if user_state is not None else None,
-                processing_state=group_outcome.processing_state if group_outcome is not None else None,
+                processing_state=(
+                    group_outcome.processing_state
+                    if group_outcome is not None
+                    else VacancyProcessingState.ENRICHED
+                    if representative_analysis is not None
+                    else None
+                ),
                 preliminary_outcome=VacancyPreliminaryOutcomeRead.model_validate(group_outcome) if group_outcome is not None else None,
             )
             if self._matches_filters(
@@ -145,6 +151,7 @@ class WebVacancyListService:
                 user_priority=user_priority,
                 processing=processing,
                 preliminary_outcome=group_outcome,
+                has_full_analysis=bool(member_analyses),
                 current_application=current_application,
                 run_id=run_id,
                 search=search,
@@ -326,6 +333,7 @@ class WebVacancyListService:
         user_priority: VacancyUserPriorityFilter | None,
         processing: VacancyProcessingFilter,
         preliminary_outcome,
+        has_full_analysis: bool,
         current_application: Application | None,
         run_id: str | None,
         search: str | None,
@@ -355,7 +363,12 @@ class WebVacancyListService:
                 return False
             if user_priority != VacancyUserPriorityFilter.NONE and item.user_priority != user_priority.value:
                 return False
-        if not WebVacancyListService._matches_processing_filter(processing, preliminary_outcome):
+        if not WebVacancyListService._matches_processing_filter(
+            processing,
+            preliminary_outcome,
+            has_full_analysis=has_full_analysis,
+            is_manual=item.source == "manual",
+        ):
             return False
         if run_id and not any(getattr(analysis, "run_id", None) == run_id for analysis in member_analyses):
             return False
@@ -389,13 +402,20 @@ class WebVacancyListService:
         return max(outcomes, key=lambda outcome: (outcome.updated_at, outcome.id))
 
     @staticmethod
-    def _matches_processing_filter(processing: VacancyProcessingFilter, outcome) -> bool:
+    def _matches_processing_filter(
+        processing: VacancyProcessingFilter,
+        outcome,
+        *,
+        has_full_analysis: bool = False,
+        is_manual: bool = False,
+    ) -> bool:
         if processing == VacancyProcessingFilter.ALL:
             return True
-        # Historical rows have no trustworthy preliminary outcome. They remain
-        # available only through the explicit all-history view.
+        # A historical full analysis and a user-created manual vacancy are known
+        # working records, even though they predate preliminary outcomes. Raw
+        # records with neither remain unknown and require the all-history view.
         if outcome is None:
-            return False
+            return processing == VacancyProcessingFilter.WORKING and (has_full_analysis or is_manual)
         if processing == VacancyProcessingFilter.WORKING:
             return outcome.processing_state in {"preliminary_kept", "enriched"}
         if processing == VacancyProcessingFilter.REJECTED:

@@ -130,6 +130,10 @@ calculation или canonical persistence. Внутри persistent Worker pipelin
 collection/deduplication все discovered HH preview сохраняются в Orchestrator
 до preliminary/enrichment limits; n8n contract от этого не меняется.
 
+Phase C1 также хранит per-vacancy/run processing work item с безопасным preview
+snapshot. Это только foundation recovery: Daily v14 запускает и poll-ит один
+Worker run как прежде, а automatic backlog resume ещё не включён.
+
 ### Topology
 
 Success branch:

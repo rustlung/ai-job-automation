@@ -45,6 +45,13 @@ processing state по `vacancy + run_id`; она не подменяет пол�
 rejected и processing errors доступны через backend filter. DB-backed resume,
 reprocess и deferred queue остаются Phase C.
 
+## DB-backed processing backlog — Phase C1
+
+Статус: реализован persistent foundation. Новая run-scoped work-item таблица
+хранит безопасный immutable preview snapshot, lifecycle state, attempts, error
+metadata и lease fields. Internal backlog/claim API готов для C2. Worker resume,
+планировщик и automatic crash recovery в C1 намеренно не реализованы.
+
 ---
 
 # Phase 0. Project foundation

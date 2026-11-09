@@ -4,8 +4,10 @@ from datetime import datetime, timezone
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.models.vacancy_processing_state import VacancyProcessingState
 from app.repositories.vacancy import VacancyRepository
 from app.repositories.vacancy_processing_event import VacancyProcessingEventRepository
+from app.repositories.vacancy_processing_state import VacancyProcessingStateRepository
 from app.schemas.discovered_vacancy import (
     DiscoveredVacanciesCreate,
     DiscoveredVacanciesCreateResponse,
@@ -32,14 +34,19 @@ class DiscoveredVacancyService:
         self.session = session
         self.vacancy_repository = VacancyRepository(session)
         self.event_repository = VacancyProcessingEventRepository(session)
+        self.processing_states = VacancyProcessingStateRepository(session)
 
     def persist(self, payload: DiscoveredVacanciesCreate) -> DiscoveredVacanciesCreateResponse:
         created_count = 0
         updated_count = 0
         already_seen_count = 0
+        state_by_vacancy_id = {
+            record.vacancy_id: record
+            for record in self.processing_states.list_by_run_id(payload.run_id)
+        }
         try:
             for item in payload.items:
-                outcome = self._persist_item(payload.run_id, item)
+                outcome = self._persist_item(payload.run_id, item, state_by_vacancy_id)
                 if outcome == "created":
                     created_count += 1
                 elif outcome == "updated":
@@ -67,7 +74,12 @@ class DiscoveredVacancyService:
             )
         )
 
-    def _persist_item(self, run_id: str, item: DiscoveredVacancyItem) -> str:
+    def _persist_item(
+        self,
+        run_id: str,
+        item: DiscoveredVacancyItem,
+        state_by_vacancy_id: dict[int, VacancyProcessingState],
+    ) -> str:
         seen_at = self._effective_seen_at(item.seen_at)
         vacancy = self.vacancy_repository.get_by_source_external_id(item.source, item.external_id)
         if vacancy is None:
@@ -80,6 +92,9 @@ class DiscoveredVacancyService:
                 location=item.location,
                 salary_text=item.salary_text,
                 seen_at=seen_at,
+            )
+            state_by_vacancy_id[vacancy.id] = self.processing_states.create_for_discovery(
+                vacancy.id, run_id, item.model_dump(mode="json")
             )
             self._create_discovery_event(vacancy.id, run_id, item)
             return "created"
@@ -100,6 +115,12 @@ class DiscoveredVacancyService:
             seen_at=seen_at,
             record_observation=not already_recorded_for_run,
         )
+        # The initial preview is immutable for a run. A replay can update the
+        # canonical observation but must not change the future resume input.
+        if vacancy.id not in state_by_vacancy_id:
+            state_by_vacancy_id[vacancy.id] = self.processing_states.create_for_discovery(
+                vacancy.id, run_id, item.model_dump(mode="json")
+            )
         if not already_recorded_for_run:
             self._create_discovery_event(vacancy.id, run_id, item)
             return "updated"

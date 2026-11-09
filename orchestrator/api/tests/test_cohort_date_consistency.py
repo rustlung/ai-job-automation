@@ -3,7 +3,7 @@ from datetime import date, datetime, timezone
 from app.models.vacancy import Vacancy
 from app.schemas.exports import ExportPeriod, ExportRequest
 from app.schemas.statistics import StatisticsPeriod
-from app.schemas.web import SortDirection, VacancyListSort
+from app.schemas.web import SortDirection, VacancyListSort, VacancyProcessingFilter
 from app.services.exports import ExportService
 from app.services.business_vacancy_grouping import group_business_vacancies
 from app.services.logical_vacancy_dates import logical_vacancy_cohort_date, preset_period_range, samara_today
@@ -61,6 +61,7 @@ def vacancy_list_total(db_session, *, date_from: date | None, date_to: date | No
         application_status=None,
         vacancy_status=None,
         user_priority=None,
+        processing=VacancyProcessingFilter.ALL,
         run_id=None,
         search=None,
         limit=100,

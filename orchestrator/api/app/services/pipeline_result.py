@@ -9,6 +9,7 @@ from app.repositories.vacancy import VacancyRepository
 from app.repositories.vacancy_analysis import VacancyAnalysisRepository
 from app.repositories.vacancy_processing_event import VacancyProcessingEventRepository
 from app.repositories.vacancy_preliminary_outcome import VacancyPreliminaryOutcomeRepository
+from app.repositories.vacancy_processing_state import VacancyProcessingStateRepository
 from app.services.business_identity import build_business_fingerprint
 from app.schemas.pipeline_result import (
     GroupedPipelineAnalysisRead,
@@ -49,6 +50,7 @@ class PipelineResultService:
         self.analysis_repository = VacancyAnalysisRepository(session)
         self.event_repository = VacancyProcessingEventRepository(session)
         self.preliminary_outcomes = VacancyPreliminaryOutcomeRepository(session)
+        self.processing_states = VacancyProcessingStateRepository(session)
         self.user_state_reconciliation = VacancyUserStateReconciliationService(session)
 
     def persist(self, payload: PipelineResultsCreate) -> PipelineResultsCreateResponse:
@@ -74,6 +76,7 @@ class PipelineResultService:
                     updated_vacancy_count += 1 if not result.vacancy_created else 0
             except Exception as exc:
                 self.session.rollback()
+                self._mark_processing_failure(payload.run_id, item)
                 logger.warning(
                     "pipeline_results_item_failed run_id=%s item_index=%s error_code=pipeline_item_persist_failed",
                     payload.run_id,
@@ -272,6 +275,7 @@ class PipelineResultService:
 
         analysis = self.analysis_repository.create(vacancy.id, self._analysis_create(run_id, item))
         self.preliminary_outcomes.mark_enriched(vacancy.id, run_id)
+        self.processing_states.mark_enriched(vacancy.id, run_id)
         self._create_processing_events(
             vacancy.id,
             analysis.id,
@@ -298,6 +302,28 @@ class PipelineResultService:
             analysis_created=True,
             status=PipelineResultItemStatus.PERSISTED,
         )
+
+    def _mark_processing_failure(self, run_id: str, item: PipelineResultItem) -> None:
+        """Keep the durable work item terminal when final persistence fails."""
+        try:
+            vacancy = self.vacancy_repository.get_by_source_external_id(item.vacancy.source, item.vacancy.external_id)
+            if vacancy is None:
+                return
+            self.processing_states.mark_failed(
+                vacancy.id,
+                run_id,
+                error_code="pipeline_item_persist_failed",
+                error_summary="Final persistence failed",
+            )
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            logger.warning(
+                "pipeline_results_failure_state_not_persisted run_id=%s source=%s external_id=%s",
+                run_id,
+                item.vacancy.source,
+                item.vacancy.external_id,
+            )
 
     @staticmethod
     def _vacancy_create(item: PipelineResultItem) -> VacancyCreate:

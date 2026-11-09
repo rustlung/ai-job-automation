@@ -84,9 +84,19 @@ Phase B сохраняет terminal preliminary outcome отдельно от п
 `VacancyAnalysis` в `vacancy_preliminary_outcomes`. Запись уникальна по
 `vacancy_id + run_id`; её current-state обновляется до `enriched` после полной
 persistence. Это даёт быстрый backend filter рабочего shortlist, rejected и
-processing errors без сложного чтения append-only событий. Legacy vacancy без
-outcome не получает выдуманный state и доступна только в explicit all-history view. Resume/backlog после crash не
+processing errors без сложного чтения append-only событий. Legacy raw vacancy
+без outcome и полного анализа не получает выдуманный state и доступна только в
+explicit all-history view; historical full analysis и manual vacancy остаются
+working. Resume/backlog после crash не
 появляется и в этой фазе.
+
+Phase C1 добавляет durable work item `vacancy_processing_states`, уникальный
+по `vacancy_id + run_id`. Discovery в той же DB-транзакции фиксирует
+неизменяемый безопасный preview snapshot и `preliminary_pending`; outcome и
+final persistence переводят work item в terminal state. Таблица хранит attempt
+counts, безопасную ошибку и lease metadata, а internal backlog/claim API уже
+позволяет восстановить pending work после crash. Worker resume, scheduler и
+автоматическое восстановление в C1 намеренно ещё не запускаются.
 
 После collection и in-memory deduplication Worker фиксирует все canonical HH
 preview в Orchestrator до preliminary и full enrichment. Лимиты обработки

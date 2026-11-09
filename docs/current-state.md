@@ -129,6 +129,10 @@ full enrichment. `PRELIMINARY_FILTER_MAX_ITEMS` и
 запись хранит policy/AI reject, keep, fallback или terminal preliminary error;
 default `/vacancies` показывает рабочий shortlist, а rejected/errors доступны
 через backend filter `processing`
+✅ Phase C1 DB-backed processing backlog foundation: каждая новая discovered
+vacancy/run получает durable work item с immutable preview snapshot, состоянием,
+attempt/error и lease metadata; internal read/claim API готов для будущего
+resume, но Worker resume и scheduler ещё не включены
 ✅ Orchestrator DB source of truth для vacancy pipeline
 ✅ Batch persistence в Orchestrator DB
 ✅ VacancyAnalysis history by run_id
