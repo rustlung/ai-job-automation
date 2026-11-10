@@ -178,6 +178,63 @@ class OrchestratorClient:
             rejection_message="Orchestrator rejected preliminary outcomes",
         )
 
+    async def get_processing_backlog(self, run_id: str, *, stage: str | None = None, limit: int = 100) -> dict[str, Any]:
+        params: dict[str, Any] = {"limit": limit}
+        if stage is not None:
+            params["stage"] = stage
+        return await self._get_with_retry(f"/internal/processing-runs/{run_id}/backlog", params=params)
+
+    async def claim_processing_work(self, run_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return await self._post_with_retry(
+            endpoint=f"/internal/processing-runs/{run_id}/claim",
+            payload=payload,
+            batch_index=None,
+            batch_count=None,
+            event_prefix="orchestrator_processing_claim",
+            rejection_message="Orchestrator rejected processing work claim",
+        )
+
+    async def renew_processing_claims(self, run_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return await self._post_with_retry(
+            endpoint=f"/internal/processing-runs/{run_id}/renew",
+            payload=payload,
+            batch_index=None,
+            batch_count=None,
+            event_prefix="orchestrator_processing_claim_renew",
+            rejection_message="Orchestrator rejected processing claim renewal",
+        )
+
+    async def get_pipeline_run(self, run_id: str) -> dict[str, Any]:
+        return await self._get_with_retry(f"/internal/pipeline-runs/{run_id}", params=None)
+
+    async def _get_with_retry(self, endpoint: str, *, params: dict[str, Any] | None) -> dict[str, Any]:
+        last_error: Exception | None = None
+        headers = {"X-Orchestrator-Internal-Token": self.internal_api_token} if self.internal_api_token else None
+        for attempt in range(self.max_retries + 1):
+            try:
+                async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout_seconds, transport=self.transport) as client:
+                    response = await client.get(endpoint, params=params, headers=headers)
+                if 500 <= response.status_code < 600:
+                    raise OrchestratorClientResponseError("Orchestrator returned a transient HTTP error", status_code=response.status_code)
+                if response.status_code >= 400:
+                    raise OrchestratorClientResponseError(
+                        "Orchestrator rejected internal read request",
+                        status_code=response.status_code,
+                        validation_details=self._safe_validation_details(response),
+                    )
+                return response.json()
+            except (httpx.TimeoutException, httpx.ConnectError, httpx.RequestError, OrchestratorClientResponseError) as exc:
+                last_error = exc
+                if isinstance(exc, OrchestratorClientResponseError) and (exc.status_code is None or exc.status_code < 500):
+                    raise
+                if attempt < self.max_retries:
+                    logger.warning("orchestrator_internal_read_retryable_error endpoint=%s attempt=%s", endpoint, attempt + 1)
+        if isinstance(last_error, httpx.TimeoutException):
+            raise OrchestratorClientTimeoutError("Orchestrator request timed out") from last_error
+        if isinstance(last_error, OrchestratorClientResponseError):
+            raise last_error
+        raise OrchestratorClientConnectionError("Orchestrator request failed") from last_error
+
     async def _post_with_retry(
         self,
         *,

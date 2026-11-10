@@ -28,6 +28,11 @@ class FakePipelineRunManager:
             raise WorkerPipelineRunNotFoundError("missing")
         return self.state
 
+    async def resume(self, run_id: str):
+        if self.busy:
+            raise WorkerPipelineRunBusyError("busy")
+        return self.state
+
 
 def test_async_pipeline_start_and_status_endpoints(monkeypatch) -> None:
     manager = FakePipelineRunManager()
@@ -65,3 +70,30 @@ def test_async_pipeline_unknown_run_is_controlled(monkeypatch) -> None:
     response = client.get("/hh/pipeline-runs/missing")
     assert response.status_code == 404
     assert response.json()["detail"]["error_code"] == "run_not_found"
+
+
+def test_resume_endpoint_requires_matching_run_id_and_uses_internal_auth(monkeypatch) -> None:
+    manager = FakePipelineRunManager()
+    monkeypatch.setenv("WORKER_INTERNAL_API_TOKEN", "resume-secret")
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setattr(app.state, "pipeline_run_manager", manager)
+    try:
+        client = TestClient(app)
+        assert client.post("/hh/pipeline-runs/run-001/resume", json={"run_id": "run-001"}).status_code == 401
+        accepted = client.post(
+            "/hh/pipeline-runs/run-001/resume",
+            json={"run_id": "run-001"},
+            headers={"X-Worker-Internal-Token": "resume-secret"},
+        )
+        mismatch = client.post(
+            "/hh/pipeline-runs/run-001/resume",
+            json={"run_id": "run-002"},
+            headers={"X-Worker-Internal-Token": "resume-secret"},
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert accepted.status_code == 202
+    assert mismatch.status_code == 422

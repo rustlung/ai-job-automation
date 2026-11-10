@@ -134,6 +134,11 @@ Phase C1 также хранит per-vacancy/run processing work item с без�
 snapshot. Это только foundation recovery: Daily v14 запускает и poll-ит один
 Worker run как прежде, а automatic backlog resume ещё не включён.
 
+Phase C2 добавляет ручной Worker resume для уже существующего `run_id`, но не
+меняет v14: n8n по-прежнему не обнаруживает stale run и не вызывает resume
+автоматически. Recovery запускается отдельным protected Worker endpoint и
+использует persistent claim/lease backlog без повторного HH search.
+
 ### Topology
 
 Success branch:

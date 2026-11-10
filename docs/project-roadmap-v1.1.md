@@ -52,6 +52,15 @@ reprocess и deferred queue остаются Phase C.
 metadata и lease fields. Internal backlog/claim API готов для C2. Worker resume,
 планировщик и automatic crash recovery в C1 намеренно не реализованы.
 
+## Worker resume from persistent backlog — Phase C2
+
+Статус: реализован ручной asynchronous resume существующего `run_id`. Worker
+восстанавливает preliminary input из immutable preview snapshot, enrichment
+input из snapshot и persisted preliminary outcome, claim-ит только pending или
+expired-lease work и продлевает собственные leases во время long-running
+chunks. Новый HH search не запускается. n8n automatic recovery, scheduler и
+retry terminal `processing_failed` остаются Phase C3.
+
 ---
 
 # Phase 0. Project foundation

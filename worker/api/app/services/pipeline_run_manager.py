@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+from app.clients.orchestrator import OrchestratorClientError
 from app.core.config import Settings
 from app.schemas.pipeline_persistence import HHCollectFilterEnrichAndPersistRequest
 from app.schemas.pipeline_run import WorkerPipelineRunRead, WorkerPipelineRunStatus, WorkerPipelineRunSummary
@@ -16,6 +17,7 @@ from app.services.hh_search_collection import (
 )
 from app.services.hh_search_profiles import HHSearchProfileRegistry, HHUnknownSearchProfileError
 from app.services.pipeline_persistence import HHCollectFilterEnrichAndPersistService
+from app.services.pipeline_resume import WorkerPipelineResumeService
 
 logger = logging.getLogger(__name__)
 
@@ -82,14 +84,17 @@ class WorkerPipelineRunManager:
         self._state_lock = asyncio.Lock()
         self._runs: OrderedDict[str, _PipelineRunRecord] = OrderedDict()
         self._active_run_id: str | None = None
+        self._settings: Settings | None = None
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "WorkerPipelineRunManager":
         profile_registry = HHSearchProfileRegistry(settings)
-        return cls(
+        manager = cls(
             pipeline_service_factory=lambda: HHCollectFilterEnrichAndPersistService.from_settings(settings),
             profile_validator=profile_registry.get_profiles,
         )
+        manager._settings = settings
+        return manager
 
     async def start(self, request: HHCollectFilterEnrichAndPersistRequest) -> WorkerPipelineRunRead:
         run_id = request.pipeline_run_id
@@ -137,6 +142,23 @@ class WorkerPipelineRunManager:
                 record.status.value,
                 record.result_available,
             )
+            return record.to_schema()
+
+    async def resume(self, run_id: str) -> WorkerPipelineRunRead:
+        logger.info("pipeline_resume_requested run_id=%s", run_id)
+        async with self._state_lock:
+            self._cleanup_terminal_history()
+            existing = self._runs.get(run_id)
+            if existing is not None:
+                return existing.to_schema()
+            if self._active_run_id is not None:
+                raise WorkerPipelineRunBusyError("A heavy Worker pipeline is already running")
+            if self._settings is None:
+                raise RuntimeError("Resume is unavailable without Worker settings")
+            record = _PipelineRunRecord(run_id=run_id, status=WorkerPipelineRunStatus.RUNNING, started_at=self._utc_now())
+            self._runs[run_id] = record
+            self._active_run_id = run_id
+            record.task = asyncio.create_task(self._execute_resume(record), name=f"worker-pipeline-resume-{run_id}")
             return record.to_schema()
 
     async def _execute(self, record: _PipelineRunRecord, request: HHCollectFilterEnrichAndPersistRequest) -> None:
@@ -216,6 +238,49 @@ class WorkerPipelineRunManager:
                 record.run_id,
                 self._duration_ms(started_at),
             )
+        finally:
+            async with self._state_lock:
+                if self._active_run_id == record.run_id:
+                    self._active_run_id = None
+                self._cleanup_terminal_history()
+
+    async def _execute_resume(self, record: _PipelineRunRecord) -> None:
+        started_at = time.perf_counter()
+        try:
+            pipeline_service = self._pipeline_service_factory()
+            settings = self._settings
+            if settings is None:
+                raise RuntimeError("Resume is unavailable without Worker settings")
+            result = await WorkerPipelineResumeService(
+                pipeline_service,
+                pipeline_service.orchestrator_client,
+                worker_id=settings.worker_id,
+                lease_seconds=settings.processing_claim_lease_seconds,
+            ).resume(record.run_id)
+            await self._set_terminal(
+                record,
+                WorkerPipelineRunStatus.COMPLETED,
+                result_available=result.summary.resume_status != "in_progress",
+                error_code=result.error_code,
+                error_summary=result.error_summary,
+                summary=result.summary,
+            )
+            logger.info("pipeline_resume_completed run_id=%s status=%s duration_ms=%s", record.run_id, result.summary.resume_status, self._duration_ms(started_at))
+        except OrchestratorClientError:
+            await self._set_terminal(
+                record, WorkerPipelineRunStatus.FAILED, result_available=False,
+                error_code="orchestrator_resume_backlog_failed",
+                error_summary="Не удалось прочитать или обновить persistent backlog в Orchestrator",
+                summary=None,
+            )
+        except Exception:
+            await self._set_terminal(
+                record, WorkerPipelineRunStatus.FAILED, result_available=False,
+                error_code="resume_processing_failed",
+                error_summary="Worker не смог продолжить обработку persistent backlog",
+                summary=None,
+            )
+            logger.exception("pipeline_resume_failed run_id=%s duration_ms=%s", record.run_id, self._duration_ms(started_at))
         finally:
             async with self._state_lock:
                 if self._active_run_id == record.run_id:

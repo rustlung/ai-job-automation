@@ -249,3 +249,27 @@ class VacancyProcessingStateRepository:
             return []
         records = list(self.session.scalars(select(VacancyProcessingState).where(VacancyProcessingState.id.in_(claimed_ids))).all())
         return sorted(records, key=lambda record: claimed_ids.index(record.id))
+
+    def renew_claims(
+        self,
+        run_id: str,
+        stage: ProcessingStage,
+        work_item_ids: list[int],
+        worker_id: str,
+        lease_seconds: int,
+    ) -> int:
+        now = datetime.now(timezone.utc)
+        running = RUNNING_STATE_BY_STAGE[stage]
+        result = self.session.execute(
+            update(VacancyProcessingState)
+            .where(
+                VacancyProcessingState.run_id == run_id,
+                VacancyProcessingState.id.in_(work_item_ids),
+                VacancyProcessingState.state == running.value,
+                VacancyProcessingState.claimed_by == worker_id,
+                VacancyProcessingState.claim_expires_at > now,
+            )
+            .values(claim_expires_at=now + timedelta(seconds=lease_seconds))
+        )
+        self.session.flush()
+        return int(result.rowcount or 0)

@@ -4,6 +4,12 @@
 
 ### Added
 
+- Phase C2 manual Worker resume: an existing `run_id` can now continue pending
+  and expired-lease preliminary/enrichment work from `vacancy_processing_states`
+  without a new HH collection. The Worker uses run config overrides, typed
+  preview reconstruction, atomic claims and lease heartbeat renewal. n8n
+  automatic recovery, scheduling and retry of terminal failures remain out of scope.
+
 - Processing backlog terminal diagnostics now copy the real safe enrichment
   failure code and summary into `vacancy_processing_states`. Worker sends the
   bounded `VacancyEnrichmentError.message` for enrichment failures; Orchestrator

@@ -25,6 +25,17 @@ def register_pipeline_run(
         raise HTTPException(status_code=500, detail={"error_code": "pipeline_run_storage_failed"}) from exc
 
 
+@router.get("/{run_id}", response_model=PipelineRunRead, dependencies=[Depends(require_internal_token)])
+def get_internal_pipeline_run(
+    run_id: str,
+    service: PipelineRunService = Depends(get_pipeline_run_service),
+) -> PipelineRunRead:
+    try:
+        return service.get(run_id)
+    except PipelineRunNotFoundError as exc:
+        raise HTTPException(status_code=404, detail={"error_code": "run_not_found"}) from exc
+
+
 @router.patch("/{run_id}", response_model=PipelineRunRead, dependencies=[Depends(require_internal_token)])
 def update_pipeline_run(
     run_id: str,

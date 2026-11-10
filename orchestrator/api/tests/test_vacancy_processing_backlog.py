@@ -16,7 +16,7 @@ from app.repositories.vacancy_processing_state import VacancyProcessingStateRepo
 from app.schemas.discovered_vacancy import DiscoveredVacanciesCreate
 from app.schemas.pipeline_result import PipelineResultsCreate
 from app.schemas.vacancy_preliminary_outcome import PreliminaryOutcomesCreate
-from app.schemas.vacancy_processing_state import ProcessingStage, VacancyWorkState
+from app.schemas.vacancy_processing_state import ProcessingStage, VacancyProcessingClaimCreate, VacancyWorkState
 from app.services.discovered_vacancy import DiscoveredVacancyService
 from app.services.pipeline_result import PipelineResultService
 from app.services.vacancy_preliminary_outcome import PreliminaryOutcomeService
@@ -245,6 +245,16 @@ def test_backlog_summary_and_internal_read_claim_contract(db_session, monkeypatc
                 json={"stage": "preliminary", "limit": 10, "worker_id": "worker-b", "lease_seconds": 60},
                 headers={"X-Orchestrator-Internal-Token": "secret"},
             )
+            renewed = client.post(
+                "/internal/processing-runs/backlog-run/renew",
+                json={
+                    "stage": "preliminary",
+                    "worker_id": "worker-a",
+                    "work_item_ids": [item["id"] for item in first_claim.json()["items"]],
+                    "lease_seconds": 60,
+                },
+                headers={"X-Orchestrator-Internal-Token": "secret"},
+            )
     finally:
         get_settings.cache_clear()
 
@@ -263,6 +273,8 @@ def test_backlog_summary_and_internal_read_claim_contract(db_session, monkeypatc
     assert [item["preview_snapshot"]["external_id"] for item in backlog.json()["items"]] == ["3", "4", "5"]
     assert len(first_claim.json()["items"]) == 3
     assert second_claim.json()["items"] == []
+    assert renewed.status_code == 200
+    assert renewed.json()["renewed_count"] == 3
 
 
 def test_expired_running_work_is_reclaimable_and_terminal_work_is_not(db_session) -> None:
@@ -279,4 +291,18 @@ def test_expired_running_work_is_reclaimable_and_terminal_work_is_not(db_session
     assert [item.vacancy_id for item in reclaimed] == [claimed[0].vacancy_id]
     assert reclaimed[0].claimed_by == "worker-b"
     assert reclaimed[0].preliminary_attempts == 2
+
+
+def test_enrichment_claim_includes_run_scoped_preliminary_outcome(db_session) -> None:
+    discover(db_session, discovery_item("kept"))
+    persist_outcome(db_session, "kept", outcome="keep_main", state="preliminary_kept")
+
+    claim = VacancyProcessingBacklogService(db_session).claim(
+        "backlog-run",
+        VacancyProcessingClaimCreate(stage=ProcessingStage.ENRICHMENT, limit=10, worker_id="worker-a", lease_seconds=60),
+    )
+
+    assert len(claim.items) == 1
+    assert claim.items[0].preliminary_outcome is not None
+    assert claim.items[0].preliminary_outcome.outcome.value == "keep_main"
 

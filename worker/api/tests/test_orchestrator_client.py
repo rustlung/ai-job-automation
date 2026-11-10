@@ -162,6 +162,30 @@ async def test_orchestrator_client_persists_discovered_vacancies_with_internal_t
 
 
 @pytest.mark.anyio
+async def test_orchestrator_client_reads_claims_and_renews_with_internal_token() -> None:
+    calls: list[tuple[str, str]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.method, request.url.path))
+        assert request.headers["X-Orchestrator-Internal-Token"] == "internal-secret"
+        if request.method == "GET":
+            return httpx.Response(200, json={"run_id": "run-001", "summary": {}, "items": []})
+        return httpx.Response(200, json={"run_id": "run-001", "renewed_count": 1})
+
+    client = OrchestratorClient("http://orchestrator", 5, internal_api_token="internal-secret", transport=httpx.MockTransport(handler))
+    await client.get_processing_backlog("run-001", stage="preliminary")
+    result = await client.renew_processing_claims(
+        "run-001", {"stage": "preliminary", "worker_id": "worker-a", "work_item_ids": [1], "lease_seconds": 60}
+    )
+
+    assert calls == [
+        ("GET", "/internal/processing-runs/run-001/backlog"),
+        ("POST", "/internal/processing-runs/run-001/renew"),
+    ]
+    assert result["renewed_count"] == 1
+
+
+@pytest.mark.anyio
 async def test_orchestrator_client_logs_safe_discovery_422_details(caplog: pytest.LogCaptureFixture) -> None:
     async def handler(_: httpx.Request) -> httpx.Response:
         return httpx.Response(

@@ -4,6 +4,7 @@ from enum import Enum
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.discovered_vacancy import DiscoveredVacancyItem
+from app.schemas.vacancy_preliminary_outcome import PreliminaryOutcome, PreliminaryOutcomeSource
 
 
 class VacancyWorkState(str, Enum):
@@ -47,6 +48,21 @@ class VacancyProcessingWorkItemRead(BaseModel):
     claim_expires_at: datetime | None
     claimed_by: str | None
     updated_at: datetime
+    preliminary_outcome: "VacancyProcessingPreliminaryOutcomeRead | None" = None
+
+
+class VacancyProcessingPreliminaryOutcomeRead(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    outcome: PreliminaryOutcome
+    outcome_source: PreliminaryOutcomeSource
+    score: int | None = None
+    confidence: float | None = None
+    summary: str | None = None
+    provider: str | None = None
+    model: str | None = None
+    prompt_version: str | None = None
+    error_code: str | None = None
 
 
 class VacancyProcessingBacklogSummary(BaseModel):
@@ -86,3 +102,19 @@ class VacancyProcessingClaimRead(BaseModel):
     run_id: str
     stage: ProcessingStage
     items: list[VacancyProcessingWorkItemRead]
+
+
+class VacancyProcessingClaimRenewCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    stage: ProcessingStage
+    worker_id: str = Field(min_length=1, max_length=128)
+    work_item_ids: list[int] = Field(min_length=1, max_length=100)
+    lease_seconds: int = Field(default=300, ge=30, le=3600)
+
+
+class VacancyProcessingClaimRenewRead(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    renewed_count: int = Field(ge=0)

@@ -10,6 +10,8 @@ from app.schemas.vacancy_processing_state import (
     VacancyProcessingBacklogRead,
     VacancyProcessingClaimCreate,
     VacancyProcessingClaimRead,
+    VacancyProcessingClaimRenewCreate,
+    VacancyProcessingClaimRenewRead,
 )
 from app.services.vacancy_processing_backlog import VacancyProcessingBacklogDatabaseError, VacancyProcessingBacklogService
 
@@ -40,3 +42,15 @@ def claim_processing_work(
         return service.claim(run_id, payload)
     except VacancyProcessingBacklogDatabaseError as exc:
         raise HTTPException(status_code=500, detail={"error_code": "processing_claim_failed"}) from exc
+
+
+@router.post("/{run_id}/renew", response_model=VacancyProcessingClaimRenewRead, dependencies=[Depends(require_internal_token)])
+def renew_processing_claims(
+    run_id: str,
+    payload: VacancyProcessingClaimRenewCreate,
+    service: VacancyProcessingBacklogService = Depends(get_processing_backlog_service),
+) -> VacancyProcessingClaimRenewRead:
+    try:
+        return service.renew_claims(run_id, payload)
+    except VacancyProcessingBacklogDatabaseError as exc:
+        raise HTTPException(status_code=500, detail={"error_code": "processing_claim_renewal_failed"}) from exc

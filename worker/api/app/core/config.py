@@ -1,5 +1,7 @@
 from functools import lru_cache
 from os import getenv
+from socket import gethostname
+from os import getpid
 
 
 class Settings:
@@ -11,6 +13,9 @@ class Settings:
         self.orchestrator_api_url = getenv("ORCHESTRATOR_API_URL", "http://localhost:8000")
         self.orchestrator_request_timeout_seconds = float(getenv("ORCHESTRATOR_REQUEST_TIMEOUT_SECONDS", "30"))
         self.orchestrator_internal_api_token = getenv("ORCHESTRATOR_INTERNAL_API_TOKEN", "")
+        self.worker_internal_api_token = getenv("WORKER_INTERNAL_API_TOKEN", self.orchestrator_internal_api_token)
+        self.worker_id = getenv("WORKER_ID", f"{gethostname()}:{getpid()}")
+        self.processing_claim_lease_seconds = min(3600, max(30, int(getenv("PROCESSING_CLAIM_LEASE_SECONDS", "900"))))
         self.ollama_base_url = getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
         self.ollama_model = getenv("OLLAMA_MODEL", "qwen3:4b-instruct")
         self.ollama_request_timeout_seconds = float(getenv("OLLAMA_REQUEST_TIMEOUT_SECONDS", "120"))

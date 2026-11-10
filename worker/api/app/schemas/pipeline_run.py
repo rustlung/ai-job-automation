@@ -40,6 +40,20 @@ class WorkerPipelineRunSummary(BaseModel):
     duration_ms: int | None = Field(default=None, ge=0)
     warnings: list[WorkerPipelineRunDiagnostic] = Field(default_factory=list)
     partial_failures: list[WorkerPipelineRunDiagnostic] = Field(default_factory=list)
+    resume_status: str | None = None
+    resume_initial_backlog: dict[str, int] | None = None
+    resume_remaining_backlog: dict[str, int] | None = None
+    resume_claimed_preliminary_count: int | None = Field(default=None, ge=0)
+    resume_processed_preliminary_count: int | None = Field(default=None, ge=0)
+    resume_claimed_enrichment_count: int | None = Field(default=None, ge=0)
+    resume_processed_enrichment_count: int | None = Field(default=None, ge=0)
+    resume_terminal_failed_count: int | None = Field(default=None, ge=0)
+
+
+class WorkerPipelineResumeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str = Field(min_length=1, max_length=128)
 
 
 class WorkerPipelineRunRead(BaseModel):

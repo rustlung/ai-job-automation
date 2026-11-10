@@ -98,6 +98,15 @@ counts, безопасную ошибку и lease metadata, а internal backlog
 позволяет восстановить pending work после crash. Worker resume, scheduler и
 автоматическое восстановление в C1 намеренно ещё не запускаются.
 
+Phase C2 добавляет ручную asynchronous Worker operation
+`POST /hh/pipeline-runs/{run_id}/resume`. Она не запускает HH collection и не
+создаёт новый run: Worker claim-ит pending или expired-lease work, восстанавливает
+preliminary input из immutable snapshot, затем продолжает enrichment из
+snapshot плюс persisted preliminary outcome. Claims имеют heartbeat renewal;
+active non-expired lease другого Worker возвращает `resume_status=in_progress`.
+Автоматический n8n resume, scheduler и retry terminal `processing_failed`
+остаются задачей C3.
+
 Для terminal `processing_failed` state хранит фактический safe error code и
 короткую safe summary. Enrichment failure передаёт bounded Worker diagnostic;
 Orchestrator не сохраняет traceback, payload или secret-like text и при

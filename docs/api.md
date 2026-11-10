@@ -422,13 +422,27 @@ current Worker run before enrichment begins.
 ```text
 GET /internal/processing-runs/{run_id}/backlog?stage=preliminary|enrichment
 POST /internal/processing-runs/{run_id}/claim
+POST /internal/processing-runs/{run_id}/renew
 ```
 
 Internal-token-only foundation for Phase C2 recovery. The read endpoint returns
 the run summary and pending (including expired-lease) durable work items. Claim
 atomically assigns a bounded SQLite-compatible lease for one stage and returns
 only the claimed safe preview snapshots. These endpoints do not start Worker
-resume automatically and are not public Web API.
+resume automatically and are not public Web API. Claimed enrichment work also
+contains its compact persisted preliminary outcome, sufficient to rebuild the
+existing Worker enrichment input without another HH search.
+
+```text
+POST /hh/pipeline-runs/{run_id}/resume
+X-Worker-Internal-Token: ...
+{ "run_id": "..." }
+```
+
+Manual asynchronous C2 recovery endpoint. It uses the same run status polling
+contract as a normal Worker run, does not create a run or recollect HH pages,
+and returns `resume_status=in_progress` when another Worker still holds an
+active lease. It is intentionally not wired into n8n in C2.
 
 ### Manual Vacancy Create
 
