@@ -127,3 +127,4 @@ async def test_enrichment_failure_preserves_preliminary_decision_and_sets_termin
     assert item["outcome"] == "keep_main"
     assert item["processing_state"] == "enrichment_failed"
     assert item["error_code"] == "full_fetch_failed"
+    assert item["summary"] == "safe"

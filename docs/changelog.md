@@ -4,6 +4,12 @@
 
 ### Added
 
+- Processing backlog terminal diagnostics now copy the real safe enrichment
+  failure code and summary into `vacancy_processing_states`. Worker sends the
+  bounded `VacancyEnrichmentError.message` for enrichment failures; Orchestrator
+  rejects traceback/secret-like summaries and falls back to deterministic safe
+  text.
+
 - Phase C1 DB-backed processing backlog foundation: new
   `vacancy_processing_states` stores exactly one durable work item per canonical
   vacancy/run, including immutable safe discovery preview, state, attempts,

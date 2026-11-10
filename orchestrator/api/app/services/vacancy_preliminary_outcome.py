@@ -29,7 +29,13 @@ class PreliminaryOutcomeService:
                     created_count += 1
                 else:
                     updated_count += 1
-                self.processing_states.apply_preliminary_state(vacancy.id, payload.run_id, item.processing_state.value)
+                self.processing_states.apply_preliminary_state(
+                    vacancy.id,
+                    payload.run_id,
+                    item.processing_state.value,
+                    error_code=item.error_code,
+                    error_summary=item.summary,
+                )
             self.session.commit()
         except (SQLAlchemyError, ValueError) as exc:
             self.session.rollback()

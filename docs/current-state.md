@@ -133,6 +133,9 @@ default `/vacancies` показывает рабочий shortlist, а rejected/
 vacancy/run получает durable work item с immutable preview snapshot, состоянием,
 attempt/error и lease metadata; internal read/claim API готов для будущего
 resume, но Worker resume и scheduler ещё не включены
+✅ Terminal processing failures сохраняют в work item безопасные
+`last_error_code` и `last_error_summary`; подробный audit trail остаётся в
+`vacancy_preliminary_outcomes`
 ✅ Orchestrator DB source of truth для vacancy pipeline
 ✅ Batch persistence в Orchestrator DB
 ✅ VacancyAnalysis history by run_id

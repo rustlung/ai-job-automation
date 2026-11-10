@@ -98,6 +98,11 @@ counts, безопасную ошибку и lease metadata, а internal backlog
 позволяет восстановить pending work после crash. Worker resume, scheduler и
 автоматическое восстановление в C1 намеренно ещё не запускаются.
 
+Для terminal `processing_failed` state хранит фактический safe error code и
+короткую safe summary. Enrichment failure передаёт bounded Worker diagnostic;
+Orchestrator не сохраняет traceback, payload или secret-like text и при
+сомнительном input использует детерминированную summary по коду.
+
 После collection и in-memory deduplication Worker фиксирует все canonical HH
 preview в Orchestrator до preliminary и full enrichment. Лимиты обработки
 ограничивают только текущую обработку, а не попадание собранной вакансии в

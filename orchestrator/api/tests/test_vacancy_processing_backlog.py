@@ -43,9 +43,23 @@ def discover(db_session, *items: dict, run_id: str = "backlog-run") -> None:
     )
 
 
-def persist_outcome(db_session, external_id: str, *, outcome: str, state: str, run_id: str = "backlog-run") -> None:
+def persist_outcome(
+    db_session,
+    external_id: str,
+    *,
+    outcome: str,
+    state: str,
+    run_id: str = "backlog-run",
+    error_code: str | None = None,
+    summary: str | None = None,
+) -> None:
+    item = outcome_item(external_id, outcome=outcome, state=state)
+    if error_code is not None:
+        item["error_code"] = error_code
+    if summary is not None:
+        item["summary"] = summary
     PreliminaryOutcomeService(db_session).persist(
-        PreliminaryOutcomesCreate(**outcome_payload(outcome_item(external_id, outcome=outcome, state=state), run_id=run_id))
+        PreliminaryOutcomesCreate(**outcome_payload(item, run_id=run_id))
     )
 
 
@@ -80,8 +94,22 @@ def test_preliminary_and_final_persistence_drive_work_state_transitions(db_sessi
     discover(db_session, discovery_item("rejected"), discovery_item("kept"), discovery_item("failed"), discovery_item("enrichment-failed"))
     persist_outcome(db_session, "rejected", outcome="rejected_by_policy", state="preliminary_rejected")
     persist_outcome(db_session, "kept", outcome="keep_main", state="preliminary_kept")
-    persist_outcome(db_session, "failed", outcome="preliminary_failed", state="processing_failed")
-    persist_outcome(db_session, "enrichment-failed", outcome="keep_alt", state="enrichment_failed")
+    persist_outcome(
+        db_session,
+        "failed",
+        outcome="preliminary_failed",
+        state="processing_failed",
+        error_code="preliminary_failed",
+        summary="Предварительная обработка не завершилась штатно.",
+    )
+    persist_outcome(
+        db_session,
+        "enrichment-failed",
+        outcome="keep_alt",
+        state="enrichment_failed",
+        error_code="full_fetch_failed",
+        summary="Не удалось получить полное описание вакансии.",
+    )
 
     by_external_id = {
         vacancy.external_id: db_session.scalar(
@@ -93,7 +121,15 @@ def test_preliminary_and_final_persistence_drive_work_state_transitions(db_sessi
     assert by_external_id["kept"].state == VacancyWorkState.ENRICHMENT_PENDING.value
     assert by_external_id["failed"].state == VacancyWorkState.PROCESSING_FAILED.value
     assert by_external_id["enrichment-failed"].state == VacancyWorkState.PROCESSING_FAILED.value
+    assert by_external_id["failed"].last_error_code == "preliminary_failed"
+    assert by_external_id["failed"].last_error_summary == "Предварительная обработка не завершилась штатно."
+    assert by_external_id["enrichment-failed"].last_error_code == "full_fetch_failed"
+    assert by_external_id["enrichment-failed"].last_error_summary == "Не удалось получить полное описание вакансии."
     assert by_external_id["kept"].preliminary_attempts == 1
+    assert by_external_id["rejected"].last_error_code is None
+    assert by_external_id["rejected"].last_error_summary is None
+    assert by_external_id["kept"].last_error_code is None
+    assert by_external_id["kept"].last_error_summary is None
 
     PipelineResultService(db_session).persist(
         PipelineResultsCreate(**pipeline_payload(run_id="backlog-run", external_id="kept"))
@@ -101,6 +137,55 @@ def test_preliminary_and_final_persistence_drive_work_state_transitions(db_sessi
     db_session.refresh(by_external_id["kept"])
     assert by_external_id["kept"].state == VacancyWorkState.ENRICHED.value
     assert by_external_id["kept"].enrichment_attempts == 1
+    assert by_external_id["kept"].last_error_code is None
+    assert by_external_id["kept"].last_error_summary is None
+
+
+@pytest.mark.parametrize(
+    ("external_id", "outcome", "error_code"),
+    [
+        ("fetch", "keep_main", "full_fetch_failed"),
+        ("normalization", "uncertain", "normalization_failed"),
+        ("features", "keep_alt", "feature_extraction_failed"),
+    ],
+)
+def test_enrichment_failure_persists_safe_diagnostics_from_production_outcome_shape(
+    db_session,
+    external_id: str,
+    outcome: str,
+    error_code: str,
+) -> None:
+    discover(db_session, discovery_item(external_id))
+    persist_outcome(
+        db_session,
+        external_id,
+        outcome=outcome,
+        state="enrichment_failed",
+        error_code=error_code,
+        summary=f"Safe {error_code} summary",
+    )
+
+    record = db_session.scalar(select(VacancyProcessingState))
+    assert record.state == VacancyWorkState.PROCESSING_FAILED.value
+    assert record.last_error_code == error_code
+    assert record.last_error_summary == f"Safe {error_code} summary"
+
+
+def test_failure_summary_rejects_traceback_and_secret_like_payload(db_session) -> None:
+    discover(db_session, discovery_item("unsafe"))
+    persist_outcome(
+        db_session,
+        "unsafe",
+        outcome="keep_main",
+        state="enrichment_failed",
+        error_code="full_fetch_failed",
+        summary="Traceback: token=secret\\nrequest payload={description}",
+    )
+
+    record = db_session.scalar(select(VacancyProcessingState))
+    assert record.last_error_code == "full_fetch_failed"
+    assert record.last_error_summary == "Не удалось получить полное описание вакансии."
+    assert "secret" not in record.last_error_summary.casefold()
 
 
 def test_invalid_terminal_transition_is_rejected_but_terminal_replay_is_idempotent(db_session) -> None:

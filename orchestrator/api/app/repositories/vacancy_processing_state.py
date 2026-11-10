@@ -17,6 +17,18 @@ class VacancyProcessingStateTransitionError(ValueError):
     pass
 
 
+_SAFE_FAILURE_SUMMARIES = {
+    "preliminary_failed": "Предварительная обработка вакансии завершилась ошибкой.",
+    "full_fetch_failed": "Не удалось получить полное описание вакансии.",
+    "normalization_failed": "Не удалось нормализовать данные вакансии.",
+    "feature_extraction_failed": "Не удалось извлечь признаки вакансии.",
+    "semantic_analysis_failed": "Семантический анализ вакансии завершился ошибкой.",
+    "orchestrator_persistence_failed": "Не удалось сохранить результат обработки вакансии.",
+    "pipeline_item_persist_failed": "Не удалось сохранить финальный результат вакансии.",
+}
+_UNSAFE_SUMMARY_MARKERS = ("traceback", "authorization", "cookie", "token", "password", "secret", "{", "}")
+
+
 class VacancyProcessingStateRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
@@ -57,6 +69,10 @@ class VacancyProcessingStateRepository:
     ) -> VacancyProcessingState:
         current = VacancyWorkState(record.state)
         if current == target:
+            if target == VacancyWorkState.PROCESSING_FAILED and error_code:
+                record.last_error_code = error_code
+                record.last_error_summary = self._safe_failure_summary(error_code, error_summary)
+                self.session.flush()
             return record
         allowed = {
             # Direct final persistence remains supported for historical and
@@ -76,11 +92,19 @@ class VacancyProcessingStateRepository:
         record.claim_expires_at = None
         record.claimed_by = None
         record.last_error_code = error_code
-        record.last_error_summary = error_summary
+        record.last_error_summary = self._safe_failure_summary(error_code, error_summary) if error_code else None
         self.session.flush()
         return record
 
-    def apply_preliminary_state(self, vacancy_id: int, run_id: str, outcome_state: str) -> None:
+    def apply_preliminary_state(
+        self,
+        vacancy_id: int,
+        run_id: str,
+        outcome_state: str,
+        *,
+        error_code: str | None,
+        error_summary: str | None,
+    ) -> None:
         record = self.get_by_vacancy_run(vacancy_id, run_id)
         if record is None:
             return
@@ -95,6 +119,17 @@ class VacancyProcessingStateRepository:
             raise VacancyProcessingStateTransitionError(f"unsupported preliminary processing state: {outcome_state}")
         if record.state == VacancyWorkState.PRELIMINARY_PENDING.value:
             record.preliminary_attempts += 1
+        if target == VacancyWorkState.PROCESSING_FAILED:
+            resolved_error_code = error_code or (
+                "preliminary_failed" if outcome_state == "processing_failed" else "enrichment_failed"
+            )
+            self.transition(
+                record,
+                target,
+                error_code=resolved_error_code,
+                error_summary=error_summary,
+            )
+            return
         self.transition(record, target)
 
     def mark_enriched(self, vacancy_id: int, run_id: str) -> None:
@@ -113,6 +148,21 @@ class VacancyProcessingStateRepository:
                 error_code=error_code,
                 error_summary=error_summary,
             )
+
+    @staticmethod
+    def _safe_failure_summary(error_code: str, candidate: str | None) -> str:
+        """Reuse bounded Worker diagnostics only when they are safe to expose operationally."""
+        if candidate:
+            normalized = candidate.strip()
+            lowered = normalized.casefold()
+            if (
+                len(normalized) <= 300
+                and "\n" not in normalized
+                and "\r" not in normalized
+                and not any(marker in lowered for marker in _UNSAFE_SUMMARY_MARKERS)
+            ):
+                return normalized
+        return _SAFE_FAILURE_SUMMARIES.get(error_code, "Обработка вакансии завершилась ошибкой.")
 
     def summary(self, run_id: str) -> VacancyProcessingBacklogSummary:
         rows = self.session.execute(

@@ -95,4 +95,5 @@ class PreliminaryOutcomePersistenceService:
         payload = cls._item_payload(item)
         payload["processing_state"] = "enrichment_failed"
         payload["error_code"] = error.error_code
+        payload["summary"] = error.message
         return payload
