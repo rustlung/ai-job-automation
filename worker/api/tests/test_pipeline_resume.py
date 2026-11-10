@@ -99,6 +99,10 @@ class FakeClient:
 class FakeFilter:
     max_items = 100
 
+    def __init__(self, ollama_client=None) -> None:
+        self.ollama_client = ollama_client or SimpleNamespace(model="current-preliminary")
+        self.prompt_version = "v4"
+
     async def filter_vacancies(self, vacancies, **_kwargs):
         return SimpleNamespace(items=[filtered(item) for item in vacancies])
 
@@ -115,15 +119,38 @@ class FakeOutcomePersistence:
 
 
 def pipeline(outcomes: FakeOutcomePersistence):
+    preliminary_client = SimpleNamespace(model="current-preliminary")
+    semantic_client = SimpleNamespace(model="current-full")
     enrichment = SimpleNamespace(
         max_items=50,
-        collect_and_filter_service=SimpleNamespace(filter_service=FakeFilter()),
+        collect_and_filter_service=SimpleNamespace(filter_service=FakeFilter(ollama_client=preliminary_client)),
+        semantic_service=SimpleNamespace(ollama_client=semantic_client, prompt_version="v1"),
     )
     return SimpleNamespace(
         enrichment_service=enrichment,
         preliminary_outcome_persistence_service=outcomes,
         _persist_in_batches=lambda *_args: None,
     )
+
+
+def test_resume_replays_persisted_models_and_logs_prompt_fallback(caplog: pytest.LogCaptureFixture) -> None:
+    outcomes = FakeOutcomePersistence()
+    service = WorkerPipelineResumeService(pipeline(outcomes), FakeClient([]), worker_id="worker-a", lease_seconds=60)
+    snapshot = {
+        "processing_versions": {
+            "preliminary_model": "original-preliminary",
+            "preliminary_prompt_version": "v4",
+            "full_analysis_model": "original-full",
+            "full_analysis_prompt_version": "old-v1",
+        }
+    }
+
+    service._apply_processing_version_snapshot("run-001", snapshot)
+
+    enrichment = service.pipeline_service.enrichment_service
+    assert enrichment.collect_and_filter_service.filter_service.ollama_client.model == "original-preliminary"
+    assert enrichment.semantic_service.ollama_client.model == "original-full"
+    assert "resume_processing_prompt_fallback" in caplog.text
 
 
 @pytest.mark.anyio

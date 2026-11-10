@@ -4,6 +4,16 @@
 
 ### Added
 
+- Phase C3 automatic recovery orchestration: Daily Search Digest v15 keeps a
+  PipelineRun running through bounded recoverable Worker polling failures,
+  checks the durable backlog and invokes the protected Worker resume endpoint
+  without another HH collection. The window is 10 attempts with 60-second
+  waits; auth/contract errors remain terminal. v14 is retained as historical.
+  v15 manual-run config snapshots capture processing model IDs and prompt-version
+  labels; resume replays captured model IDs and logs an explicit prompt fallback
+  if the current Worker cannot reproduce the historical prompt code. Web-run
+  snapshots retain the documented current-runtime fallback.
+
 - Phase C2 manual Worker resume: an existing `run_id` can now continue pending
   and expired-lease preliminary/enrichment work from `vacancy_processing_states`
   without a new HH collection. The Worker uses run config overrides, typed

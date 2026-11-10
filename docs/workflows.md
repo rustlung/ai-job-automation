@@ -89,18 +89,18 @@ keyword profiles и configurable selection также приняты.
 Актуальный export:
 
 ``` text
-workflows/n8n/AI Job Automation — Daily Search Digest v14.json
+workflows/n8n/AI Job Automation — Daily Search Digest v15.json
 ```
 
 Workflow name:
 
 ``` text
-AI Job Automation — Daily Search Digest v14
+AI Job Automation — Daily Search Digest v15
 ```
 
 Export не содержит credentials. После import activation управляется n8n
-deployment; `AI Job Automation — Daily Search CRM Digest v13` сохраняется как
-historical baseline и не перезаписывается.
+deployment; v14 и `AI Job Automation — Daily Search CRM Digest v13` сохраняются
+как historical exports и не перезаписываются.
 Dedicated CRM workflow exports находятся в `workflows/n8n/archive/` и имеют
 статус historical only: их нельзя импортировать или активировать как runtime
 workflows.
@@ -131,13 +131,17 @@ collection/deduplication все discovered HH preview сохраняются в 
 до preliminary/enrichment limits; n8n contract от этого не меняется.
 
 Phase C1 также хранит per-vacancy/run processing work item с безопасным preview
-snapshot. Это только foundation recovery: Daily v14 запускает и poll-ит один
-Worker run как прежде, а automatic backlog resume ещё не включён.
+snapshot. Это foundation recovery; v15 использует его только после bounded
+temporary polling failure, а отдельный scheduler не добавляется.
 
-Phase C2 добавляет ручной Worker resume для уже существующего `run_id`, но не
-меняет v14: n8n по-прежнему не обнаруживает stale run и не вызывает resume
-автоматически. Recovery запускается отдельным protected Worker endpoint и
-использует persistent claim/lease backlog без повторного HH search.
+Phase C2 добавляет ручной Worker resume для уже существующего `run_id`.
+Phase C3 подключает его только в v15: после трёх последовательных temporary
+polling failures workflow ждёт 60 секунд, проверяет internal backlog и вызывает
+protected Worker resume. Максимум 10 recovery attempts; `401`, `403` и `422`
+terminal сразу. Resume не запускает HH search, а `nothing_to_resume` продолжает
+обычный terminal lifecycle. Gmail/Telegram остаются на единственном
+post-processing пути после core completion, поэтому recovery не создаёт повторную
+отправку в пределах execution.
 
 ### Topology
 

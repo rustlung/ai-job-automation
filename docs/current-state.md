@@ -137,6 +137,9 @@ resume, но Worker resume и scheduler ещё не включены
 асинхронно продолжает pending/expired leased work без повторного HH collection;
 active lease другого Worker сообщает `resume_status=in_progress`. Автоматический
 n8n recovery и scheduler пока отсутствуют
+✅ Phase C3 automatic recovery: Daily Search Digest v15 после bounded временной
+недоступности Worker проверяет durable backlog и автоматически вызывает resume;
+v14 остаётся historical, scheduler и retry terminal failures не добавлялись
 ✅ Terminal processing failures сохраняют в work item безопасные
 `last_error_code` и `last_error_summary`; подробный audit trail остаётся в
 `vacancy_preliminary_outcomes`
@@ -639,7 +642,7 @@ profile. Если требуемый preflight не проходит, workflow �
 production pipeline и не отправляет Gmail failure digest. После успешного
 preflight n8n запускает Worker pipeline, создает `pipeline_run_id`, проверяет
 результат Worker, читает текущий run из Orchestrator и отправляет email digest.
-Daily Search Digest v14 не читает и не изменяет Google Sheets. n8n не выполняет HH parsing, AI inference, semantic
+Daily Search Digest v15 не читает и не изменяет Google Sheets. n8n не выполняет HH parsing, AI inference, semantic
 scoring, final priority calculation или canonical persistence.
 
 Live HH session preflight использует более длинный bounded timeout, чем обычные
@@ -648,7 +651,7 @@ Playwright navigation и DOM stabilization. Это не смешивается �
 Worker timeout.
 
 Orchestrator DB остается source of truth для автоматических данных vacancy
-pipeline. Daily Search v14 строит Gmail digest из persisted grouped run data;
+pipeline. Daily Search v15 строит Gmail digest из persisted grouped run data;
 Google Sheets не является частью его runtime path. Ошибка Gmail или Telegram
 сохраняется как concrete integration error и не отменяет persistence.
 

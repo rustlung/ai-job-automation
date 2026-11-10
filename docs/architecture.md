@@ -104,8 +104,20 @@ Phase C2 добавляет ручную asynchronous Worker operation
 preliminary input из immutable snapshot, затем продолжает enrichment из
 snapshot плюс persisted preliminary outcome. Claims имеют heartbeat renewal;
 active non-expired lease другого Worker возвращает `resume_status=in_progress`.
-Автоматический n8n resume, scheduler и retry terminal `processing_failed`
-остаются задачей C3.
+Phase C3 добавляет bounded recovery в отдельный Daily workflow v15: после
+трёх подряд временных ошибок poll n8n проверяет durable backlog, ждёт 60 секунд
+между recovery attempts и вызывает protected Worker resume. Окно содержит до
+10 attempts; auth/contract errors (`401`, `403`, `422`) остаются terminal.
+v15 не запускает HH collection повторно и не добавляет scheduler; manual resume
+остаётся operational fallback. Исторический v14 не изменяется.
+
+v15 manual-run config snapshots фиксируют model IDs и prompt-version labels.
+Worker replay-ит сохранённые model IDs; prompt text остаётся кодовой версией,
+поэтому при несовпадении label Worker явно логирует fallback на текущий prompt,
+не выдавая его за точный historical replay. Web UI snapshot пока не содержит
+этих runtime keys и resume для него использует документированный current-runtime
+fallback; сохранение полного runtime config для всех источников остаётся отдельным
+улучшением.
 
 Для terminal `processing_failed` state хранит фактический safe error code и
 короткую safe summary. Enrichment failure передаёт bounded Worker diagnostic;
@@ -834,7 +846,7 @@ fingerprint. Worker будет подключён к ней отдельной �
 production flow ещё использует только final persistence.
 Phase 5.10 добавила n8n orchestration поверх Worker persistence endpoint,
 чтение текущего run через Orchestrator API и Gmail digest. Phase 3B выделила
-`Daily Search Digest v14`: Gmail получает persisted grouped result из
+`Daily Search Digest v15`: Gmail получает persisted grouped result из
 Orchestrator DB, а Google Sheets полностью исключён из daily runtime path.
 
 ## 10.2.1. Preliminary local AI filter
@@ -1712,7 +1724,7 @@ current-run sync.
 ## 11.5. Historical CRM and notification flow
 
 Статус: historical Phase 5.10 acceptance. Google Sheets runtime mirror retired
-in Phase 3C; current production flow is Daily Search Digest v14 documented
+in Phase 3C; current production flow is Daily Search Digest v15 documented
 above.
 
 Принятый поток:
