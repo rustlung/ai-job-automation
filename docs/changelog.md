@@ -4,6 +4,12 @@
 
 ### Added
 
+- Worker collection failure semantics: a terminal failed HH collection now
+  stops before discovery persistence and preliminary/enrichment. HTTP `401` and
+  `403` return the safe `hh_auth_failed` diagnostic; other terminal collection
+  failures return `hh_collection_failed`. Successful empty collections remain
+  completed empty runs.
+
 - Phase C3 automatic recovery orchestration: Daily Search Digest v15 keeps a
   PipelineRun running through bounded recoverable Worker polling failures,
   checks the durable backlog and invokes the protected Worker resume endpoint

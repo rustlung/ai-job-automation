@@ -6,6 +6,7 @@ import pytest
 
 from app.schemas.hh_collection import (
     HHSearchCollectedVacancy,
+    HHSearchCollectionError,
     HHSearchCollectionResult,
     HHSearchCollectionStatus,
     HHSearchVacancyProvenance,
@@ -695,6 +696,72 @@ async def test_discovery_failure_blocks_preliminary_and_preserves_prior_batch_st
     assert result.errors[0].error_code == "orchestrator_discovery_persistence_failed"
     assert enrichment_service.filter_requests == []
     assert len(client.discovery_payloads) == 1
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("http_status", "collection_error_code", "expected_error_code"),
+    [
+        (401, "hh_http_error", "hh_auth_failed"),
+        (403, "hh_http_error", "hh_auth_failed"),
+        (503, "hh_http_error", "hh_collection_failed"),
+        (None, "hh_unavailable", "hh_collection_failed"),
+    ],
+)
+async def test_failed_hh_collection_stops_before_discovery_and_preliminary(
+    http_status: int | None,
+    collection_error_code: str,
+    expected_error_code: str,
+) -> None:
+    enrichment = enrichment_result_with_items(1)
+    collection = collection_for_count(enrichment.collection_stats, 0)
+    collection.status = HHSearchCollectionStatus.FAILED
+    collection.pages_succeeded = 0
+    collection.pages_failed = 1
+    collection.failed_profile_count = 1
+    collection.errors = [
+        HHSearchCollectionError(
+            profile_id="ai_resume_recommendations",
+            query_variant_id="resume_recommendations",
+            page=0,
+            error_code=collection_error_code,
+            message="safe collection failure",
+            http_status=http_status,
+        )
+    ]
+    client = FakeOrchestratorClient()
+    enrichment_service = FakeEnrichmentService(enrichment, collection)
+    service = HHCollectFilterEnrichAndPersistService(enrichment_service, client)  # type: ignore[arg-type]
+
+    result = await service.collect_filter_enrich_and_persist(HHCollectFilterEnrichAndPersistRequest(pipeline_run_id="run-001"))
+
+    assert result.status == VacancyEnrichmentStatus.FAILED
+    assert result.errors[0].error_code == expected_error_code
+    assert result.errors[0].stage == "collection"
+    assert result.errors[0].error_code != "preliminary_coverage_failed"
+    assert result.discovery_stats is None
+    assert client.discovery_payloads == []
+    assert client.payloads == []
+    assert enrichment_service.filter_requests == []
+
+
+@pytest.mark.anyio
+async def test_successful_empty_hh_collection_remains_a_normal_empty_run() -> None:
+    enrichment = enrichment_result_with_items(0)
+    enrichment.collection_stats.raw_vacancy_count = 0
+    enrichment.collection_stats.unique_vacancy_count = 0
+    collection = collection_for_count(enrichment.collection_stats, 0)
+    collection.status = HHSearchCollectionStatus.SUCCEEDED
+    collection.pages_succeeded = 1
+    client = FakeOrchestratorClient()
+    enrichment_service = FakeEnrichmentService(enrichment, collection)
+    service = HHCollectFilterEnrichAndPersistService(enrichment_service, client)  # type: ignore[arg-type]
+
+    result = await service.collect_filter_enrich_and_persist(HHCollectFilterEnrichAndPersistRequest(pipeline_run_id="run-empty"))
+
+    assert result.status == VacancyEnrichmentStatus.SUCCEEDED
+    assert result.errors == []
+    assert result.collection_stats.unique_vacancy_count == 0
 
 
 @pytest.mark.anyio

@@ -121,6 +121,27 @@ def test_v15_polling_keeps_genuine_transient_errors_recoverable() -> None:
         assert result["recovery_needed"] is True
 
 
+def test_v15_terminal_hh_auth_failure_does_not_enter_recovery() -> None:
+    workflow = load(V15)
+    code = node(workflow, "Evaluate Worker Run")["parameters"]["jsCode"]
+    context = {"run_id": "run-1", "orchestration_started_at_ms": round(time.time() * 1000), "config": {"worker_recovery_max_attempts": 10}}
+
+    result = execute_code(
+        code,
+        {
+            "status": "failed",
+            "result_available": False,
+            "error_code": "hh_auth_failed",
+            "error_summary": "Сессия HH недействительна или требуется повторная авторизация.",
+        },
+        {"Build Full Run Context": context, "Wait 20s for Worker Run": {}},
+    )
+
+    assert result["terminal"] is True
+    assert result["recovery_needed"] is False
+    assert result["failure_code"] == "hh_auth_failed"
+
+
 def test_v15_active_lease_and_nothing_to_resume_are_not_false_terminal_failures() -> None:
     workflow = load(V15)
     code = node(workflow, "Evaluate Worker Resume")["parameters"]["jsCode"]

@@ -6,6 +6,7 @@ from uuid import uuid4
 from app.clients.orchestrator import OrchestratorClient, OrchestratorClientError
 from app.core.config import Settings
 from app.schemas.discovered_vacancy import DiscoveryPersistenceStats
+from app.schemas.hh_collection import HHSearchCollectionStatus
 from app.schemas.pipeline_persistence import (
     HHCollectFilterEnrichAndPersistRequest,
     HHCollectFilterEnrichAndPersistResult,
@@ -90,6 +91,14 @@ class HHCollectFilterEnrichAndPersistService:
         )
         collection = await self.enrichment_service.collect_collection(enrichment_request)
         collection_stats = self.enrichment_service.collection_stats(collection)
+        if collection.status == HHSearchCollectionStatus.FAILED:
+            return self._collection_failure_result(
+                run_id=run_id,
+                collection_stats=collection_stats,
+                collection_errors=collection.errors,
+                duration_ms=self._duration_ms(started_at),
+            )
+
         discovery_stats: DiscoveryPersistenceStats | None = None
         try:
             discovery_stats = await self.discovery_persistence_service.persist(run_id, collection.vacancies)
@@ -285,6 +294,51 @@ class HHCollectFilterEnrichAndPersistService:
             errors=errors,
             warnings=warnings,
             partial_failures=self._merge_diagnostics(partial_failures),
+            duration_ms=duration_ms,
+        )
+
+    @staticmethod
+    def _collection_failure_result(
+        *,
+        run_id: str,
+        collection_stats,
+        collection_errors,
+        duration_ms: int,
+    ) -> HHCollectFilterEnrichAndPersistResult:
+        auth_failure = any(getattr(error, "http_status", None) in {401, 403} for error in collection_errors)
+        error_code = "hh_auth_failed" if auth_failure else "hh_collection_failed"
+        summary = (
+            "Сессия HH недействительна или требуется повторная авторизация."
+            if auth_failure
+            else "Не удалось завершить сбор вакансий HH."
+        )
+        logger.warning(
+            "pipeline_collection_failed run_id=%s error_code=%s collection_error_count=%s",
+            run_id,
+            error_code,
+            len(collection_errors),
+        )
+        return HHCollectFilterEnrichAndPersistResult(
+            status=VacancyEnrichmentStatus.FAILED,
+            pipeline_run_id=run_id,
+            collection_stats=collection_stats,
+            enrichment_stats=VacancyEnrichmentStats(
+                status=VacancyEnrichmentStatus.FAILED,
+                input_count=0,
+                enrich_candidate_count=0,
+                enriched_count=0,
+                failed_fetch_count=0,
+                failed_normalization_count=0,
+                semantic_fallback_count=0,
+                p1_count=0,
+                p2_count=0,
+                p3_count=0,
+                alt_count=0,
+                duration_ms=0,
+            ),
+            items=[],
+            errors=[PipelinePersistenceError(error_code=error_code, message=summary, stage="collection")],
+            partial_failures=[WorkerPipelineRunDiagnostic(code=error_code, count=1, summary=summary)],
             duration_ms=duration_ms,
         )
 

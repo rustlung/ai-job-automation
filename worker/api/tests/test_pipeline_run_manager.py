@@ -165,6 +165,26 @@ async def test_failed_result_preserves_discovery_persistence_diagnostic() -> Non
 
 
 @pytest.mark.anyio
+async def test_failed_hh_collection_preserves_auth_diagnostic_as_terminal_worker_failure() -> None:
+    failed_result = result(status="failed", persistence=False)
+    failed_result.errors = [
+        SimpleNamespace(
+            error_code="hh_auth_failed",
+            message="Сессия HH недействительна или требуется повторная авторизация.",
+        )
+    ]
+    manager = WorkerPipelineRunManager(lambda: FakePipelineService(result=failed_result), lambda _: None)
+
+    await manager.start(request("hh-auth-failed"))
+    state = await wait_for_terminal(manager, "hh-auth-failed")
+
+    assert state.status == WorkerPipelineRunStatus.FAILED
+    assert state.result_available is False
+    assert state.error_code == "hh_auth_failed"
+    assert state.error_summary == "Сессия HH недействительна или требуется повторная авторизация."
+
+
+@pytest.mark.anyio
 async def test_same_active_run_is_idempotent_and_second_run_is_busy() -> None:
     release = asyncio.Event()
     service = FakePipelineService(release=release)
