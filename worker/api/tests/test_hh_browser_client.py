@@ -8,7 +8,12 @@ from app.services.hh_auth_state import HHAuthStateStore
 
 
 class FakePage:
-    def __init__(self, final_url: str = "https://hh.ru/search/vacancy", vacancy_counts: list[int] | None = None) -> None:
+    def __init__(
+        self,
+        final_url: str = "https://hh.ru/search/vacancy",
+        vacancy_counts: list[int] | None = None,
+        visible_selectors: set[str] | None = None,
+    ) -> None:
         self.url = final_url
         self.closed = False
         self.default_timeout = None
@@ -18,11 +23,14 @@ class FakePage:
         self.evaluate_calls = 0
         self.content_called_after_wait = False
         self.navigation_response = FakeNavigationResponse(final_url)
+        self.visible_selectors = visible_selectors or set()
+        self.goto_urls: list[str] = []
 
     def set_default_timeout(self, timeout: float) -> None:
         self.default_timeout = timeout
 
     async def goto(self, url: str, wait_until: str, timeout: float) -> "FakeNavigationResponse":
+        self.goto_urls.append(url)
         self.goto_url = url
         self.wait_until = wait_until
         self.goto_timeout = timeout
@@ -45,8 +53,23 @@ class FakePage:
         self.content_called_after_wait = self.wait_for_selector_calls > 0 and self.evaluate_calls > 0
         return "<html>ok</html>"
 
+    def locator(self, selector: str) -> "FakeLocator":
+        return FakeLocator(selector in self.visible_selectors)
+
     async def close(self) -> None:
         self.closed = True
+
+
+class FakeLocator:
+    def __init__(self, visible: bool) -> None:
+        self.visible = visible
+        self.first = self
+
+    async def count(self) -> int:
+        return 1 if self.visible else 0
+
+    async def is_visible(self) -> bool:
+        return self.visible
 
 
 class FakeContext:
@@ -286,3 +309,32 @@ async def test_browser_client_returns_dom_for_pages_without_vacancy_links(tmp_pa
     assert result.final_vacancy_count == 0
     assert result.stabilization_status == "no_vacancy_links"
     assert page.content_called_after_wait is True
+
+
+@pytest.mark.anyio
+async def test_browser_session_reuses_authenticated_context_for_sequential_vacancy_pages(tmp_path, monkeypatch) -> None:
+    client, page, context, browser, runtime = make_client(tmp_path, monkeypatch)
+
+    async with client.collection_session() as session:
+        first = await session.fetch_vacancy_page("https://hh.ru/vacancy/1")
+        second = await session.fetch_vacancy_page("https://samara.hh.ru/vacancy/2")
+
+    assert page.goto_urls == ["https://hh.ru/vacancy/1", "https://samara.hh.ru/vacancy/2"]
+    assert first.stabilization_status == second.stabilization_status == "not_applicable"
+    assert first.visible_login_form is False
+    assert browser.storage_state.endswith("hh-storage-state.json")
+    assert page.closed is True
+    assert context.closed is True
+    assert browser.closed is True
+    assert runtime.stopped is True
+
+
+@pytest.mark.anyio
+async def test_browser_session_detects_visible_detail_challenge_markers(tmp_path, monkeypatch) -> None:
+    client, page, *_ = make_client(tmp_path, monkeypatch)
+    page.visible_selectors.add("#captcha")
+
+    async with client.collection_session() as session:
+        result = await session.fetch_vacancy_page("https://hh.ru/vacancy/1")
+
+    assert result.visible_captcha is True

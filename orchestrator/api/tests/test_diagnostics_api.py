@@ -66,7 +66,7 @@ def test_run_diagnostics_aggregates_safe_failure_samples_and_caps_at_three(db_se
     assert len(group["samples"]) == 3
     assert "description" not in group["samples"][0]
     assert "must-not-leak" not in str(payload)
-    assert payload["full_fetch_transport"] == {"value": "httpx", "source": "runtime_code/config"}
+    assert payload["full_fetch_transport"] == {"value": "authenticated_browser", "source": "runtime_code/config"}
     assert payload["pagination"] == {"availability": "unavailable"}
 
 

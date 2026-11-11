@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from contextlib import asynccontextmanager
 
 import pytest
 
@@ -61,6 +62,16 @@ class FakeVacancyService:
     def __init__(self, failures: set[str] | None = None) -> None:
         self.failures = failures or set()
         self.urls: list[str] = []
+        self.session_count = 0
+        self.closed_session_count = 0
+
+    @asynccontextmanager
+    async def enrichment_session(self):
+        self.session_count += 1
+        try:
+            yield self
+        finally:
+            self.closed_session_count += 1
 
     async def get_vacancy_details(self, url: str) -> HHVacancyDetails:
         self.urls.append(url)
@@ -316,6 +327,28 @@ async def test_enrichment_limit_is_a_chunk_size_and_covers_all_candidates() -> N
     assert result.enrichment_stats.enriched_count == 3
     assert result.enrichment_stats.enrich_candidate_count == 3
     assert result.status == "succeeded"
+
+
+@pytest.mark.anyio
+async def test_enrichment_reuses_one_browser_session_per_chunk_and_continues_after_fetch_failure() -> None:
+    items = [
+        filtered(vacancy("1"), PreliminaryDecision.KEEP_MAIN),
+        filtered(vacancy("2"), PreliminaryDecision.KEEP_MAIN),
+        filtered(vacancy("3"), PreliminaryDecision.KEEP_MAIN),
+    ]
+    enrichment_service = service(preliminary_result(items), max_items=2, fetch_failures={"2"})
+
+    result = await enrichment_service.collect_filter_and_enrich(HHCollectFilterAndEnrichRequest())
+    vacancy_service = enrichment_service.vacancy_service
+
+    assert result.enrichment_stats.enriched_count == 2
+    assert result.enrichment_stats.failed_fetch_count == 1
+    assert vacancy_service.urls == [
+        "https://hh.ru/vacancy/1",
+        "https://hh.ru/vacancy/2",
+        "https://hh.ru/vacancy/3",
+    ]
+    assert vacancy_service.session_count == vacancy_service.closed_session_count == 2
 
 
 @pytest.mark.anyio

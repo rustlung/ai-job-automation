@@ -100,6 +100,7 @@ class HHCollectFilterAndEnrichService:
         on_enriched_chunk: Callable[[list[EnrichedVacancyAssessment], int, int], Awaitable[None]] | None = None,
         on_preliminary_complete: Callable[[list[PreliminaryFilteredVacancy]], Awaitable[None]] | None = None,
         on_enrichment_failures: Callable[[list[tuple[PreliminaryFilteredVacancy, VacancyEnrichmentError]], int, int], Awaitable[None]] | None = None,
+        pipeline_run_id: str | None = None,
     ) -> HHCollectFilterAndEnrichResult:
         started_at = time.perf_counter()
         errors: list[VacancyEnrichmentError] = []
@@ -165,12 +166,17 @@ class HHCollectFilterAndEnrichService:
         for chunk_index, chunk in enumerate(chunks, start=1):
             chunk_started_at = time.perf_counter()
             logger.info(
-                "vacancy_enrichment_chunk_started chunk_index=%s chunk_count=%s chunk_size=%s",
+                "vacancy_enrichment_chunk_started pipeline_run_id=%s chunk_index=%s chunk_count=%s chunk_size=%s",
+                pipeline_run_id,
                 chunk_index,
                 len(chunks),
                 len(chunk),
             )
-            chunk_result = await self._enrich_candidates(chunk, item_index_offset=(chunk_index - 1) * chunk_size)
+            chunk_result = await self._enrich_candidates(
+                chunk,
+                item_index_offset=(chunk_index - 1) * chunk_size,
+                pipeline_run_id=pipeline_run_id,
+            )
             enriched_items.extend(chunk_result[0])
             errors.extend(chunk_result[1])
             failed_fetch_count += chunk_result[2]
@@ -188,7 +194,8 @@ class HHCollectFilterAndEnrichService:
             if chunk_result[0] and on_enriched_chunk is not None:
                 await on_enriched_chunk(chunk_result[0], chunk_index, len(chunks))
             logger.info(
-                "vacancy_enrichment_chunk_completed chunk_index=%s chunk_count=%s chunk_size=%s duration_ms=%s",
+                "vacancy_enrichment_chunk_completed pipeline_run_id=%s chunk_index=%s chunk_count=%s chunk_size=%s duration_ms=%s",
+                pipeline_run_id,
                 chunk_index,
                 len(chunks),
                 len(chunk),
@@ -252,74 +259,97 @@ class HHCollectFilterAndEnrichService:
         candidates,
         *,
         item_index_offset: int,
+        pipeline_run_id: str | None = None,
     ) -> tuple[list[EnrichedVacancyAssessment], list[VacancyEnrichmentError], int, int, int, int]:
         errors: list[VacancyEnrichmentError] = []
         prepared = []
         failed_fetch_count = 0
         failed_normalization_count = 0
         failed_feature_extraction_count = 0
-        for local_index, item in enumerate(candidates):
-            item_index = item_index_offset + local_index
-            logger.info("vacancy_full_fetch_started item_index=%s", item_index)
-            try:
-                details = await self.vacancy_service.get_vacancy_details(item.vacancy.url)
-                logger.info("vacancy_full_fetch_succeeded item_index=%s", item_index)
-            except Exception:
-                failed_fetch_count += 1
-                logger.warning("vacancy_full_fetch_failed item_index=%s error_code=full_fetch_failed", item_index)
-                errors.append(
-                    VacancyEnrichmentError(
-                        stage="full_fetch",
-                        error_code="full_fetch_failed",
-                        message="Full vacancy fetch failed; item was skipped from enrichment",
-                        item_index=item_index,
-                    )
-                )
-                continue
-
-            try:
-                normalized = self.normalization_service.normalize(search_vacancy=item.vacancy, vacancy_details=details)
-                logger.info("vacancy_normalization_succeeded item_index=%s", item_index)
-            except Exception:
-                failed_normalization_count += 1
-                logger.warning(
-                    "vacancy_normalization_failed item_index=%s error_code=normalization_failed",
+        async with self.vacancy_service.enrichment_session() as vacancy_session:
+            for local_index, item in enumerate(candidates):
+                item_index = item_index_offset + local_index
+                fetch_started_at = time.perf_counter()
+                logger.info(
+                    "full_vacancy_fetch_started pipeline_run_id=%s external_id=%s item_index=%s transport=authenticated_browser",
+                    pipeline_run_id,
+                    item.vacancy.external_id,
                     item_index,
                 )
-                errors.append(
-                    VacancyEnrichmentError(
-                        stage="normalization",
-                        error_code="normalization_failed",
-                        message="Vacancy normalization failed; item was skipped from enrichment",
-                        item_index=item_index,
+                try:
+                    details = await vacancy_session.get_vacancy_details(item.vacancy.url)
+                    logger.info(
+                        "full_vacancy_fetch_succeeded pipeline_run_id=%s external_id=%s item_index=%s "
+                        "transport=authenticated_browser duration_ms=%s",
+                        pipeline_run_id,
+                        item.vacancy.external_id,
+                        item_index,
+                        self._duration_ms(fetch_started_at),
                     )
-                )
-                continue
+                except Exception as exc:
+                    failed_fetch_count += 1
+                    logger.warning(
+                        "full_vacancy_fetch_failed pipeline_run_id=%s external_id=%s item_index=%s "
+                        "transport=authenticated_browser error_code=%s duration_ms=%s",
+                        pipeline_run_id,
+                        item.vacancy.external_id,
+                        item_index,
+                        getattr(exc, "error_code", "full_fetch_failed"),
+                        self._duration_ms(fetch_started_at),
+                    )
+                    errors.append(
+                        VacancyEnrichmentError(
+                            stage="full_fetch",
+                            error_code="full_fetch_failed",
+                            message="Full vacancy fetch failed; item was skipped from enrichment",
+                            item_index=item_index,
+                        )
+                    )
+                    continue
 
-            try:
-                features = self.feature_service.extract(normalized)
-            except Exception:
-                failed_feature_extraction_count += 1
-                logger.warning(
-                    "vacancy_feature_extraction_failed item_index=%s error_code=feature_extraction_failed",
-                    item_index,
-                )
-                errors.append(
-                    VacancyEnrichmentError(
-                        stage="feature_extraction",
-                        error_code="feature_extraction_failed",
-                        message="Vacancy deterministic feature extraction failed; item was skipped from enrichment",
-                        item_index=item_index,
+                try:
+                    normalized = self.normalization_service.normalize(search_vacancy=item.vacancy, vacancy_details=details)
+                    logger.info("vacancy_normalization_succeeded item_index=%s", item_index)
+                except Exception:
+                    failed_normalization_count += 1
+                    logger.warning(
+                        "vacancy_normalization_failed item_index=%s error_code=normalization_failed",
+                        item_index,
                     )
+                    errors.append(
+                        VacancyEnrichmentError(
+                            stage="normalization",
+                            error_code="normalization_failed",
+                            message="Vacancy normalization failed; item was skipped from enrichment",
+                            item_index=item_index,
+                        )
+                    )
+                    continue
+
+                try:
+                    features = self.feature_service.extract(normalized)
+                except Exception:
+                    failed_feature_extraction_count += 1
+                    logger.warning(
+                        "vacancy_feature_extraction_failed item_index=%s error_code=feature_extraction_failed",
+                        item_index,
+                    )
+                    errors.append(
+                        VacancyEnrichmentError(
+                            stage="feature_extraction",
+                            error_code="feature_extraction_failed",
+                            message="Vacancy deterministic feature extraction failed; item was skipped from enrichment",
+                            item_index=item_index,
+                        )
+                    )
+                    continue
+                logger.info(
+                    "vacancy_feature_extraction_succeeded item_index=%s hard_blocker_count=%s risk_count=%s",
+                    item_index,
+                    len(features.hard_blockers),
+                    len(features.deterministic_risks),
                 )
-                continue
-            logger.info(
-                "vacancy_feature_extraction_succeeded item_index=%s hard_blocker_count=%s risk_count=%s",
-                item_index,
-                len(features.hard_blockers),
-                len(features.deterministic_risks),
-            )
-            prepared.append((item_index, item, normalized, features))
+                prepared.append((item_index, item, normalized, features))
 
         semantic_inputs = [(normalized, features) for _, _, normalized, features in prepared]
         semantic_assessments, semantic_fallback_count = await self.semantic_service.analyze(semantic_inputs) if semantic_inputs else ([], 0)

@@ -20,6 +20,7 @@ from app.schemas.hh_auth import (
 )
 from app.services.hh_auth_state import HHAuthStateMissingError
 from app.services.hh_authenticated_search import HHBrowserBusyError
+from app.services.hh_vacancy import HHVacancyAuthenticationError
 
 
 class FakeHHSearchService:
@@ -367,6 +368,7 @@ def test_vacancy_details_accepts_nullable_optional_fields(client: TestClient, mo
         (HHUnexpectedContentError(), 502),
         (HHInvalidFinalUrlError(), 502),
         (HHResponseTooLargeError(), 502),
+        (HHVacancyAuthenticationError(), 401),
         (HHVacancyMissingFieldError(), 502),
         (HHVacancyIdentityMismatchError(), 502),
         (HHVacancyParseError(), 502),

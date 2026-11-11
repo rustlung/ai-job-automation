@@ -104,7 +104,7 @@ class RunDiagnosticsService:
                 "state_counts": {name: state_counts.get(name, 0) for name in PROCESSING_STATES},
             },
             "failures": failures,
-            "full_fetch_transport": {"value": "httpx", "source": "runtime_code/config"},
+            "full_fetch_transport": {"value": "authenticated_browser", "source": "runtime_code/config"},
             # Per-query pagination stop reasons were not persisted historically.
             "pagination": {"availability": "unavailable"},
         }

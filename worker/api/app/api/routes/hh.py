@@ -8,6 +8,7 @@ from app.clients.hh import (
     HHTimeoutError,
     HHUnexpectedContentError,
 )
+from app.clients.hh_browser import HHBrowserInvalidUrlError, HHBrowserNavigationError, HHBrowserTimeoutError
 from app.core.config import get_settings
 from app.parsers.hh_vacancy import (
     HHVacancyIdentityMismatchError,
@@ -40,7 +41,7 @@ from app.services.hh_search_collection import (
 )
 from app.services.hh_search import HHSearchService
 from app.services.hh_search_profiles import HHSearchProfileRegistry
-from app.services.hh_vacancy import HHVacancyService
+from app.services.hh_vacancy import HHVacancyAuthenticationError, HHVacancyService, HHVacancyUnexpectedPageError
 
 router = APIRouter()
 
@@ -142,13 +143,15 @@ async def get_hh_vacancy_details(request: HHVacancyDetailsRequest) -> HHVacancyD
     service = get_hh_vacancy_service()
     try:
         return await service.get_vacancy_details(request.url)
-    except HHTimeoutError as exc:
+    except (HHTimeoutError, HHBrowserTimeoutError) as exc:
         raise HTTPException(status_code=504, detail="HH request timed out") from exc
     except HHConnectionError as exc:
         raise HTTPException(status_code=503, detail="HH is unavailable") from exc
+    except HHVacancyAuthenticationError as exc:
+        raise HTTPException(status_code=401, detail="HH authentication is required") from exc
     except HHHTTPError as exc:
         raise HTTPException(status_code=502, detail="HH returned an HTTP error") from exc
-    except (HHUnexpectedContentError, HHInvalidFinalUrlError) as exc:
+    except (HHUnexpectedContentError, HHInvalidFinalUrlError, HHBrowserInvalidUrlError, HHBrowserNavigationError, HHVacancyUnexpectedPageError) as exc:
         raise HTTPException(status_code=502, detail="HH returned unexpected content") from exc
     except HHResponseTooLargeError as exc:
         raise HTTPException(status_code=502, detail="HH response is too large") from exc

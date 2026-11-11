@@ -22,6 +22,17 @@ from app.services.hh_auth_state import HHAuthStateStore
 logger = logging.getLogger(__name__)
 
 VACANCY_LINK_SELECTOR = 'a[href*="/vacancy/"]'
+DETAIL_LOGIN_SELECTORS = (
+    'form[action*="login"]',
+    'form[action*="account"]',
+    'input[type="tel"]',
+    'input[name="login"]',
+    '[data-qa*="login"]',
+    '[data-qa*="account-login"]',
+)
+DETAIL_CAPTCHA_SELECTORS = ('[data-qa*="captcha"]', '#captcha', '.captcha-container', 'iframe[src*="captcha"]')
+DETAIL_VPN_SELECTORS = ('[data-qa*="vpn"]', '.vpn-warning', '#vpn-warning')
+DETAIL_CHALLENGE_SELECTORS = ('#challenge-form', '.cf-challenge', '[data-qa*="challenge"]')
 HH_DOM_HYDRATION_PAUSE_SECONDS = 2.5
 HH_DOM_STABILIZATION_INTERVAL_SECONDS = 0.75
 HH_DOM_STABILIZATION_TIMEOUT_SECONDS = 20.0
@@ -71,6 +82,10 @@ class HHBrowserPage:
     stabilization_duration_ms: int
     stabilization_status: str
     status_code: int | None = None
+    visible_login_form: bool = False
+    visible_captcha: bool = False
+    visible_vpn_warning: bool = False
+    visible_challenge: bool = False
 
 
 @dataclass(frozen=True)
@@ -114,6 +129,43 @@ class HHAuthenticatedBrowserSession:
                 stabilization_duration_ms=stabilization.stabilization_duration_ms,
                 stabilization_status=stabilization.stabilization_status,
                 status_code=response.status if response is not None else None,
+            )
+        except PlaywrightTimeoutError as exc:
+            raise HHBrowserTimeoutError("HH browser request timed out") from exc
+        except PlaywrightError as exc:
+            raise HHBrowserNavigationError("HH browser navigation failed") from exc
+
+    async def fetch_vacancy_page(self, url: str) -> HHBrowserPage:
+        """Navigate one full vacancy page with the session's authenticated page."""
+        self.client._validate_hh_url(url)
+        started_at = time.perf_counter()
+        try:
+            response = await self.page.goto(
+                url,
+                wait_until="domcontentloaded",
+                timeout=self.client._milliseconds(self.client.page_load_timeout_seconds),
+            )
+            final_url = self.page.url
+            self.client._validate_hh_url(final_url)
+            final_hostname, final_path = self.client._safe_url_parts(final_url)
+            html = await self.page.content()
+            return HHBrowserPage(
+                html=html,
+                final_url=final_url,
+                final_hostname=final_hostname,
+                final_path=final_path,
+                html_size=len(html.encode("utf-8")),
+                duration_ms=self.client._duration_ms(started_at),
+                initial_vacancy_count=0,
+                final_vacancy_count=0,
+                stabilization_iterations=0,
+                stabilization_duration_ms=0,
+                stabilization_status="not_applicable",
+                status_code=response.status if response is not None else None,
+                visible_login_form=await self.client._has_visible_selector(self.page, DETAIL_LOGIN_SELECTORS),
+                visible_captcha=await self.client._has_visible_selector(self.page, DETAIL_CAPTCHA_SELECTORS),
+                visible_vpn_warning=await self.client._has_visible_selector(self.page, DETAIL_VPN_SELECTORS),
+                visible_challenge=await self.client._has_visible_selector(self.page, DETAIL_CHALLENGE_SELECTORS),
             )
         except PlaywrightTimeoutError as exc:
             raise HHBrowserTimeoutError("HH browser request timed out") from exc
@@ -280,6 +332,14 @@ class HHAuthenticatedBrowserClient:
                 await self._close_resource(browser.close, "browser")
             if playwright_runtime is not None:
                 await self._close_resource(playwright_runtime.stop, "playwright")
+
+    @staticmethod
+    async def _has_visible_selector(page: object, selectors: tuple[str, ...]) -> bool:
+        for selector in selectors:
+            locator = page.locator(selector)
+            if await locator.count() and await locator.first.is_visible():
+                return True
+        return False
 
     async def diagnose_search_page(self, url: str) -> HHTransportDiagnosticResult:
         """Run one read-only navigation using the configured Playwright storage state."""

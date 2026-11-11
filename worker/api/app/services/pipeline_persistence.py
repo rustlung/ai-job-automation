@@ -164,6 +164,7 @@ class HHCollectFilterEnrichAndPersistService:
                 on_enriched_chunk=persist_enrichment_chunk,
                 on_preliminary_complete=persist_preliminary_outcomes,
                 on_enrichment_failures=persist_enrichment_failures,
+                pipeline_run_id=run_id,
             )
         except EnrichmentChunkPersistenceError as exc:
             return self._enrichment_persistence_failure_result(

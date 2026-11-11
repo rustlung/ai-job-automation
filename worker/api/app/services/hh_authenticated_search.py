@@ -123,6 +123,12 @@ class HHAuthenticatedSearchPreviewService:
             if acquired:
                 _BROWSER_SEMAPHORE.release()
 
+    @asynccontextmanager
+    async def authenticated_browser_session(self):
+        """Expose the existing serialized authenticated browser lifecycle to HH consumers."""
+        async with self.collection_session() as browser_session:
+            yield browser_session
+
     async def _run_with_browser_slot(self, operation_factory):
         acquired = False
         try:
@@ -283,6 +289,9 @@ class _HHAuthenticatedCollectionSession:
         started_at = started_at if started_at is not None else time.perf_counter()
         browser_page = await self.browser_session.fetch_search_page(url, profile_id, page)
         return self.service._parse_page(profile_id, page, browser_page, started_at)
+
+    async def fetch_vacancy_page(self, url: str):
+        return await self.browser_session.fetch_vacancy_page(url)
 
 
 def map_authenticated_search_error_to_status(exc: Exception) -> int:
