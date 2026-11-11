@@ -97,10 +97,6 @@
 ✅ HH collection provenance aggregation
 ✅ HH collection exact deduplication
 ✅ Privacy-safe HH collection logs
-✅ Terminal HH collection failures stop the Worker pipeline before discovery,
-preliminary and enrichment; `401`/`403` return `hh_auth_failed`, while other
-terminal collection failures return `hh_collection_failed`. A successful empty
-collection remains a normal empty run.
 ✅ Chromium cleanup after authenticated HH requests
 ✅ Public HH page-size fix
 ✅ Preliminary local AI vacancy filter
