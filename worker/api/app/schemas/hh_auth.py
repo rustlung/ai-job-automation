@@ -21,7 +21,11 @@ class HHAuthHealthStatus(str, Enum):
 class HHAuthenticatedSearchPreviewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    profile_id: Literal["ai_resume_recommendations", "python_resume_recommendations"]
+    profile_id: Literal[
+        "ai_resume_recommendations",
+        "python_resume_recommendations",
+        "test_resume_recommendations",
+    ]
     page: int = Field(default=0, ge=0, le=5)
 
 

@@ -89,18 +89,18 @@ keyword profiles и configurable selection также приняты.
 Актуальный export:
 
 ``` text
-workflows/n8n/AI Job Automation — Daily Search Digest v14.json
+workflows/n8n/AI Job Automation — Daily Search Digest v15.json
 ```
 
 Workflow name:
 
 ``` text
-AI Job Automation — Daily Search Digest v14
+AI Job Automation — Daily Search Digest v15
 ```
 
 Export не содержит credentials. После import activation управляется n8n
-deployment; `AI Job Automation — Daily Search CRM Digest v13` сохраняется как
-historical baseline и не перезаписывается.
+deployment; v14 и `AI Job Automation — Daily Search CRM Digest v13` сохраняются
+как historical exports и не перезаписываются.
 Dedicated CRM workflow exports находятся в `workflows/n8n/archive/` и имеют
 статус historical only: их нельзя импортировать или активировать как runtime
 workflows.
@@ -200,7 +200,7 @@ success-сводки. Она не заменяет Gmail digest и не влия
 ### Profile Selection And Preflight
 
 `Search Profiles — EDIT BEFORE RUN` contains an explicit boolean map for the
-two resume profiles and four custom keyword profiles. `Build Selected Profile
+two resume profiles, two bounded smoke profiles and four custom keyword profiles. `Build Selected Profile
 IDs` converts only `true` values to the existing Worker `profile_ids` contract.
 When all values are `false`, it stops with `No search profiles selected` before
 the Worker pipeline.
@@ -219,6 +219,10 @@ Context only for grouped result and email processing.
 Profile metadata distinguishes `enabled` (technically available) from
 `user_selectable` (allowed in Manual/Web selection). Legacy expanded profiles
 remain internally available but are not selectable through the Web API or UI.
+
+`test_resume_recommendations` and `test_expanded_search` are selectable smoke
+profiles. Each limits collection to one page of up to 20 cards but uses the
+normal preliminary, enrichment and persistence path for every discovered item.
 
 The preflight branch always checks Orchestrator `GET /health`, Worker
 `GET /health`, Worker `GET /health/ollama` and Worker

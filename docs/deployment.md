@@ -783,16 +783,16 @@ Telegram API Gateway. Base URL и key задаются только в окру�
 
 ### Telegram-уведомление о завершении поиска
 
-Для rollout `AI Job Automation — Daily Search Digest v14`:
+Для rollout `AI Job Automation — Daily Search Digest v15`:
 
 1. Добавьте `AI_JOB_GATEWAY_BASE_URL` и `AI_JOB_GATEWAY_KEY` в environment file
    n8n на homeserver и пересоздайте n8n container приведенной выше командой.
 2. Импортируйте
-   `workflows/n8n/AI Job Automation — Daily Search Digest v14.json` в UI n8n.
+   `workflows/n8n/AI Job Automation — Daily Search Digest v15.json` в UI n8n.
 3. Убедитесь, что HTTP node `Telegram Send Completion Notification` использует
    environment expressions из export; отдельные n8n credentials для gateway не
    требуются.
-4. Активируйте v14 и деактивируйте production schedule/webhook v13, не удаляя
+4. Активируйте v15 и деактивируйте production schedule/webhook v14, не удаляя
    historical workflow, чтобы не запускать два цикла и не получать дубли.
 5. Выполните один короткий run и проверьте Gmail digest, DB persistence и
    короткое Telegram-сообщение. Google Sheets не должна измениться: в v14 нет
@@ -833,7 +833,7 @@ resolver, который временно возвращал NXDOMAIN для н�
 ## n8n Workflow Configuration
 
 > Historical reference: the CRM workflow exports below predate Phase 3C. The
-> current production workflow is `AI Job Automation — Daily Search Digest v14`;
+> current production workflow is `AI Job Automation — Daily Search Digest v15`;
 > CRM exports are archival only and must not be activated.
 
 Workflow export `AI Job Automation — Daily Search CRM Digest v4` подготовлен

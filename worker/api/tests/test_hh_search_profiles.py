@@ -25,6 +25,8 @@ def test_registry_defines_expected_profiles_without_secrets_in_response(monkeypa
     assert [profile.id for profile in profiles] == [
         "ai_resume_recommendations",
         "python_resume_recommendations",
+        "test_resume_recommendations",
+        "test_expanded_search",
         "ai_expanded_search",
         "python_expanded_search",
         "alt_opportunities",
@@ -38,6 +40,8 @@ def test_registry_defines_expected_profiles_without_secrets_in_response(monkeypa
     assert {profile.id for profile in profiles if profile.user_selectable} == {
         "ai_resume_recommendations",
         "python_resume_recommendations",
+        "test_resume_recommendations",
+        "test_expanded_search",
         "ai_automation_keywords",
         "vibecoding_keywords",
         "python_backend_keywords",
@@ -47,6 +51,25 @@ def test_registry_defines_expected_profiles_without_secrets_in_response(monkeypa
         not registry.get_profiles([profile_id])[0].user_selectable
         for profile_id in ["ai_expanded_search", "python_expanded_search", "alt_opportunities"]
     )
+
+
+def test_smoke_profiles_are_small_real_profiles_without_changing_production_limits(monkeypatch: pytest.MonkeyPatch) -> None:
+    registry = make_registry(monkeypatch)
+    resume, expanded = registry.get_profiles(["test_resume_recommendations", "test_expanded_search"])
+    production_resume = registry.get_profiles(["ai_resume_recommendations"])[0]
+    production_expanded = registry.get_profiles(["python_expanded_search"])[0]
+
+    assert resume.is_test is True
+    assert resume.source_type == SearchProfileSourceType.RESUME_RECOMMENDATIONS
+    assert resume.max_pages == 1
+    assert resume.items_on_page == 20
+    assert expanded.is_test is True
+    assert expanded.source_type == SearchProfileSourceType.EXPANDED_SEARCH
+    assert expanded.max_pages == 1
+    assert len(expanded.query_variants) == 1
+    assert expanded.query_variants[0].query == "Python backend"
+    assert production_resume.max_pages == 3 and production_resume.items_on_page == 100
+    assert production_expanded.max_pages == 5 and len(production_expanded.query_variants) == 2
     alt_profile = registry.get_profiles(["alt_opportunities"])[0]
     assert alt_profile.track.value == "alternative"
     alt_queries = " ".join(variant.query for variant in alt_profile.query_variants).casefold()

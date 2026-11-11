@@ -1,5 +1,6 @@
 import json
 import subprocess
+from copy import deepcopy
 from pathlib import Path
 
 
@@ -7,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[3]
 WORKFLOWS = ROOT / "workflows" / "n8n"
 V13 = WORKFLOWS / "AI Job Automation — Daily Search CRM Digest v13.json"
 V14 = WORKFLOWS / "AI Job Automation — Daily Search Digest v14.json"
+V15 = WORKFLOWS / "AI Job Automation — Daily Search Digest v15.json"
 
 
 def load(path: Path) -> dict:
@@ -52,7 +54,25 @@ console.log(JSON.stringify(execute(
 def test_v13_is_preserved_and_v14_is_a_new_daily_digest_successor() -> None:
     assert load(V13)["name"] == "AI Job Automation — Daily Search CRM Digest v13"
     assert load(V14)["name"] == "AI Job Automation — Daily Search Digest v14"
+
+
+def test_v14_is_preserved_and_v15_is_test_profiles_successor() -> None:
+    assert load(V14)["name"] == "AI Job Automation — Daily Search Digest v14"
+    assert load(V15)["name"] == "AI Job Automation — Daily Search Digest v15"
     assert V13.read_bytes() != V14.read_bytes()
+
+
+def test_v15_changes_only_profile_selection_from_v14() -> None:
+    v14 = load(V14)
+    v15 = load(V15)
+    expected = deepcopy(v14)
+    expected["name"] = v15["name"]
+    expected["versionId"] = v15["versionId"]
+    node(expected, "Build Selected Profile IDs")["parameters"]["jsCode"] = node(v15, "Build Selected Profile IDs")[
+        "parameters"
+    ]["jsCode"]
+
+    assert v15 == expected
 
 
 def test_v14_is_valid_connected_and_has_no_google_sheets_or_crm_runtime_nodes() -> None:

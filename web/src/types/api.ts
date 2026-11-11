@@ -25,6 +25,7 @@ export interface SearchProfile {
   source_type: SearchProfileSourceType;
   enabled: boolean;
   user_selectable: boolean;
+  is_test?: boolean;
 }
 
 export interface SearchProfilesResponse {

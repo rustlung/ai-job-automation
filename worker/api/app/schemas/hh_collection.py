@@ -78,6 +78,7 @@ class SearchProfile(BaseModel):
     source_type: SearchProfileSourceType
     enabled: bool = True
     user_selectable: bool = False
+    is_test: bool = False
     base_url: str | None = Field(default=None, repr=False)
     query: str | None = None
     query_variants: list[SearchQueryVariant] = Field(default_factory=list)
@@ -100,6 +101,7 @@ class SearchProfilePublicRead(BaseModel):
     source_type: SearchProfileSourceType
     enabled: bool
     user_selectable: bool
+    is_test: bool = False
 
 
 class SearchProfilePublicListResponse(BaseModel):

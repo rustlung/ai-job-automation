@@ -226,6 +226,19 @@ def test_authenticated_search_preview_success(client: TestClient, monkeypatch: p
     assert service.page == 0
 
 
+def test_authenticated_search_preview_accepts_test_resume_profile(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = FakeHHAuthenticatedSearchService(make_authenticated_preview())
+    override_authenticated_service(monkeypatch, service)
+
+    response = client.post("/hh/authenticated-search-preview", json={"profile_id": "test_resume_recommendations"})
+
+    assert response.status_code == 200
+    assert service.profile_id == "test_resume_recommendations"
+
+
 @pytest.mark.parametrize(
     ("body", "expected_status"),
     [

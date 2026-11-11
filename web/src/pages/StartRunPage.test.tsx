@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { StartRunPage } from "./StartRunPage";
 
@@ -9,6 +9,7 @@ vi.mock("../hooks/useOrchestrator", () => ({
     data: {
       profiles: [
         { id: "vibecoding_keywords", name: "Vibecoding", track: "main", source_type: "expanded_search", enabled: true, user_selectable: true },
+        { id: "test_expanded_search", name: "[TEST] Expanded search", track: "main", source_type: "expanded_search", enabled: true, user_selectable: true, is_test: true },
         { id: "ai_expanded_search", name: "Legacy", track: "main", source_type: "expanded_search", enabled: true, user_selectable: false }
       ]
     },
@@ -18,6 +19,8 @@ vi.mock("../hooks/useOrchestrator", () => ({
   useStartRun: () => ({ isPending: false, isError: false, mutate: vi.fn() })
 }));
 
+afterEach(() => cleanup());
+
 describe("StartRunPage", () => {
   it("disables submission until at least one profile is selected", () => {
     render(<MemoryRouter><StartRunPage /></MemoryRouter>);
@@ -25,5 +28,11 @@ describe("StartRunPage", () => {
     expect(screen.getByRole("button", { name: "Запустить поиск" })).toBeDisabled();
     expect(screen.getByRole("status")).toHaveTextContent("Выберите хотя бы один поисковый профиль.");
     expect(screen.queryByLabelText("Legacy")).not.toBeInTheDocument();
+  });
+
+  it("visually marks selectable smoke profiles", () => {
+    render(<MemoryRouter><StartRunPage /></MemoryRouter>);
+    expect(screen.getByText("TEST")).toBeInTheDocument();
+    expect(screen.getByText("[TEST] Expanded search")).toBeInTheDocument();
   });
 });

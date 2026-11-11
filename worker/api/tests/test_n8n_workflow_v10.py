@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[3]
 DIR = ROOT / "workflows" / "n8n"
 V9 = DIR / "AI Job Automation — Daily Search CRM Digest v9.json"
 V10 = DIR / "AI Job Automation — Daily Search CRM Digest v10.json"
+V15 = DIR / "AI Job Automation — Daily Search Digest v15.json"
 
 
 def load(path: Path) -> dict:
@@ -116,8 +117,8 @@ def test_v10_keeps_compute_preflight_async_polling_and_terminal_lifecycle() -> N
     assert "Evaluate Worker Run" in parameter_text(node(workflow, "Mark Pipeline Run Completed"))
 
 
-def test_v10_selectable_profile_ids_match_worker_registry() -> None:
-    workflow = load(V10)
+def test_v15_selectable_profile_ids_match_worker_registry_and_test_resume_branch() -> None:
+    workflow = load(V15)
     code = node(workflow, "Build Selected Profile IDs")["parameters"]["jsCode"]
     match = re.search(r"const allowedProfileIds = \[(.*?)\];", code, flags=re.DOTALL)
 
@@ -129,6 +130,11 @@ def test_v10_selectable_profile_ids_match_worker_registry() -> None:
         if profile.user_selectable
     ]
     assert workflow_ids == registry_ids
+    resume_match = re.search(r"const resumeProfileIds = new Set\(\[(.*?)\]\);", code, flags=re.DOTALL)
+    assert resume_match is not None
+    resume_ids = re.findall(r"'([^']+)'", resume_match.group(1))
+    assert "test_resume_recommendations" in resume_ids
+    assert "test_expanded_search" not in resume_ids
     assert "selected === true && !allowedProfileIds.includes(profileId)" in code
     assert "No search profiles selected" in code
 
