@@ -37,6 +37,8 @@ from app.services.web_vacancies import WebVacancyListService, WebVacancyNotFound
 from app.services.statistics import StatisticsValidationError, VacancyStatisticsService
 from app.schemas.manual_vacancy import ManualVacancyCreate, ManualVacancyCreateResponse
 from app.services.manual_vacancy import ManualVacancyDatabaseError, ManualVacancyService
+from app.services.run_diagnostics import RunDiagnosticsNotFoundError
+from app.services.web_diagnostics import WebDiagnosticsService, WebDiagnosticsUnavailableError
 
 router = APIRouter(prefix="/api", tags=["web api"])
 
@@ -69,6 +71,10 @@ def get_n8n_webhook_client(settings: Settings = Depends(get_settings)) -> N8nWeb
     return N8nWebhookClient(settings)
 
 
+def get_web_diagnostics_service(db: Session = Depends(get_db_session), settings: Settings = Depends(get_settings)) -> WebDiagnosticsService:
+    return WebDiagnosticsService(db, settings)
+
+
 @router.get("/settings", response_model=OperationalSettingsRead)
 def get_operational_settings(service: OperationalSettingsService = Depends(get_operational_settings_service)) -> OperationalSettingsRead:
     try:
@@ -99,6 +105,43 @@ async def get_search_profiles(gateway: WorkerGateway = Depends(get_worker_gatewa
 @router.get("/system/health", response_model=SystemHealthResponse)
 async def get_system_health(gateway: WorkerGateway = Depends(get_worker_gateway)) -> SystemHealthResponse:
     return await gateway.system_health()
+
+
+@router.get("/diagnostics/runs")
+def get_diagnostic_runs(limit: Annotated[int, Query(ge=1, le=50)] = 10, service: WebDiagnosticsService = Depends(get_web_diagnostics_service)) -> dict:
+    return service.recent(limit)
+
+
+@router.get("/diagnostics/runs/{run_id}")
+def get_diagnostic_run(run_id: str, service: WebDiagnosticsService = Depends(get_web_diagnostics_service)) -> dict:
+    try:
+        return service.run(run_id)
+    except RunDiagnosticsNotFoundError as exc:
+        raise HTTPException(status_code=404, detail={"error_code": "run_not_found"}) from exc
+
+
+@router.get("/diagnostics/health")
+async def get_diagnostics_health(service: WebDiagnosticsService = Depends(get_web_diagnostics_service)) -> dict:
+    try:
+        return await service.health()
+    except WebDiagnosticsUnavailableError as exc:
+        raise HTTPException(status_code=503, detail={"error_code": "diagnostics_worker_unavailable"}) from exc
+
+
+@router.get("/diagnostics/config")
+async def get_diagnostics_config(service: WebDiagnosticsService = Depends(get_web_diagnostics_service)) -> dict:
+    try:
+        return await service.config()
+    except WebDiagnosticsUnavailableError as exc:
+        raise HTTPException(status_code=503, detail={"error_code": "diagnostics_worker_unavailable"}) from exc
+
+
+@router.post("/diagnostics/hh-check")
+async def run_diagnostics_hh_check(service: WebDiagnosticsService = Depends(get_web_diagnostics_service)) -> dict:
+    try:
+        return await service.hh_check()
+    except WebDiagnosticsUnavailableError as exc:
+        raise HTTPException(status_code=503, detail={"error_code": "diagnostics_worker_unavailable"}) from exc
 
 
 @router.post("/runs", response_model=WebPipelineRunCreateResponse, status_code=status.HTTP_202_ACCEPTED)

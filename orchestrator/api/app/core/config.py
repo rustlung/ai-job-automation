@@ -11,6 +11,7 @@ class Settings:
         self.n8n_webhook_secret = getenv("N8N_WEBHOOK_SECRET", "")
         self.n8n_webhook_timeout_seconds = float(getenv("N8N_WEBHOOK_TIMEOUT_SECONDS", "15"))
         self.internal_api_token = getenv("ORCHESTRATOR_INTERNAL_API_TOKEN", "")
+        self.worker_internal_api_token = getenv("WORKER_INTERNAL_API_TOKEN", self.internal_api_token)
         self.web_ui_allowed_origins = tuple(
             origin.strip().rstrip("/")
             for origin in getenv("WEB_UI_ALLOWED_ORIGINS", "").split(",")

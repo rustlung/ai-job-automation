@@ -6,7 +6,7 @@ import type {
   ApplicationListResponse,
   ApplicationPatchRequest, ApplicationWriteResponse,
   RunCreateRequest,
-  RunCreateResponse,
+  RunCreateResponse, DiagnosticConfig, DiagnosticHealthItem, DiagnosticRecentRun, DiagnosticRunResponse, HHDiagnostic,
   RunsResponse,
   SearchProfilesResponse,
   SystemHealth,
@@ -78,5 +78,10 @@ export const orchestratorApi = {
   updateApplication: (applicationId: number, payload: ApplicationPatchRequest) =>
     request<ApplicationWriteResponse>(`/api/applications/${applicationId}`, { method: "PATCH", body: JSON.stringify(payload) }),
   startRun: (payload: RunCreateRequest) =>
-    request<RunCreateResponse>("/api/runs", { method: "POST", body: JSON.stringify(payload) })
+    request<RunCreateResponse>("/api/runs", { method: "POST", body: JSON.stringify(payload) }),
+  getDiagnosticsHealth: () => request<Record<string, DiagnosticHealthItem>>("/api/diagnostics/health"),
+  getDiagnosticRuns: (limit = 10) => request<{ runs: DiagnosticRecentRun[] }>(`/api/diagnostics/runs?limit=${limit}`),
+  getDiagnosticRun: (runId: string) => request<DiagnosticRunResponse>(`/api/diagnostics/runs/${encodeURIComponent(runId)}`),
+  getDiagnosticsConfig: () => request<DiagnosticConfig>("/api/diagnostics/config"),
+  runHHDiagnostic: () => request<HHDiagnostic>("/api/diagnostics/hh-check", { method: "POST" })
 };

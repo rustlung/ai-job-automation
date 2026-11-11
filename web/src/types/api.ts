@@ -379,3 +379,12 @@ export interface ExportDownload {
   blob: Blob;
   filename: string | null;
 }
+
+export type DiagnosticStatus = "PASS" | "WARN" | "FAIL" | "unavailable";
+export interface DiagnosticHealthItem { status: DiagnosticStatus; summary: string; }
+export interface DiagnosticRecentRun { run_id: string; started_at: string; completed_at: string | null; status: PipelineRunStatus; profile_ids: string[]; error_code: string | null; }
+export interface DiagnosticFailureSample { vacancy_id: number; external_id: string; company: string; title: string; url: string | null; state: string; error_code: string; error_summary: string | null; }
+export interface DiagnosticFailureGroup { count: number; summary: string | null; samples: DiagnosticFailureSample[]; }
+export interface DiagnosticRunResponse { run: PipelineRunDetail; preliminary: { availability: string; processed_count: number; outcome_counts: Record<string, number>; enrichment_selected_count: number; }; enrichment: { availability: string; analysis_count: number; enriched_count: number; processing_failed_count: number; }; backlog: { availability: string; total: number; state_counts: Record<string, number>; }; failures: Record<string, DiagnosticFailureGroup>; full_fetch_transport: { value: string; source: string }; pagination: { availability: string }; }
+export interface DiagnosticConfig { collection: Record<string, string | number | null>; preliminary: Record<string, number>; enrichment: Record<string, number>; recovery: Record<string, number>; secrets: Record<string, boolean>; }
+export interface HHDiagnostic { classification: string; transports: Array<{ transport: string; status: number | null; final_url: string | null; captcha_detected: boolean; login_detected: boolean; vpn_detected: boolean; challenge_detected: boolean; }>; }

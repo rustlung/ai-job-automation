@@ -4,6 +4,12 @@ import { orchestratorApi } from "../api/orchestrator";
 import { runPollingInterval } from "../lib/format";
 import type { ApplicationCreateRequest, ApplicationFilters, ApplicationPatchRequest, ExportRequest, ManualVacancyCreateRequest, RunCreateRequest, StatisticsRequest, VacancyFilters, VacancyUserStatePatchRequest } from "../types/api";
 
+export function useDiagnosticsHealth() { return useQuery({ queryKey: ["diagnostics-health"], queryFn: orchestratorApi.getDiagnosticsHealth }); }
+export function useDiagnosticRuns() { return useQuery({ queryKey: ["diagnostic-runs"], queryFn: () => orchestratorApi.getDiagnosticRuns() }); }
+export function useDiagnosticRun(runId: string) { return useQuery({ queryKey: ["diagnostic-run", runId], queryFn: () => orchestratorApi.getDiagnosticRun(runId), enabled: Boolean(runId), refetchInterval: (query) => query.state.data?.run.status === "running" ? 15_000 : false }); }
+export function useDiagnosticsConfig() { return useQuery({ queryKey: ["diagnostics-config"], queryFn: orchestratorApi.getDiagnosticsConfig }); }
+export function useHHDiagnostic() { return useMutation({ mutationFn: orchestratorApi.runHHDiagnostic }); }
+
 export function useSystemHealth() {
   return useQuery({ queryKey: ["system-health"], queryFn: orchestratorApi.getSystemHealth, refetchInterval: 30_000 });
 }
