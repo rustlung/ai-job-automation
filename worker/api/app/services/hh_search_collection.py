@@ -31,6 +31,7 @@ from app.schemas.hh_collection import (
 )
 from app.services.hh_auth_state import HHAuthStateInvalidError, HHAuthStateMissingError
 from app.services.hh_authenticated_search import (
+    HHAuthenticatedSessionFailedError,
     HHAuthenticatedProfileNotConfirmedError,
     HHAuthenticatedSearchParserError,
     HHAuthenticatedSearchPreviewService,
@@ -127,18 +128,22 @@ class HHSearchCollectionService:
         errors: list[HHSearchCollectionError] = []
         provenance_builder: dict[VacancyIdentity, _ProvenanceAccumulator] = {}
 
-        for profile in profiles:
-            profile_results.append(
-                await self._collect_profile(
-                    run_id=run_id,
-                    profile=profile,
-                    max_pages_override=request.max_pages_override,
-                    raw_vacancies=raw_vacancies,
-                    page_results=page_results,
-                    errors=errors,
-                    provenance_builder=provenance_builder,
+        if self.authenticated_search_service is None:
+            raise HHAuthenticatedSearchParserError("HH authenticated search service is not configured")
+        async with self.authenticated_search_service.collection_session() as browser_session:
+            for profile in profiles:
+                profile_results.append(
+                    await self._collect_profile(
+                        run_id=run_id,
+                        profile=profile,
+                        max_pages_override=request.max_pages_override,
+                        raw_vacancies=raw_vacancies,
+                        page_results=page_results,
+                        errors=errors,
+                        provenance_builder=provenance_builder,
+                        browser_session=browser_session,
+                    )
                 )
-            )
 
         logger.info("hh_collection_deduplication_started run_id=%s raw_vacancy_count=%s", run_id, len(raw_vacancies))
         try:
@@ -213,6 +218,7 @@ class HHSearchCollectionService:
         page_results: list[HHSearchPageResult],
         errors: list[HHSearchCollectionError],
         provenance_builder: dict[VacancyIdentity, "_ProvenanceAccumulator"],
+        browser_session: object,
     ) -> HHSearchProfileResult:
         started_at = time.perf_counter()
         if not profile.enabled or not profile.base_url:
@@ -253,6 +259,7 @@ class HHSearchCollectionService:
                     profile_errors=profile_errors,
                     profile_identities=profile_identities,
                     provenance_builder=provenance_builder,
+                    browser_session=browser_session,
                 )
             )
 
@@ -295,6 +302,7 @@ class HHSearchCollectionService:
         profile_errors: list[HHSearchCollectionError],
         profile_identities: set[VacancyIdentity],
         provenance_builder: dict[VacancyIdentity, "_ProvenanceAccumulator"],
+        browser_session: object,
     ) -> HHSearchQueryVariantResult:
         started_at = time.perf_counter()
         variant_id = self._variant_id(profile, variant)
@@ -366,7 +374,7 @@ class HHSearchCollectionService:
                 path,
             )
             try:
-                collected_page = await self._fetch_page(profile, variant_id, page, url, transport)
+                collected_page = await self._fetch_page(profile, variant_id, page, url, transport, browser_session)
                 response = collected_page.response
             except (
                 HHTimeoutError,
@@ -377,6 +385,7 @@ class HHSearchCollectionService:
                 HHAuthStateMissingError,
                 HHAuthStateInvalidError,
                 HHAuthenticatedProfileNotConfirmedError,
+                HHAuthenticatedSessionFailedError,
                 HHAuthenticatedSearchParserError,
                 HHBrowserBusyError,
                 HHBrowserTimeoutError,
@@ -542,23 +551,10 @@ class HHSearchCollectionService:
         page: int,
         url: str,
         transport: HHSearchTransport,
+        browser_session: object,
     ) -> HHCollectedPage:
         started_at = time.perf_counter()
-        if transport == HHSearchTransport.HTTPX:
-            response = await self.search_service.preview_search(url)
-            hostname, path = self.profile_registry.safe_url_parts(url)
-            return HHCollectedPage(
-                transport=transport,
-                response=response,
-                duration_ms=self._duration_ms(started_at),
-                final_hostname=hostname,
-                final_path=path,
-            )
-
-        if self.authenticated_search_service is None:
-            raise HHAuthenticatedSearchParserError("HH authenticated search service is not configured")
-
-        authenticated_page = await self.authenticated_search_service.fetch_page_with_browser_slot(
+        authenticated_page = await browser_session.fetch_page(
             profile.id,
             page,
             url,
@@ -789,6 +785,23 @@ class HHSearchCollectionService:
                 HHAuthStateMissingError,
                 HHAuthStateInvalidError,
                 HHAuthenticatedProfileNotConfirmedError,
+                HHAuthenticatedSessionFailedError,
+            ),
+        ):
+            return HHSearchCollectionError(
+                profile_id=profile_id,
+                query_variant_id=query_variant_id,
+                page=page,
+                error_code="hh_auth_failed",
+                message="Сессия HH недействительна или требуется повторная авторизация.",
+            )
+        if isinstance(
+            exc,
+            (
+                HHAuthStateMissingError,
+                HHAuthStateInvalidError,
+                HHAuthenticatedProfileNotConfirmedError,
+                HHAuthenticatedSessionFailedError,
                 HHAuthenticatedSearchParserError,
                 HHBrowserBusyError,
                 HHBrowserTimeoutError,
@@ -816,7 +829,7 @@ class HHSearchCollectionService:
         if profile.source_type == SearchProfileSourceType.RESUME_RECOMMENDATIONS:
             return HHSearchTransport.AUTHENTICATED_BROWSER
         if profile.source_type == SearchProfileSourceType.EXPANDED_SEARCH:
-            return HHSearchTransport.HTTPX
+            return HHSearchTransport.AUTHENTICATED_BROWSER
         raise ValueError("Unknown HH search profile source type")
 
     @staticmethod

@@ -1,9 +1,10 @@
 import asyncio
 import logging
 import time
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
-from app.clients.hh_browser import HHAuthenticatedBrowserClient, HHBrowserInvalidUrlError, HHBrowserNavigationError, HHBrowserPage, HHBrowserTimeoutError
+from app.clients.hh_browser import HHAuthenticatedBrowserClient, HHAuthenticatedBrowserSession, HHBrowserInvalidUrlError, HHBrowserNavigationError, HHBrowserPage, HHBrowserTimeoutError
 from app.core.config import Settings
 from app.parsers.hh_search import HHSearchParser
 from app.schemas.hh import HHSearchVacancy
@@ -12,6 +13,7 @@ from app.schemas.hh_auth import (
     HHAuthenticatedSearchStatus,
     HHAuthenticatedSearchVerification,
 )
+from app.schemas.hh_transport_diagnostic import detect_response_indicators
 from app.schemas.hh_collection import SearchProfile, SearchProfileSourceType
 from app.services.hh_auth_state import HHAuthStateInvalidError, HHAuthStateMissingError, HHAuthStateStore
 from app.services.hh_auth_verifier import HHAuthenticationVerifier
@@ -49,6 +51,10 @@ class HHAuthenticatedSearchParserError(HHAuthenticatedSearchError):
 
 class HHBrowserBusyError(HHAuthenticatedSearchError):
     error_code = "hh_browser_busy"
+
+
+class HHAuthenticatedSessionFailedError(HHAuthenticatedSearchError):
+    error_code = "hh_auth_failed"
 
 
 @dataclass(frozen=True)
@@ -102,6 +108,20 @@ class HHAuthenticatedSearchPreviewService:
     ) -> HHAuthenticatedParsedPage:
         return await self._run_with_browser_slot(lambda: self.fetch_page(profile_id, page, url, started_at=started_at))
 
+    @asynccontextmanager
+    async def collection_session(self):
+        acquired = False
+        try:
+            await asyncio.wait_for(_BROWSER_SEMAPHORE.acquire(), timeout=_BROWSER_BUSY_TIMEOUT_SECONDS)
+            acquired = True
+            async with self.browser_client.collection_session() as browser_session:
+                yield _HHAuthenticatedCollectionSession(self, browser_session)
+        except asyncio.TimeoutError as exc:
+            raise HHBrowserBusyError("HH browser is busy") from exc
+        finally:
+            if acquired:
+                _BROWSER_SEMAPHORE.release()
+
     async def _run_with_browser_slot(self, operation_factory):
         acquired = False
         try:
@@ -148,6 +168,23 @@ class HHAuthenticatedSearchPreviewService:
     ) -> HHAuthenticatedParsedPage:
         started_at = started_at if started_at is not None else time.perf_counter()
         browser_page = await self.browser_client.fetch_search_page(url, profile_id, page)
+        return self._parse_page(profile_id, page, browser_page, started_at)
+
+    def _parse_page(
+        self,
+        profile_id: str,
+        page: int,
+        browser_page: HHBrowserPage,
+        started_at: float,
+    ) -> HHAuthenticatedParsedPage:
+        profile = self._get_profile(profile_id)
+        if browser_page.status_code in {401, 403}:
+            self._raise_auth_failure(profile.source_type, "HH session was rejected")
+        indicators = detect_response_indicators(browser_page.html)
+        if indicators["captcha_detected"] or indicators["vpn_detected"] or indicators["challenge_detected"] or (
+            profile.source_type == SearchProfileSourceType.EXPANDED_SEARCH and indicators["login_detected"]
+        ):
+            self._raise_auth_failure(profile.source_type, "HH session requires renewed authentication")
         try:
             vacancies = self.parser.parse(browser_page.html)
         except Exception as exc:
@@ -168,7 +205,8 @@ class HHAuthenticatedSearchPreviewService:
             expected_profile_type="resume_recommendations",
             vacancy_count=verification.vacancy_count,
         )
-        if not verification.resume_context_confirmed:
+        auth_confirmed = verification.resume_context_confirmed if profile.source_type == SearchProfileSourceType.RESUME_RECOMMENDATIONS else verification.authenticated
+        if not auth_confirmed:
             logger.warning(
                 "hh_browser_auth_failed profile_id=%s page=%s storage_state_loaded=%s login_form_detected=%s "
                 "authenticated_marker_detected=%s resume_context_marker_detected=%s authenticated=%s "
@@ -186,7 +224,7 @@ class HHAuthenticatedSearchPreviewService:
                 verification.matched_authenticated_selectors,
                 verification.matched_resume_context_selectors,
             )
-            raise HHAuthenticatedProfileNotConfirmedError("HH authenticated profile was not confirmed")
+            self._raise_auth_failure(profile.source_type, "HH authenticated session was not confirmed")
 
         logger.info(
             "hh_browser_auth_verified profile_id=%s page=%s authenticated=%s resume_context_confirmed=%s parsed_count=%s",
@@ -203,20 +241,43 @@ class HHAuthenticatedSearchPreviewService:
             browser_page=browser_page,
             verification=verification_schema,
             authenticated=True,
-            resume_context_confirmed=True,
+            resume_context_confirmed=verification.resume_context_confirmed,
             duration_ms=round((time.perf_counter() - started_at) * 1000),
         )
 
-    def _get_resume_profile(self, profile_id: str) -> SearchProfile:
+    def _get_profile(self, profile_id: str) -> SearchProfile:
         try:
             profile = self.profile_registry.get_profiles([profile_id])[0]
         except HHUnknownSearchProfileError as exc:
             raise HHAuthenticatedSearchUnknownProfileError("Unknown HH search profile") from exc
+        if not profile.enabled or not profile.base_url:
+            raise HHAuthenticatedSearchProfileNotConfiguredError("HH authenticated profile is not configured")
+        return profile
+
+    @staticmethod
+    def _raise_auth_failure(source_type: SearchProfileSourceType, message: str) -> None:
+        if source_type == SearchProfileSourceType.RESUME_RECOMMENDATIONS:
+            raise HHAuthenticatedProfileNotConfirmedError(message)
+        raise HHAuthenticatedSessionFailedError(message)
+
+    def _get_resume_profile(self, profile_id: str) -> SearchProfile:
+        profile = self._get_profile(profile_id)
         if profile.source_type != SearchProfileSourceType.RESUME_RECOMMENDATIONS:
             raise HHAuthenticatedSearchProfileNotAllowedError("Only resume recommendation profiles are allowed")
         if not profile.enabled or not profile.base_url:
             raise HHAuthenticatedSearchProfileNotConfiguredError("HH authenticated profile is not configured")
         return profile
+
+
+class _HHAuthenticatedCollectionSession:
+    def __init__(self, service: HHAuthenticatedSearchPreviewService, browser_session: HHAuthenticatedBrowserSession) -> None:
+        self.service = service
+        self.browser_session = browser_session
+
+    async def fetch_page(self, profile_id: str, page: int, url: str, started_at: float | None = None) -> HHAuthenticatedParsedPage:
+        started_at = started_at if started_at is not None else time.perf_counter()
+        browser_page = await self.browser_session.fetch_search_page(url, profile_id, page)
+        return self.service._parse_page(profile_id, page, browser_page, started_at)
 
 
 def map_authenticated_search_error_to_status(exc: Exception) -> int:

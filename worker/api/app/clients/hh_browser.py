@@ -1,6 +1,7 @@
 import logging
 import asyncio
 import time
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Awaitable, Callable
 from urllib.parse import urlsplit
@@ -69,6 +70,7 @@ class HHBrowserPage:
     stabilization_iterations: int
     stabilization_duration_ms: int
     stabilization_status: str
+    status_code: int | None = None
 
 
 @dataclass(frozen=True)
@@ -78,6 +80,45 @@ class HHDomStabilizationResult:
     stabilization_iterations: int
     stabilization_duration_ms: int
     stabilization_status: str
+
+
+class HHAuthenticatedBrowserSession:
+    def __init__(self, client: "HHAuthenticatedBrowserClient", page: object) -> None:
+        self.client = client
+        self.page = page
+
+    async def fetch_search_page(self, url: str, profile_id: str, page_number: int) -> HHBrowserPage:
+        self.client._validate_hh_url(url)
+        started_at = time.perf_counter()
+        try:
+            response = await self.page.goto(
+                url,
+                wait_until="domcontentloaded",
+                timeout=self.client._milliseconds(self.client.page_load_timeout_seconds),
+            )
+            final_url = self.page.url
+            self.client._validate_hh_url(final_url)
+            final_hostname, final_path = self.client._safe_url_parts(final_url)
+            stabilization = await self.client._wait_for_vacancy_dom_stabilization(self.page)
+            html = await self.page.content()
+            return HHBrowserPage(
+                html=html,
+                final_url=final_url,
+                final_hostname=final_hostname,
+                final_path=final_path,
+                html_size=len(html.encode("utf-8")),
+                duration_ms=self.client._duration_ms(started_at),
+                initial_vacancy_count=stabilization.initial_vacancy_count,
+                final_vacancy_count=stabilization.final_vacancy_count,
+                stabilization_iterations=stabilization.stabilization_iterations,
+                stabilization_duration_ms=stabilization.stabilization_duration_ms,
+                stabilization_status=stabilization.stabilization_status,
+                status_code=response.status if response is not None else None,
+            )
+        except PlaywrightTimeoutError as exc:
+            raise HHBrowserTimeoutError("HH browser request timed out") from exc
+        except PlaywrightError as exc:
+            raise HHBrowserNavigationError("HH browser navigation failed") from exc
 
 
 class HHAuthenticatedBrowserClient:
@@ -117,7 +158,7 @@ class HHAuthenticatedBrowserClient:
             context = await browser.new_context(storage_state=str(self.auth_state_store.storage_state_path))
             page = await context.new_page()
             page.set_default_timeout(self._milliseconds(self.page_load_timeout_seconds))
-            await page.goto(
+            response = await page.goto(
                 url,
                 wait_until="domcontentloaded",
                 timeout=self._milliseconds(self.page_load_timeout_seconds),
@@ -212,7 +253,33 @@ class HHAuthenticatedBrowserClient:
             stabilization_iterations=stabilization.stabilization_iterations,
             stabilization_duration_ms=stabilization.stabilization_duration_ms,
             stabilization_status=stabilization.stabilization_status,
+            status_code=response.status if response is not None else None,
         )
+
+    @asynccontextmanager
+    async def collection_session(self):
+        """Keep one authenticated Chromium context for sequential collection pages."""
+        self.auth_state_store.validate_available()
+        playwright_runtime = browser = context = page = None
+        try:
+            playwright_runtime = await async_playwright().start()
+            browser = await playwright_runtime.chromium.launch(
+                headless=True,
+                timeout=self._milliseconds(self.browser_timeout_seconds),
+            )
+            context = await browser.new_context(storage_state=str(self.auth_state_store.storage_state_path))
+            page = await context.new_page()
+            page.set_default_timeout(self._milliseconds(self.page_load_timeout_seconds))
+            yield HHAuthenticatedBrowserSession(self, page)
+        finally:
+            if page is not None:
+                await self._close_resource(page.close, "page")
+            if context is not None:
+                await self._close_resource(context.close, "context")
+            if browser is not None:
+                await self._close_resource(browser.close, "browser")
+            if playwright_runtime is not None:
+                await self._close_resource(playwright_runtime.stop, "playwright")
 
     async def diagnose_search_page(self, url: str) -> HHTransportDiagnosticResult:
         """Run one read-only navigation using the configured Playwright storage state."""

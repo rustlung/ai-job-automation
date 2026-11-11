@@ -104,13 +104,12 @@ def classify_transport_comparison(
     playwright: HHTransportDiagnosticResult,
     httpx: HHTransportDiagnosticResult,
 ) -> TransportClassification:
-    if any(
-        item.captcha_detected or item.login_detected or item.vpn_detected or item.challenge_detected
-        for item in (playwright, httpx)
-    ):
+    if playwright.captcha_detected or playwright.login_detected or playwright.vpn_detected or playwright.challenge_detected:
         return "hh_challenge_detected"
     if _is_success(playwright.status) and httpx.status == 403:
         return "browser_transport_required"
+    if httpx.captcha_detected or httpx.login_detected or httpx.vpn_detected or httpx.challenge_detected:
+        return "hh_challenge_detected"
     if playwright.status in {401, 403} and httpx.status in {401, 403}:
         return "hh_session_or_access_problem"
     if _is_success(playwright.status) and _is_success(httpx.status):

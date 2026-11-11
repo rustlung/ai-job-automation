@@ -74,7 +74,17 @@ def test_classification_production_collection_contract_problem() -> None:
     )
 
 
-def test_classification_challenge_takes_precedence() -> None:
+def test_classification_browser_transport_required_takes_precedence_over_httpx_challenge() -> None:
+    assert (
+        classify_transport_comparison(
+            make_result("playwright", 200),
+            make_result("httpx", 403, challenge_detected=True),
+        )
+        == "browser_transport_required"
+    )
+
+
+def test_classification_browser_challenge_is_reported() -> None:
     assert (
         classify_transport_comparison(
             make_result("playwright", 200, challenge_detected=True),

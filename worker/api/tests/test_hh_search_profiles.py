@@ -68,7 +68,10 @@ def test_keyword_profiles_use_shared_public_policy_and_unique_ids(monkeypatch: p
 
     assert len({profile.id for profile in profiles}) == len(profiles)
     assert all(profile.source_type == SearchProfileSourceType.EXPANDED_SEARCH for profile in keyword_profiles)
-    assert all(HHSearchCollectionService._transport_for_profile(profile) == HHSearchTransport.HTTPX for profile in keyword_profiles)
+    assert all(
+        HHSearchCollectionService._transport_for_profile(profile) == HHSearchTransport.AUTHENTICATED_BROWSER
+        for profile in keyword_profiles
+    )
     assert all(profile.remote_only is True for profile in keyword_profiles)
     assert all(profile.experience == ["noExperience", "between1And3"] for profile in keyword_profiles)
     assert all(profile.search_period == 3 for profile in keyword_profiles)
