@@ -14,6 +14,11 @@
   if the current Worker cannot reproduce the historical prompt code. Web-run
   snapshots retain the documented current-runtime fallback.
 
+- C3 recovery classification fix: n8n HTTP error envelopes now extract nested
+  status codes. `401`/`403` are immediate auth failures and `422` is an
+  immediate contract failure on Worker status, Worker resume and Orchestrator
+  backlog paths; only genuine transient failures consume the recovery window.
+
 - Phase C2 manual Worker resume: an existing `run_id` can now continue pending
   and expired-lease preliminary/enrichment work from `vacancy_processing_states`
   without a new HH collection. The Worker uses run config overrides, typed

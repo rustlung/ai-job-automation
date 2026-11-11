@@ -138,7 +138,9 @@ Phase C2 добавляет ручной Worker resume для уже сущес�
 Phase C3 подключает его только в v15: после трёх последовательных temporary
 polling failures workflow ждёт 60 секунд, проверяет internal backlog и вызывает
 protected Worker resume. Максимум 10 recovery attempts; `401`, `403` и `422`
-terminal сразу. Resume не запускает HH search, а `nothing_to_resume` продолжает
+terminal сразу. Worker auth errors получают `worker_recovery_auth_failed`, а
+resume validation error — `worker_resume_contract_failed`, не
+`worker_recovery_timeout`. Resume не запускает HH search, а `nothing_to_resume` продолжает
 обычный terminal lifecycle. Gmail/Telegram остаются на единственном
 post-processing пути после core completion, поэтому recovery не создаёт повторную
 отправку в пределах execution.
