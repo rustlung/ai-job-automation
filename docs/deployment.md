@@ -764,7 +764,6 @@ docker compose exec n8n printenv N8N_EDITOR_BASE_URL
 docker compose exec n8n printenv WEBHOOK_URL
 docker compose exec n8n printenv ORCHESTRATOR_API_URL
 docker compose exec n8n printenv WORKER_API_URL
-docker compose exec n8n sh -c 'test -n "$WORKER_INTERNAL_API_TOKEN"'
 docker compose exec n8n printenv AI_JOB_GATEWAY_BASE_URL
 docker compose exec n8n sh -c 'test -n "$AI_JOB_GATEWAY_KEY"'
 ```
@@ -775,23 +774,19 @@ Telegram API Gateway. Base URL и key задаются только в окру�
 
 ### Telegram-уведомление о завершении поиска
 
-Для rollout `AI Job Automation — Daily Search Digest v15`:
+Для rollout `AI Job Automation — Daily Search Digest v14`:
 
 1. Добавьте `AI_JOB_GATEWAY_BASE_URL` и `AI_JOB_GATEWAY_KEY` в environment file
    n8n на homeserver и пересоздайте n8n container приведенной выше командой.
-2. Добавьте в environment n8n `WORKER_INTERNAL_API_TOKEN`: значение должно
-   совпадать с Worker `WORKER_INTERNAL_API_TOKEN`. Также задайте
-   `WORKER_OLLAMA_MODEL` и при необходимости версии prompt, чтобы v15 сохранял
-   processing-version snapshot исходного run.
-3. Импортируйте
-   `workflows/n8n/AI Job Automation — Daily Search Digest v15.json` в UI n8n.
-4. Убедитесь, что HTTP node `Telegram Send Completion Notification` использует
+2. Импортируйте
+   `workflows/n8n/AI Job Automation — Daily Search Digest v14.json` в UI n8n.
+3. Убедитесь, что HTTP node `Telegram Send Completion Notification` использует
    environment expressions из export; отдельные n8n credentials для gateway не
    требуются.
-5. Активируйте v15 и деактивируйте production schedule/webhook v14, не удаляя
+4. Активируйте v14 и деактивируйте production schedule/webhook v13, не удаляя
    historical workflow, чтобы не запускать два цикла и не получать дубли.
-6. Выполните один короткий run и проверьте Gmail digest, DB persistence и
-   короткое Telegram-сообщение. Google Sheets не должна измениться: в v15 нет
+5. Выполните один короткий run и проверьте Gmail digest, DB persistence и
+   короткое Telegram-сообщение. Google Sheets не должна измениться: в v14 нет
    Sheets nodes или credential references. При ошибке Gateway основной run и
    Gmail завершаются независимо от Telegram node.
 
@@ -829,7 +824,7 @@ resolver, который временно возвращал NXDOMAIN для н�
 ## n8n Workflow Configuration
 
 > Historical reference: the CRM workflow exports below predate Phase 3C. The
-> current production workflow is `AI Job Automation — Daily Search Digest v15`;
+> current production workflow is `AI Job Automation — Daily Search Digest v14`;
 > CRM exports are archival only and must not be activated.
 
 Workflow export `AI Job Automation — Daily Search CRM Digest v4` подготовлен

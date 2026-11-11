@@ -61,14 +61,6 @@ expired-lease work и продлевает собственные leases во в
 chunks. Новый HH search не запускается. n8n automatic recovery, scheduler и
 retry terminal `processing_failed` остаются Phase C3.
 
-## Automatic recovery orchestration — Phase C3
-
-Статус: реализован в versioned Daily Search Digest v15. После трёх временных
-ошибок Worker poll n8n использует durable backlog и protected manual-resume
-endpoint; recovery ограничен 10 попытками с паузой 60 секунд. v15 не запускает
-HH collection повторно. Scheduler, автоматический retry terminal failures и UI
-reprocess остаются отдельными задачами.
-
 ---
 
 # Phase 0. Project foundation

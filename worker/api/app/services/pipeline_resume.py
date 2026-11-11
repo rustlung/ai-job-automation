@@ -48,7 +48,6 @@ class WorkerPipelineResumeService:
         started_at = time.perf_counter()
         run = await self.client.get_pipeline_run(run_id)
         snapshot = dict(run.get("config_snapshot") or {})
-        self._apply_processing_version_snapshot(run_id, snapshot)
         initial = await self.client.get_processing_backlog(run_id)
         counters = {
             "claimed_preliminary": 0,
@@ -195,47 +194,6 @@ class WorkerPipelineResumeService:
     def _chunk_size(snapshot: dict[str, Any], key: str, default: int) -> int:
         configured = snapshot.get(key)
         return min(100, int(configured)) if isinstance(configured, int) and configured > 0 else min(100, default)
-
-    def _apply_processing_version_snapshot(self, run_id: str, snapshot: dict[str, Any]) -> None:
-        """Replay model selection when it was captured by the original n8n run.
-
-        Prompt text is versioned in the Worker code, so an unavailable historical
-        prompt is deliberately not reconstructed from a label alone.
-        """
-        versions = snapshot.get("processing_versions")
-        if not isinstance(versions, dict):
-            logger.info("resume_processing_versions_fallback run_id=%s reason=missing_snapshot", run_id)
-            return
-
-        filter_service = self.pipeline_service.enrichment_service.collect_and_filter_service.filter_service
-        semantic_service = self.pipeline_service.enrichment_service.semantic_service
-        self._apply_model_snapshot(run_id, "preliminary", versions.get("preliminary_model"), filter_service)
-        self._apply_model_snapshot(run_id, "full_analysis", versions.get("full_analysis_model"), semantic_service)
-        self._log_prompt_version(run_id, "preliminary", versions.get("preliminary_prompt_version"), filter_service.prompt_version)
-        self._log_prompt_version(run_id, "full_analysis", versions.get("full_analysis_prompt_version"), semantic_service.prompt_version)
-
-    @staticmethod
-    def _apply_model_snapshot(run_id: str, stage: str, configured: Any, service: Any) -> None:
-        if not isinstance(configured, str) or not configured.strip():
-            logger.info("resume_processing_model_fallback run_id=%s stage=%s reason=missing_snapshot", run_id, stage)
-            return
-        service.ollama_client.model = configured.strip()
-        logger.info("resume_processing_model_replayed run_id=%s stage=%s model=%s", run_id, stage, service.ollama_client.model)
-
-    @staticmethod
-    def _log_prompt_version(run_id: str, stage: str, configured: Any, current: str) -> None:
-        if isinstance(configured, str) and configured.strip() == current:
-            logger.info("resume_processing_prompt_replayed run_id=%s stage=%s prompt_version=%s", run_id, stage, current)
-        elif isinstance(configured, str) and configured.strip():
-            logger.warning(
-                "resume_processing_prompt_fallback run_id=%s stage=%s requested_prompt_version=%s current_prompt_version=%s",
-                run_id,
-                stage,
-                configured.strip(),
-                current,
-            )
-        else:
-            logger.info("resume_processing_prompt_fallback run_id=%s stage=%s reason=missing_snapshot", run_id, stage)
 
     @staticmethod
     def _rebuild_vacancy(snapshot: dict[str, Any]) -> HHSearchCollectedVacancy:

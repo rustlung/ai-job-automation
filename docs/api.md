@@ -442,9 +442,7 @@ X-Worker-Internal-Token: ...
 Manual asynchronous C2 recovery endpoint. It uses the same run status polling
 contract as a normal Worker run, does not create a run or recollect HH pages,
 and returns `resume_status=in_progress` when another Worker still holds an
-active lease. Daily Search Digest v15 can call it automatically after bounded
-recoverable Worker polling failures; it remains available as an operational
-manual fallback.
+active lease. It is intentionally not wired into n8n in C2.
 
 ### Manual Vacancy Create
 
