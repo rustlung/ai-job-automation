@@ -48,14 +48,30 @@ def test_cookie_values_are_never_serialized() -> None:
     assert cookies == [HHSafeCookie(name="session", domain=".hh.ru", path="/", expiry=123)]
 
 
-def test_response_indicators_detect_challenge_markers_without_returning_content() -> None:
-    indicators = detect_response_indicators("captcha /account/login VPN challenge cf-chl")
+def test_response_indicators_detect_structural_challenge_markers_without_returning_content() -> None:
+    indicators = detect_response_indicators(
+        '<form action="/account/login"><input name="login"></form><div data-qa="captcha"></div>'
+        '<div class="vpn-warning"></div><form id="challenge-form"></form>'
+    )
 
     assert indicators == {
         "captcha_detected": True,
         "login_detected": True,
         "vpn_detected": True,
         "challenge_detected": True,
+    }
+
+
+def test_response_indicators_ignore_keywords_in_scripts() -> None:
+    indicators = detect_response_indicators(
+        '<main data-qa="vacancy-serp__results"></main><script>"captcha login vpn challenge"</script>'
+    )
+
+    assert indicators == {
+        "captcha_detected": False,
+        "login_detected": False,
+        "vpn_detected": False,
+        "challenge_detected": False,
     }
 
 

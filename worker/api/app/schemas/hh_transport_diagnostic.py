@@ -4,6 +4,8 @@ from dataclasses import asdict, dataclass
 from typing import Literal
 from urllib.parse import urlsplit, urlunsplit
 
+from bs4 import BeautifulSoup
+
 
 TransportName = Literal["playwright", "httpx"]
 TransportClassification = Literal[
@@ -91,12 +93,12 @@ def safe_cookies(cookies: list[dict[str, object]]) -> list[HHSafeCookie]:
 
 def detect_response_indicators(content: bytes | str) -> dict[str, bool]:
     text = content.decode("utf-8", errors="replace") if isinstance(content, bytes) else content
-    normalized = text.lower()
+    soup = BeautifulSoup(text, "html.parser")
     return {
-        "captcha_detected": any(marker in normalized for marker in ("captcha", "recaptcha", "hcaptcha")),
-        "login_detected": any(marker in normalized for marker in ("/account/login", "account-login", "name=\"login\"")),
-        "vpn_detected": "vpn" in normalized,
-        "challenge_detected": any(marker in normalized for marker in ("challenge", "cf-chl", "just a moment")),
+        "captcha_detected": any(soup.select_one(selector) is not None for selector in ('[data-qa*="captcha"]', '#captcha', '.captcha-container', 'iframe[src*="captcha"]')),
+        "login_detected": any(soup.select_one(selector) is not None for selector in ('form[action*="login"]', 'form[action*="account"]', 'input[name="login"]', 'input[type="tel"]', '[data-qa*="account-login"]')),
+        "vpn_detected": any(soup.select_one(selector) is not None for selector in ('[data-qa*="vpn"]', '.vpn-warning', '#vpn-warning')),
+        "challenge_detected": any(soup.select_one(selector) is not None for selector in ('#challenge-form', '.cf-challenge', '[data-qa*="challenge"]')),
     }
 
 

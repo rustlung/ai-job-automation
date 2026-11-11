@@ -2,6 +2,7 @@ import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
+from urllib.parse import urlsplit
 from dataclasses import dataclass
 
 from app.clients.hh_browser import HHAuthenticatedBrowserClient, HHAuthenticatedBrowserSession, HHBrowserInvalidUrlError, HHBrowserNavigationError, HHBrowserPage, HHBrowserTimeoutError
@@ -196,6 +197,10 @@ class HHAuthenticatedSearchPreviewService:
             vacancy_count=len(vacancies),
             storage_state_loaded=True,
         )
+        if profile.source_type == SearchProfileSourceType.EXPANDED_SEARCH and (
+            urlsplit(browser_page.final_url).path.rstrip("/") != "/search/vacancy" or not verification.authenticated
+        ):
+            self._raise_auth_failure(profile.source_type, "HH authenticated search page was not confirmed")
         verification_schema = HHAuthenticatedSearchVerification(
             storage_state_loaded=verification.storage_state_loaded,
             login_form_detected=verification.login_form_detected,

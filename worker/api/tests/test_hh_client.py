@@ -41,7 +41,7 @@ async def test_diagnostic_uses_httpx_transport_without_cookies_and_redacts_query
         return httpx.Response(
             403,
             headers={"content-type": "text/html"},
-            text="<html>captcha</html>",
+            text='<html><div data-qa="captcha"></div></html>',
         )
 
     result = await make_client(httpx.MockTransport(handler)).diagnose_search_page(
