@@ -11,6 +11,7 @@ from app.api.routes.vacancies import router as vacancies_router
 from app.api.routes.vacancy_processing_events import router as vacancy_processing_events_router
 from app.api.routes.preliminary_outcomes import router as preliminary_outcomes_router
 from app.api.routes.processing_backlog import router as processing_backlog_router
+from app.api.routes.diagnostics import router as diagnostics_router
 from app.api.routes.vacancy_user_states import router as vacancy_user_states_router
 from app.api.routes.web import router as web_router
 from app.core.config import Settings, get_settings
@@ -35,6 +36,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(vacancy_processing_events_router)
     app.include_router(preliminary_outcomes_router)
     app.include_router(processing_backlog_router)
+    app.include_router(diagnostics_router)
     app.include_router(pipeline_results_router)
     app.include_router(discovered_vacancies_router)
     app.include_router(internal_pipeline_runs_router)

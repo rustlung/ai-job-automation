@@ -270,6 +270,7 @@ README даёт обзор, а не заменяет operational runbook. Orches
 - [API](docs/api.md)
 - [Workflows](docs/workflows.md)
 - [Deployment](docs/deployment.md)
+- [Diagnostics / Troubleshooting](docs/diagnostics.md)
 - [Changelog](docs/changelog.md)
 - [Roadmap](docs/project-roadmap-v1.1.md)
 
