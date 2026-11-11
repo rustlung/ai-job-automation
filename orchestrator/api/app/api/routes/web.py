@@ -31,7 +31,13 @@ from app.schemas.web import (
 )
 from app.services.operational_settings import OperationalSettingsDatabaseError, OperationalSettingsService
 from app.services.pipeline_run import PipelineRunDatabaseError, PipelineRunNotFoundError, PipelineRunService
-from app.services.web_gateway import N8nWebhookClient, N8nWebhookError, WorkerGateway, WorkerGatewayError
+from app.services.web_gateway import (
+    N8nWebhookClient,
+    N8nWebhookError,
+    WorkerGateway,
+    WorkerGatewayError,
+    WorkerProfileContractError,
+)
 from app.services.web_runs import WebRunService, WebRunValidationError
 from app.services.web_vacancies import WebVacancyListService, WebVacancyNotFoundError
 from app.services.statistics import StatisticsValidationError, VacancyStatisticsService
@@ -98,6 +104,8 @@ def patch_operational_settings(
 async def get_search_profiles(gateway: WorkerGateway = Depends(get_worker_gateway)) -> SearchProfilesResponse:
     try:
         return await gateway.list_search_profiles()
+    except WorkerProfileContractError as exc:
+        raise HTTPException(status_code=502, detail={"error_code": "worker_profile_contract_error"}) from exc
     except WorkerGatewayError as exc:
         raise HTTPException(status_code=503, detail={"error_code": "worker_unavailable"}) from exc
 
@@ -158,6 +166,8 @@ async def start_web_pipeline_run(
         return WebPipelineRunCreateResponse(run=run)
     except WebRunValidationError as exc:
         raise HTTPException(status_code=422, detail={"error_code": "invalid_search_profiles"}) from exc
+    except WorkerProfileContractError as exc:
+        raise HTTPException(status_code=502, detail={"error_code": "worker_profile_contract_error"}) from exc
     except WorkerGatewayError as exc:
         raise HTTPException(status_code=503, detail={"error_code": "worker_unavailable"}) from exc
     except N8nWebhookError as exc:

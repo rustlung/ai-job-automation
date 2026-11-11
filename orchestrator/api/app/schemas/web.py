@@ -29,6 +29,7 @@ class SearchProfileRead(BaseModel):
     source_type: SearchProfileSourceType
     enabled: bool
     user_selectable: bool
+    is_test: bool = False
 
 
 class SearchProfilesResponse(BaseModel):

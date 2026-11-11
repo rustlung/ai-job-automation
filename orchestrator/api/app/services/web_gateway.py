@@ -13,6 +13,14 @@ class WorkerGatewayError(Exception):
     pass
 
 
+class WorkerGatewayUnavailableError(WorkerGatewayError):
+    pass
+
+
+class WorkerProfileContractError(WorkerGatewayError):
+    pass
+
+
 class N8nWebhookError(Exception):
     pass
 
@@ -27,7 +35,7 @@ class WorkerGateway:
         try:
             return SearchProfilesResponse.model_validate(payload)
         except Exception as exc:
-            raise WorkerGatewayError("Worker search profiles response is incompatible") from exc
+            raise WorkerProfileContractError("Worker search profiles response is incompatible") from exc
 
     async def system_health(self) -> SystemHealthResponse:
         worker = await self._component_health("/health", expected_component="worker")
@@ -60,13 +68,18 @@ class WorkerGateway:
             ) as client:
                 response = await client.get(path)
             if response.status_code >= 400:
-                raise WorkerGatewayError("Worker request failed")
-            payload = response.json()
+                if response.status_code in {502, 503, 504}:
+                    raise WorkerGatewayUnavailableError("Worker request failed")
+                raise WorkerProfileContractError("Worker request returned an incompatible response")
+            try:
+                payload = response.json()
+            except ValueError as exc:
+                raise WorkerProfileContractError("Worker response is incompatible") from exc
             if not isinstance(payload, dict):
-                raise WorkerGatewayError("Worker response is incompatible")
+                raise WorkerProfileContractError("Worker response is incompatible")
             return payload
-        except (httpx.RequestError, ValueError) as exc:
-            raise WorkerGatewayError("Worker is unavailable") from exc
+        except httpx.RequestError as exc:
+            raise WorkerGatewayUnavailableError("Worker is unavailable") from exc
 
 
 class N8nWebhookClient:

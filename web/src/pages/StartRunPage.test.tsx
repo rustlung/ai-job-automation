@@ -9,6 +9,7 @@ vi.mock("../hooks/useOrchestrator", () => ({
     data: {
       profiles: [
         { id: "vibecoding_keywords", name: "Vibecoding", track: "main", source_type: "expanded_search", enabled: true, user_selectable: true },
+        { id: "test_resume_recommendations", name: "[TEST] Resume recommendations", track: "main", source_type: "resume_recommendations", enabled: true, user_selectable: true, is_test: true },
         { id: "test_expanded_search", name: "[TEST] Expanded search", track: "main", source_type: "expanded_search", enabled: true, user_selectable: true, is_test: true },
         { id: "ai_expanded_search", name: "Legacy", track: "main", source_type: "expanded_search", enabled: true, user_selectable: false }
       ]
@@ -32,7 +33,8 @@ describe("StartRunPage", () => {
 
   it("visually marks selectable smoke profiles", () => {
     render(<MemoryRouter><StartRunPage /></MemoryRouter>);
-    expect(screen.getByText("TEST")).toBeInTheDocument();
+    expect(screen.getAllByText("TEST")).toHaveLength(2);
+    expect(screen.getByText("[TEST] Resume recommendations")).toBeInTheDocument();
     expect(screen.getByText("[TEST] Expanded search")).toBeInTheDocument();
   });
 });

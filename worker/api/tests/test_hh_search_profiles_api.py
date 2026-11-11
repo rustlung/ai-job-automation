@@ -17,6 +17,7 @@ def test_search_profiles_endpoint_returns_registry_derived_safe_metadata(monkeyp
     assert set(profiles[0]) == {"id", "name", "track", "source_type", "enabled", "user_selectable", "is_test"}
     by_id = {profile["id"]: profile for profile in profiles}
     assert by_id["ai_resume_recommendations"]["user_selectable"] is True
+    assert by_id["ai_resume_recommendations"]["is_test"] is False
     assert by_id["ai_expanded_search"]["enabled"] is True
     assert by_id["ai_expanded_search"]["user_selectable"] is False
     assert by_id["test_resume_recommendations"]["is_test"] is True

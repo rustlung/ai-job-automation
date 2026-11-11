@@ -13,6 +13,7 @@ from app.main import app
 from app.schemas.web import ComponentHealth, SearchProfileRead, SearchProfilesResponse, SystemHealthResponse
 from app.services.operational_settings import OperationalSettingsService
 from app.services.pipeline_run import PipelineRunService
+from app.services.web_gateway import WorkerGatewayUnavailableError, WorkerProfileContractError
 
 
 class FakeWorkerGateway:
@@ -43,10 +44,31 @@ class FakeWorkerGateway:
                     enabled=True,
                     user_selectable=False,
                 ),
+                SearchProfileRead(
+                    id="test_resume_recommendations",
+                    name="[TEST] Resume recommendations",
+                    track="main",
+                    source_type="resume_recommendations",
+                    enabled=True,
+                    user_selectable=True,
+                    is_test=True,
+                ),
+                SearchProfileRead(
+                    id="test_expanded_search",
+                    name="[TEST] Expanded search",
+                    track="main",
+                    source_type="expanded_search",
+                    enabled=True,
+                    user_selectable=True,
+                    is_test=True,
+                ),
             ]
         )
+        self.profile_error: Exception | None = None
 
     async def list_search_profiles(self) -> SearchProfilesResponse:
+        if self.profile_error is not None:
+            raise self.profile_error
         return self.profiles
 
     async def system_health(self) -> SystemHealthResponse:
@@ -117,9 +139,26 @@ def test_search_profiles_proxy_and_lightweight_system_health(db_session) -> None
         "source_type": "expanded_search",
         "enabled": True,
         "user_selectable": True,
+        "is_test": False,
     }
+    by_id = {item["id"]: item for item in profiles.json()["profiles"]}
+    assert by_id["test_resume_recommendations"]["is_test"] is True
+    assert by_id["test_expanded_search"]["is_test"] is True
     assert health.status_code == 200
     assert health.json()["compute_status"] == "unknown"
+
+
+def test_search_profiles_reports_contract_and_availability_failures_separately(db_session) -> None:
+    with make_client(db_session) as (client, worker, _):
+        worker.profile_error = WorkerProfileContractError("invalid profile payload")
+        contract_error = client.get("/api/search-profiles")
+        worker.profile_error = WorkerGatewayUnavailableError("offline")
+        unavailable = client.get("/api/search-profiles")
+
+    assert contract_error.status_code == 502
+    assert contract_error.json() == {"detail": {"error_code": "worker_profile_contract_error"}}
+    assert unavailable.status_code == 503
+    assert unavailable.json() == {"detail": {"error_code": "worker_unavailable"}}
 
 
 def test_web_run_generates_id_before_webhook_and_snapshots_overrides(db_session) -> None:
