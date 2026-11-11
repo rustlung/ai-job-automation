@@ -5,6 +5,13 @@ from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
+from app.schemas.hh_transport_diagnostic import (
+    HHTransportDiagnosticResult,
+    HHSafeRedirect,
+    detect_response_indicators,
+    safe_url,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -67,13 +74,7 @@ class HHSearchClient:
         logger.info("hh_search_fetch_started url=%s", safe_url)
 
         try:
-            async with httpx.AsyncClient(
-                timeout=self.timeout_seconds,
-                follow_redirects=True,
-                max_redirects=self.max_redirects,
-                transport=self.transport,
-                headers={"User-Agent": self.user_agent},
-            ) as client:
+            async with self._new_client() as client:
                 async with client.stream("GET", search_url) as response:
                     response.raise_for_status()
                     self._validate_content_type(response)
@@ -110,6 +111,38 @@ class HHSearchClient:
         )
         return html
 
+    async def diagnose_search_page(self, search_url: str) -> HHTransportDiagnosticResult:
+        """Run one read-only request using the same HTTPX transport as collection."""
+        try:
+            async with self._new_client() as client:
+                async with client.stream("GET", search_url) as response:
+                    content = await self._read_limited_content(response)
+                    indicators = detect_response_indicators(content)
+                    return HHTransportDiagnosticResult(
+                        transport="httpx",
+                        status=response.status_code,
+                        final_url=safe_url(str(response.url)),
+                        redirect_history=self._redirect_history(response.history),
+                        content_type=response.headers.get("content-type"),
+                        response_byte_length=len(content),
+                        cookies=[],
+                        **indicators,
+                    )
+        except (httpx.RequestError, HHResponseTooLargeError):
+            return HHTransportDiagnosticResult(
+                transport="httpx",
+                status=None,
+                final_url=None,
+                redirect_history=[],
+                content_type=None,
+                response_byte_length=None,
+                captcha_detected=False,
+                login_detected=False,
+                vpn_detected=False,
+                challenge_detected=False,
+                cookies=[],
+            )
+
     async def fetch_vacancy_page(self, url: str) -> HHPageResponse:
         started_at = time.perf_counter()
         safe_url = self._safe_url_for_log(url)
@@ -117,13 +150,7 @@ class HHSearchClient:
         logger.info("hh_vacancy_fetch_started url=%s external_id=%s", safe_url, requested_external_id)
 
         try:
-            async with httpx.AsyncClient(
-                timeout=self.timeout_seconds,
-                follow_redirects=True,
-                max_redirects=self.max_redirects,
-                transport=self.transport,
-                headers={"User-Agent": self.user_agent},
-            ) as client:
+            async with self._new_client() as client:
                 async with client.stream("GET", url) as response:
                     response.raise_for_status()
                     self._validate_final_vacancy_url(str(response.url), requested_external_id)
@@ -174,6 +201,11 @@ class HHSearchClient:
             raise HHUnexpectedContentError("HH returned unexpected content type")
 
     async def _read_limited_html(self, response: httpx.Response) -> str:
+        content = await self._read_limited_content(response)
+        encoding = response.encoding or "utf-8"
+        return content.decode(encoding, errors="replace")
+
+    async def _read_limited_content(self, response: httpx.Response) -> bytes:
         chunks: list[bytes] = []
         total_bytes = 0
         async for chunk in response.aiter_bytes():
@@ -182,9 +214,20 @@ class HHSearchClient:
                 raise HHResponseTooLargeError("HH response is too large")
             chunks.append(chunk)
 
-        content = b"".join(chunks)
-        encoding = response.encoding or "utf-8"
-        return content.decode(encoding, errors="replace")
+        return b"".join(chunks)
+
+    def _new_client(self) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            timeout=self.timeout_seconds,
+            follow_redirects=True,
+            max_redirects=self.max_redirects,
+            transport=self.transport,
+            headers={"User-Agent": self.user_agent},
+        )
+
+    @staticmethod
+    def _redirect_history(history: list[httpx.Response]) -> list[HHSafeRedirect]:
+        return [HHSafeRedirect(status=response.status_code, url=safe_url(str(response.url))) for response in history]
 
     @staticmethod
     def _safe_url_for_log(url: str) -> str:

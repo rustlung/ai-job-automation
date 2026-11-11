@@ -9,6 +9,13 @@ from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright.async_api import async_playwright
 
+from app.schemas.hh_transport_diagnostic import (
+    HHTransportDiagnosticResult,
+    HHSafeRedirect,
+    detect_response_indicators,
+    safe_cookies,
+    safe_url,
+)
 from app.services.hh_auth_state import HHAuthStateStore
 
 logger = logging.getLogger(__name__)
@@ -207,6 +214,67 @@ class HHAuthenticatedBrowserClient:
             stabilization_status=stabilization.stabilization_status,
         )
 
+    async def diagnose_search_page(self, url: str) -> HHTransportDiagnosticResult:
+        """Run one read-only navigation using the configured Playwright storage state."""
+        self.auth_state_store.validate_available()
+        self._validate_hh_url(url)
+        playwright_runtime = None
+        browser = None
+        context = None
+        page = None
+        try:
+            playwright_runtime = await async_playwright().start()
+            browser = await playwright_runtime.chromium.launch(
+                headless=True,
+                timeout=self._milliseconds(self.browser_timeout_seconds),
+            )
+            context = await browser.new_context(storage_state=str(self.auth_state_store.storage_state_path))
+            page = await context.new_page()
+            page.set_default_timeout(self._milliseconds(self.page_load_timeout_seconds))
+            response = await page.goto(
+                url,
+                wait_until="domcontentloaded",
+                timeout=self._milliseconds(self.page_load_timeout_seconds),
+            )
+            html = await page.content()
+            cookies = await context.cookies()
+            status = response.status if response is not None else None
+            headers = response.headers if response is not None else {}
+            indicators = detect_response_indicators(html)
+            return HHTransportDiagnosticResult(
+                transport="playwright",
+                status=status,
+                final_url=safe_url(page.url),
+                redirect_history=await self._redirect_history(response),
+                content_type=headers.get("content-type"),
+                response_byte_length=len(html.encode("utf-8")),
+                cookies=safe_cookies(cookies),
+                **indicators,
+            )
+        except (PlaywrightTimeoutError, PlaywrightError):
+            return HHTransportDiagnosticResult(
+                transport="playwright",
+                status=None,
+                final_url=None,
+                redirect_history=[],
+                content_type=None,
+                response_byte_length=None,
+                captcha_detected=False,
+                login_detected=False,
+                vpn_detected=False,
+                challenge_detected=False,
+                cookies=[],
+            )
+        finally:
+            if page is not None:
+                await self._close_resource(page.close, "page")
+            if context is not None:
+                await self._close_resource(context.close, "context")
+            if browser is not None:
+                await self._close_resource(browser.close, "browser")
+            if playwright_runtime is not None:
+                await self._close_resource(playwright_runtime.stop, "playwright")
+
     async def _wait_for_vacancy_dom_stabilization(self, page: object) -> HHDomStabilizationResult:
         started_at = time.perf_counter()
         try:
@@ -289,3 +357,23 @@ class HHAuthenticatedBrowserClient:
             await close()
         except Exception:
             logger.warning("hh_browser_resource_close_failed resource=%s", resource_name, exc_info=True)
+
+    @staticmethod
+    async def _redirect_history(response: object | None) -> list[HHSafeRedirect]:
+        if response is None:
+            return []
+        request = response.request
+        requests = [request]
+        while request.redirected_from is not None:
+            request = request.redirected_from
+            requests.append(request)
+        redirects: list[HHSafeRedirect] = []
+        for redirect_request in reversed(requests[1:]):
+            redirect_response = await redirect_request.response()
+            redirects.append(
+                HHSafeRedirect(
+                    status=redirect_response.status if redirect_response is not None else None,
+                    url=safe_url(redirect_request.url),
+                )
+            )
+        return redirects

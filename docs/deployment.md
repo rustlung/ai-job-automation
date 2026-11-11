@@ -513,6 +513,15 @@ docker compose restart api
 Invoke-RestMethod http://localhost:8001/health/hh-auth
 ```
 
+Сразу после штатного HH login можно сравнить один configured search variant через Playwright storage state и текущий HTTPX transport. Скрипт делает ровно один запрос каждым transport, не выводит query string, HTML или значения cookies:
+
+``` powershell
+cd ~/services/ai-job-automation/worker
+.\api\.venv\Scripts\python.exe .\tools\hh_transport_diagnostic.py
+```
+
+Для конкретного registered variant: `--profile-id ai_expanded_search --query-variant-id ai_automation`.
+
 ### HH Verification
 
 Проверить Worker API:

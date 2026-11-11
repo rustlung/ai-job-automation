@@ -17,14 +17,16 @@ class FakePage:
         self.wait_for_selector_calls = 0
         self.evaluate_calls = 0
         self.content_called_after_wait = False
+        self.navigation_response = FakeNavigationResponse(final_url)
 
     def set_default_timeout(self, timeout: float) -> None:
         self.default_timeout = timeout
 
-    async def goto(self, url: str, wait_until: str, timeout: float) -> None:
+    async def goto(self, url: str, wait_until: str, timeout: float) -> "FakeNavigationResponse":
         self.goto_url = url
         self.wait_until = wait_until
         self.goto_timeout = timeout
+        return self.navigation_response
 
     async def wait_for_selector(self, selector: str, timeout: float) -> None:
         self.wait_for_selector_calls += 1
@@ -55,6 +57,17 @@ class FakeContext:
     async def new_page(self) -> FakePage:
         return self.page
 
+    async def cookies(self) -> list[dict[str, object]]:
+        return [
+            {
+                "name": "session",
+                "value": "super-secret-cookie",
+                "domain": ".hh.ru",
+                "path": "/",
+                "expires": 123.0,
+            }
+        ]
+
     async def close(self) -> None:
         self.closed = True
 
@@ -71,6 +84,22 @@ class FakeBrowser:
 
     async def close(self) -> None:
         self.closed = True
+
+
+class FakeNavigationRequest:
+    def __init__(self, url: str) -> None:
+        self.url = url
+        self.redirected_from = None
+
+    async def response(self):
+        return None
+
+
+class FakeNavigationResponse:
+    def __init__(self, url: str) -> None:
+        self.status = 200
+        self.headers = {"content-type": "text/html"}
+        self.request = FakeNavigationRequest(url)
 
 
 class FakeChromium:
@@ -153,6 +182,23 @@ async def test_browser_client_fetches_page_with_storage_state_and_closes_resourc
     assert context.closed is True
     assert browser.closed is True
     assert runtime.stopped is True
+
+
+@pytest.mark.anyio
+async def test_browser_transport_diagnostic_redacts_cookies_and_does_not_modify_storage_state(tmp_path, monkeypatch) -> None:
+    client, _, context, _, _ = make_client(tmp_path, monkeypatch)
+    storage_path = client.auth_state_store.storage_state_path
+    before = storage_path.read_bytes()
+
+    result = await client.diagnose_search_page("https://hh.ru/search/vacancy?resume=secret")
+
+    assert result.status == 200
+    assert result.final_url == "https://hh.ru/search/vacancy"
+    assert result.content_type == "text/html"
+    assert result.cookies[0].name == "session"
+    assert "super-secret-cookie" not in str(result.to_dict())
+    assert storage_path.read_bytes() == before
+    assert context.closed is True
 
 
 @pytest.mark.anyio

@@ -34,6 +34,27 @@ async def test_fetch_search_page_successful_html() -> None:
 
 
 @pytest.mark.anyio
+async def test_diagnostic_uses_httpx_transport_without_cookies_and_redacts_query() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["user-agent"] == "AIJobAutomation/0.1 (contact: tests)"
+        assert "cookie" not in request.headers
+        return httpx.Response(
+            403,
+            headers={"content-type": "text/html"},
+            text="<html>captcha</html>",
+        )
+
+    result = await make_client(httpx.MockTransport(handler)).diagnose_search_page(
+        "https://hh.ru/search/vacancy?resume=secret"
+    )
+
+    assert result.status == 403
+    assert result.final_url == "https://hh.ru/search/vacancy"
+    assert result.captcha_detected is True
+    assert result.cookies == []
+
+
+@pytest.mark.anyio
 async def test_fetch_search_page_timeout() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ReadTimeout("timeout", request=request)
