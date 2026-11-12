@@ -61,6 +61,7 @@ def test_run_diagnostics_aggregates_safe_failure_samples_and_caps_at_three(db_se
     payload = response.json()
     assert payload["preliminary"]["processed_count"] == 4
     assert payload["preliminary"]["enrichment_selected_count"] == 4
+    assert payload["run"]["stats_snapshot"]["collection_stats"]["unique_vacancy_count"] == 300
     group = payload["failures"]["full_fetch_failed"]
     assert group["count"] == 4
     assert len(group["samples"]) == 3
@@ -68,6 +69,49 @@ def test_run_diagnostics_aggregates_safe_failure_samples_and_caps_at_three(db_se
     assert "must-not-leak" not in str(payload)
     assert payload["full_fetch_transport"] == {"value": "authenticated_browser", "source": "runtime_code/config"}
     assert payload["pagination"] == {"availability": "unavailable"}
+
+
+def test_run_diagnostics_uses_durable_state_total_when_resume_lost_collection_count(db_session) -> None:
+    run = _run("n8n-resumed", started_at=datetime.now(timezone.utc))
+    run.stats_snapshot = {"collection_stats": {"unique_vacancy_count": None}}
+    db_session.add(run)
+    for index in range(18):
+        vacancy = _vacancy(index + 100)
+        db_session.add(vacancy)
+        db_session.flush()
+        db_session.add(VacancyPreliminaryOutcome(
+            vacancy_id=vacancy.id, run_id=run.run_id, outcome="keep_main", outcome_source="ai",
+            processing_state="enriched", summary="safe summary",
+        ))
+        db_session.add(VacancyProcessingState(
+            vacancy_id=vacancy.id, run_id=run.run_id, state="enriched", preview_snapshot={},
+        ))
+    db_session.commit()
+
+    with _client(db_session) as client:
+        response = client.get(f"/internal/diagnostics/runs/{run.run_id}")
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["run"]["stats_snapshot"]["collection_stats"]["unique_vacancy_count"] == 18
+    assert payload["preliminary"]["processed_count"] == 18
+    assert payload["backlog"]["total"] == 18
+
+
+def test_run_diagnostics_leaves_discovered_count_unavailable_without_explicit_or_durable_source(db_session) -> None:
+    run = _run("n8n-legacy", started_at=datetime.now(timezone.utc))
+    run.stats_snapshot = {"collection_stats": {"unique_vacancy_count": None}}
+    db_session.add(run)
+    db_session.commit()
+
+    with _client(db_session) as client:
+        response = client.get(f"/internal/diagnostics/runs/{run.run_id}")
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    collection = response.json()["run"]["stats_snapshot"]["collection_stats"]
+    assert collection.get("unique_vacancy_count") is None
 
 
 def test_run_diagnostics_unknown_and_recent_newest_first(db_session) -> None:

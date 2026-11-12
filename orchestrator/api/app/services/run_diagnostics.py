@@ -46,6 +46,21 @@ def _safe_mapping(value: Any) -> Any:
     return value
 
 
+def _explicit_discovered_count(stats_snapshot: dict[str, Any]) -> int | None:
+    """Return only an explicitly persisted cohort count, never a downstream subset."""
+    candidates = (
+        stats_snapshot.get("discovered_count"),
+        (stats_snapshot.get("collection_stats") or {}).get("unique_vacancy_count"),
+        (stats_snapshot.get("preliminary_stats") or {}).get("discovered_count"),
+        (stats_snapshot.get("filter_stats") or {}).get("discovered_count"),
+        stats_snapshot.get("discovery_input_count"),
+    )
+    for value in candidates:
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            return value
+    return None
+
+
 class RunDiagnosticsNotFoundError(Exception):
     pass
 
@@ -84,8 +99,22 @@ class RunDiagnosticsService:
         selected_for_enrichment = sum(
             count for state, count in processing_outcome_counts.items() if state in ENRICHMENT_CANDIDATE_STATES
         )
+        stats_snapshot = _safe_mapping(run.stats_snapshot)
+        if not isinstance(stats_snapshot, dict):
+            stats_snapshot = {}
+        discovered_count = _explicit_discovered_count(stats_snapshot)
+        if discovered_count is None and states:
+            # C1 creates exactly one durable work item for every discovered vacancy/run.
+            discovered_count = len(states)
+        collection_stats = stats_snapshot.get("collection_stats")
+        if not isinstance(collection_stats, dict):
+            collection_stats = {}
+        collection_stats = dict(collection_stats)
+        if discovered_count is not None:
+            collection_stats["unique_vacancy_count"] = discovered_count
+        stats_snapshot = {**stats_snapshot, "collection_stats": collection_stats}
         return {
-            "run": {"run_id": run.run_id, "trigger_source": run.trigger_source, "status": run.status, "profile_ids": run.profile_ids, "config_snapshot": _safe_mapping(run.config_snapshot), "stats_snapshot": _safe_mapping(run.stats_snapshot), "error_code": run.error_code, "error_summary": run.error_summary, "started_at": run.started_at, "completed_at": run.completed_at},
+            "run": {"run_id": run.run_id, "trigger_source": run.trigger_source, "status": run.status, "profile_ids": run.profile_ids, "config_snapshot": _safe_mapping(run.config_snapshot), "stats_snapshot": stats_snapshot, "error_code": run.error_code, "error_summary": run.error_summary, "started_at": run.started_at, "completed_at": run.completed_at},
             "preliminary": {
                 "availability": "available",
                 "processed_count": len(outcomes),

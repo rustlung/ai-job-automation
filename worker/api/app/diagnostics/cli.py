@@ -61,6 +61,9 @@ def _report(run: dict[str, Any] | None, backlog: dict[str, Any] | None, worker_e
     preliminary = stats.get("preliminary_stats") or {}
     enrichment = stats.get("enrichment_stats") or {}
     discovered = _value(stats, "discovered_count", _value(collection, "unique_vacancy_count"))
+    backlog_total = (backlog or {}).get("total")
+    if discovered is None and isinstance(backlog_total, int) and not isinstance(backlog_total, bool) and backlog_total > 0:
+        discovered = backlog_total
     processed = _value(preliminary, "processed_count", _value(stats, "preliminary_processed_count"))
     selected = _value(enrichment, "selected_count", _value(stats, "enrichment_selected_count"))
     enriched = _value(enrichment, "enriched_count", _value(stats, "enriched_count"))
