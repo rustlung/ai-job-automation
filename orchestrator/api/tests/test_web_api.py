@@ -203,6 +203,39 @@ def test_web_run_cancel_is_idempotent_and_terminal(db_session) -> None:
     assert second.json()["status"] == "cancelled"
 
 
+def test_cancel_preserves_last_durable_progress_counts(db_session) -> None:
+    with make_client(db_session) as (client, _, _):
+        started = client.post(
+            "/api/runs",
+            json={"profile_ids": ["ai_automation_keywords"], "overrides": {}},
+        )
+        run_id = started.json()["run"]["run_id"]
+        client.patch(
+            f"/internal/pipeline-runs/{run_id}",
+            json={
+                "stats_snapshot": {
+                    "progress": {
+                        "stage": "enrichment",
+                        "current": 8,
+                        "total": 18,
+                        "percent": 44,
+                        "message": "Обогащение вакансий",
+                    }
+                }
+            },
+        )
+        cancelled = client.post(f"/api/runs/{run_id}/cancel")
+
+    assert cancelled.status_code == 200
+    assert cancelled.json()["stats_snapshot"]["progress"] == {
+        "stage": "cancelled",
+        "current": 8,
+        "total": 18,
+        "percent": 44,
+        "message": "Запуск отменён пользователем",
+    }
+
+
 def test_public_run_detail_exposes_persisted_progress_and_completed_run_cannot_be_cancelled(db_session) -> None:
     with make_client(db_session) as (client, _, _):
         client.post(
@@ -240,6 +273,44 @@ def test_public_run_detail_exposes_persisted_progress_and_completed_run_cannot_b
     assert detail.json()["stats_snapshot"]["progress"]["current"] == 12
     assert detail.json()["stats_snapshot"]["progress"]["percent"] == 60
     assert conflict.status_code == 409
+
+
+def test_internal_lifecycle_replaces_progress_snapshot_on_each_incremental_checkpoint(db_session) -> None:
+    with make_client(db_session) as (client, _, _):
+        client.post(
+            "/internal/pipeline-runs",
+            json={
+                "run_id": "incremental-progress-run",
+                "trigger_source": "manual_n8n",
+                "profile_ids": ["ai_automation_keywords"],
+                "config_snapshot": {},
+            },
+        )
+        for current in (0, 5, 10, 15):
+            response = client.patch(
+                "/internal/pipeline-runs/incremental-progress-run",
+                json={
+                    "stats_snapshot": {
+                        "progress": {
+                            "stage": "preliminary",
+                            "current": current,
+                            "total": 18,
+                            "percent": round(current / 18 * 100),
+                            "message": "Предварительная фильтрация",
+                        }
+                    },
+                },
+            )
+            assert response.status_code == 200
+        detail = client.get("/api/runs/incremental-progress-run")
+
+    assert detail.json()["stats_snapshot"]["progress"] == {
+        "stage": "preliminary",
+        "current": 15,
+        "total": 18,
+        "percent": 83,
+        "message": "Предварительная фильтрация",
+    }
 
 
 def test_invalid_disabled_or_non_selectable_profile_creates_no_web_run(db_session) -> None:

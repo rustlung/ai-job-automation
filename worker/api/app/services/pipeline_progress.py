@@ -31,6 +31,16 @@ class PipelineProgressReporter:
             run = await self.client.get_pipeline_run(self.run_id)
             if run.get("status") == "cancelled":
                 raise WorkerPipelineCancelledError
+            previous = (run.get("stats_snapshot") or {}).get("progress") or {}
+            if previous.get("stage") == stage:
+                previous_current = previous.get("current")
+                previous_total = previous.get("total")
+                if isinstance(previous_current, int) and (current is None or previous_current > current):
+                    current = previous_current
+                if total is None and isinstance(previous_total, int):
+                    total = previous_total
+            if current is not None and total is not None:
+                current = max(0, min(current, total))
             percent = round((current / total) * 100) if current is not None and total and total > 0 else None
             progress: dict[str, Any] = {
                 "stage": stage,

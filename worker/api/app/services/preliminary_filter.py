@@ -596,10 +596,17 @@ class HHCollectAndPreliminaryFilterService:
         request: HHCollectAndPreliminaryFilterRequest,
         *,
         started_at: float | None = None,
+        on_chunk_complete: Callable[[int, int], Awaitable[None]] | None = None,
     ) -> HHCollectAndPreliminaryFilterResult:
         started_at = started_at if started_at is not None else time.perf_counter()
         collection_stats = self.collection_stats(collection)
-        return await self._filter_collection(collection, collection_stats, request, started_at)
+        return await self._filter_collection(
+            collection,
+            collection_stats,
+            request,
+            started_at,
+            on_chunk_complete=on_chunk_complete,
+        )
 
     @staticmethod
     def collection_stats(collection: HHSearchCollectionResult) -> HHCollectionStats:
@@ -620,6 +627,8 @@ class HHCollectAndPreliminaryFilterService:
         collection_stats: HHCollectionStats,
         request: HHCollectAndPreliminaryFilterRequest,
         started_at: float,
+        *,
+        on_chunk_complete: Callable[[int, int], Awaitable[None]] | None = None,
     ) -> HHCollectAndPreliminaryFilterResult:
         if collection.status == HHSearchCollectionStatus.FAILED and not collection.vacancies:
             result = HHCollectAndPreliminaryFilterResult(
@@ -657,6 +666,11 @@ class HHCollectAndPreliminaryFilterService:
                 max_items_override=request.max_filter_items_override,
             )
             chunk_results.append(chunk_result)
+            if on_chunk_complete is not None:
+                await on_chunk_complete(
+                    sum(result.processed_count for result in chunk_results),
+                    len(collection.vacancies),
+                )
             logger.info(
                 "preliminary_coverage_chunk_completed chunk_index=%s chunk_count=%s chunk_size=%s duration_ms=%s",
                 chunk_index,

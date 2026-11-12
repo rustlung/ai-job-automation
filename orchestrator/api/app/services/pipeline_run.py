@@ -116,14 +116,15 @@ class PipelineRunService:
             run.completed_at = datetime.now(timezone.utc)
             run.error_code = None
             run.error_summary = None
+            prior_progress = (run.stats_snapshot or {}).get("progress") or {}
             run.stats_snapshot = self._merge_stats_snapshot(
                 run.stats_snapshot,
                 {
                     "progress": {
                         "stage": "cancelled",
-                        "current": None,
-                        "total": None,
-                        "percent": None,
+                        "current": prior_progress.get("current"),
+                        "total": prior_progress.get("total"),
+                        "percent": prior_progress.get("percent"),
                         "message": "Запуск отменён пользователем",
                     },
                     "cancelled_work_count": cancelled_count,

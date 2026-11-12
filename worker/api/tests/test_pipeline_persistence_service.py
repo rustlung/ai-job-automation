@@ -51,8 +51,10 @@ class FakeEnrichmentService:
             max(result.collection_stats.unique_vacancy_count, len(result.items)),
         )
 
-    async def collect_collection(self, request):
+    async def collect_collection(self, request, on_profile_complete=None):
         self.collection_requests.append(request)
+        if on_profile_complete is not None:
+            await on_profile_complete(1, 1, self.collection.raw_vacancy_count)
         return self.collection
 
     def collection_stats(self, collection):
@@ -73,12 +75,23 @@ class FakeEnrichmentService:
         request,
         on_enriched_chunk=None,
         on_preliminary_complete=None,
+        on_preliminary_progress=None,
         on_enrichment_failures=None,
+        on_enrichment_progress=None,
         pipeline_run_id=None,
     ):
         self.filter_requests.append((collection, request))
+        if on_preliminary_progress is not None:
+            await on_preliminary_progress(self.result.filter_stats.processed_count if self.result.filter_stats else 0, len(collection.vacancies))
+        if on_enrichment_progress is not None:
+            await on_enrichment_progress(0, self.result.enrichment_stats.enrich_candidate_count)
         if on_enriched_chunk is not None and self.result.items:
             await on_enriched_chunk(self.result.items, 1, 1)
+        if on_enrichment_progress is not None:
+            await on_enrichment_progress(
+                self.result.enrichment_stats.enriched_count + self.result.enrichment_stats.terminal_failed_count,
+                self.result.enrichment_stats.enrich_candidate_count,
+            )
         return self.result
 
 
@@ -93,14 +106,22 @@ class ChunkedFakeEnrichmentService(FakeEnrichmentService):
         request,
         on_enriched_chunk=None,
         on_preliminary_complete=None,
+        on_preliminary_progress=None,
         on_enrichment_failures=None,
+        on_enrichment_progress=None,
         pipeline_run_id=None,
     ):
         self.filter_requests.append((collection, request))
+        if on_preliminary_progress is not None:
+            await on_preliminary_progress(self.result.filter_stats.processed_count if self.result.filter_stats else 0, len(collection.vacancies))
+        if on_enrichment_progress is not None:
+            await on_enrichment_progress(0, self.result.enrichment_stats.enrich_candidate_count)
         if on_enriched_chunk is not None:
             chunks = [self.result.items[index : index + self.chunk_size] for index in range(0, len(self.result.items), self.chunk_size)]
             for index, chunk in enumerate(chunks, start=1):
                 await on_enriched_chunk(chunk, index, len(chunks))
+                if on_enrichment_progress is not None:
+                    await on_enrichment_progress(min(index * self.chunk_size, self.result.enrichment_stats.enrich_candidate_count), self.result.enrichment_stats.enrich_candidate_count)
         return self.result
 
 
@@ -693,6 +714,35 @@ async def test_discovery_persistence_happens_before_filter_and_persists_collecti
     assert result.filter_stats.processed_count == 100
     assert len(enrichment_service.filter_requests) == 1
     assert enrichment_service.filter_requests[0][0] is collection
+
+
+@pytest.mark.anyio
+async def test_pipeline_persists_incremental_discovery_preliminary_and_enrichment_progress() -> None:
+    enrichment = enrichment_result_with_items(15)
+    enrichment.filter_stats.input_count = 150
+    enrichment.filter_stats.processed_count = 150
+    enrichment.enrichment_stats.input_count = 150
+    enrichment.enrichment_stats.enrich_candidate_count = 15
+    enrichment.enrichment_stats.enriched_count = 15
+    collection = collection_for_count(enrichment.collection_stats, 150)
+    client = FakeOrchestratorClient()
+    service = HHCollectFilterEnrichAndPersistService(FakeEnrichmentService(enrichment, collection), client)  # type: ignore[arg-type]
+    events: list[tuple[str, int | None, int | None]] = []
+
+    async def record(stage: str, current: int | None, total: int | None, _message: str, _details: dict | None = None) -> None:
+        events.append((stage, current, total))
+
+    await service.collect_filter_enrich_and_persist(
+        HHCollectFilterEnrichAndPersistRequest(pipeline_run_id="run-001"),
+        on_progress=record,
+    )
+
+    assert ("discovery", 0, 150) in events
+    assert ("discovery", 100, 150) in events
+    assert ("discovery", 150, 150) in events
+    assert ("preliminary", 150, 150) in events
+    assert ("enrichment", 0, 15) in events
+    assert ("enrichment", 15, 15) in events
 
 
 @pytest.mark.anyio

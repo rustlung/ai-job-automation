@@ -1,5 +1,6 @@
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 
 from app.clients.orchestrator import OrchestratorClient, OrchestratorClientError
@@ -22,7 +23,13 @@ class DiscoveredVacancyPersistenceService:
     def __init__(self, orchestrator_client: OrchestratorClient) -> None:
         self.orchestrator_client = orchestrator_client
 
-    async def persist(self, run_id: str, vacancies: list[HHSearchCollectedVacancy]) -> DiscoveryPersistenceStats:
+    async def persist(
+        self,
+        run_id: str,
+        vacancies: list[HHSearchCollectedVacancy],
+        *,
+        on_batch_persisted: Callable[[int, int], Awaitable[None]] | None = None,
+    ) -> DiscoveryPersistenceStats:
         started_at = time.perf_counter()
         batches = [
             vacancies[index : index + DISCOVERED_VACANCY_BATCH_SIZE]
@@ -69,6 +76,9 @@ class DiscoveredVacancyPersistenceService:
                     batch_size=len(batch),
                 ) from None
             responses.append(response)
+            if on_batch_persisted is not None:
+                stats = self._aggregate(run_id, responses, self._duration_ms(started_at))
+                await on_batch_persisted(stats.persisted_count, len(vacancies))
 
         stats = self._aggregate(run_id, responses, self._duration_ms(started_at))
         logger.info(

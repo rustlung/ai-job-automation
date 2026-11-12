@@ -38,6 +38,10 @@ ENRICHED_PRIORITY_SORT_ORDER = {
     VacancyPriority.P3: 3,
 }
 
+# A small outer batch gives durable, visible progress on smoke-sized cohorts
+# without introducing browser concurrency or changing per-vacancy decisions.
+PROGRESS_ENRICHMENT_CHUNK_SIZE = 5
+
 
 class HHCollectFilterAndEnrichService:
     def __init__(
@@ -104,6 +108,7 @@ class HHCollectFilterAndEnrichService:
         request: HHCollectFilterAndEnrichRequest,
         on_enriched_chunk: Callable[[list[EnrichedVacancyAssessment], int, int], Awaitable[None]] | None = None,
         on_preliminary_complete: Callable[[list[PreliminaryFilteredVacancy]], Awaitable[None]] | None = None,
+        on_preliminary_progress: Callable[[int, int], Awaitable[None]] | None = None,
         on_enrichment_failures: Callable[[list[tuple[PreliminaryFilteredVacancy, VacancyEnrichmentError]], int, int], Awaitable[None]] | None = None,
         on_enrichment_progress: Callable[[int, int], Awaitable[None]] | None = None,
         pipeline_run_id: str | None = None,
@@ -112,13 +117,17 @@ class HHCollectFilterAndEnrichService:
         errors: list[VacancyEnrichmentError] = []
         logger.info("vacancy_enrichment_started")
 
+        preliminary_kwargs = {}
+        if on_preliminary_progress is not None:
+            preliminary_kwargs["on_chunk_complete"] = on_preliminary_progress
         preliminary_result = await self.collect_and_filter_service.filter_collection(
             collection,
             HHCollectAndPreliminaryFilterRequest(
                 profile_ids=request.profile_ids,
                 max_pages_override=request.max_pages_override,
                 max_filter_items_override=request.max_filter_items_override,
-            )
+            ),
+            **preliminary_kwargs,
         )
         collection_stats = preliminary_result.collection_stats
         filter_stats = preliminary_result.filter_stats
@@ -163,6 +172,8 @@ class HHCollectFilterAndEnrichService:
             in {PreliminaryDecision.KEEP_MAIN, PreliminaryDecision.KEEP_ALT, PreliminaryDecision.UNCERTAIN}
         ]
         chunk_size = self._effective_limit(request.max_enrich_items_override)
+        if on_enrichment_progress is not None:
+            chunk_size = min(chunk_size, PROGRESS_ENRICHMENT_CHUNK_SIZE)
         chunks = [candidates[index : index + chunk_size] for index in range(0, len(candidates), chunk_size)]
         if on_enrichment_progress is not None:
             await on_enrichment_progress(0, len(candidates))

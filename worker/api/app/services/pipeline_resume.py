@@ -53,13 +53,31 @@ class WorkerPipelineResumeService:
         snapshot = dict(run.get("config_snapshot") or {})
         progress = PipelineProgressReporter(self.client, run_id)
         initial = await self.client.get_processing_backlog(run_id)
+        persisted_progress = (run.get("stats_snapshot") or {}).get("progress") or {}
         counters = {
             "claimed_preliminary": 0,
             "processed_preliminary": 0,
             "claimed_enrichment": 0,
             "processed_enrichment": 0,
             "terminal_failed": 0,
+            "preliminary_total": None,
+            "enrichment_total": None,
+            "preliminary_progress_current": 0,
+            "enrichment_progress_current": 0,
         }
+        # C1 state totals are the durable source after a restart. They avoid
+        # retaining an in-memory preliminary checkpoint whose outcomes had not
+        # yet been persisted when the Worker stopped.
+        counters["preliminary_total"] = initial["summary"]["total"]
+        counters["preliminary_progress_current"] = max(
+            0,
+            initial["summary"]["total"]
+            - initial["summary"]["preliminary_pending"]
+            - initial["summary"]["preliminary_running"],
+        )
+        if persisted_progress.get("stage") == "enrichment":
+            counters["enrichment_progress_current"] = self._progress_integer(persisted_progress.get("current")) or 0
+            counters["enrichment_total"] = self._progress_integer(persisted_progress.get("total"))
         logger.info("resume_started run_id=%s worker_id=%s backlog=%s", run_id, self.worker_id, initial["summary"])
 
         preliminary_status = await self._resume_preliminary(run_id, snapshot, counters, progress)
@@ -81,14 +99,19 @@ class WorkerPipelineResumeService:
         )
         return self._result(status, initial["summary"], remaining, counters)
 
-    async def _resume_preliminary(self, run_id: str, snapshot: dict[str, Any], counters: dict[str, int], progress: PipelineProgressReporter) -> str:
+    async def _resume_preliminary(self, run_id: str, snapshot: dict[str, Any], counters: dict[str, Any], progress: PipelineProgressReporter) -> str:
         limit = self._chunk_size(snapshot, "max_filter_items_override", self.pipeline_service.enrichment_service.collect_and_filter_service.filter_service.max_items)
         while True:
-            await progress.checkpoint("preliminary", current=counters["processed_preliminary"], total=None, message="Предварительная фильтрация")
             claimed = await self._claim(run_id, "preliminary", limit)
             items = claimed.get("items", [])
             if not items:
                 return await self._idle_stage_status(run_id, "preliminary")
+            await progress.checkpoint(
+                "preliminary",
+                current=counters["preliminary_progress_current"],
+                total=counters["preliminary_total"],
+                message="Предварительная фильтрация",
+            )
             counters["claimed_preliminary"] += len(items)
             await self._renew(run_id, "preliminary", items)
             async with self._lease_heartbeat(run_id, "preliminary", items):
@@ -102,16 +125,28 @@ class WorkerPipelineResumeService:
                 except PreliminaryOutcomePersistenceError as exc:
                     raise RuntimeError(f"preliminary outcome persistence failed for batch {exc.batch_index}") from exc
             counters["processed_preliminary"] += len(result.items)
+            counters["preliminary_progress_current"] += len(result.items)
+            await progress.checkpoint(
+                "preliminary",
+                current=counters["preliminary_progress_current"],
+                total=counters["preliminary_total"],
+                message="Предварительная фильтрация",
+            )
             logger.info("resume_preliminary_batch_completed run_id=%s count=%s", run_id, len(result.items))
 
-    async def _resume_enrichment(self, run_id: str, snapshot: dict[str, Any], counters: dict[str, int], progress: PipelineProgressReporter) -> str:
+    async def _resume_enrichment(self, run_id: str, snapshot: dict[str, Any], counters: dict[str, Any], progress: PipelineProgressReporter) -> str:
         limit = self._chunk_size(snapshot, "max_enrich_items_override", self.pipeline_service.enrichment_service.max_items)
         while True:
-            await progress.checkpoint("enrichment", current=counters["processed_enrichment"], total=None, message="Обогащение вакансий")
             claimed = await self._claim(run_id, "enrichment", limit)
             items = claimed.get("items", [])
             if not items:
                 return await self._idle_stage_status(run_id, "enrichment")
+            await progress.checkpoint(
+                "enrichment",
+                current=counters["enrichment_progress_current"],
+                total=counters["enrichment_total"],
+                message="Обогащение вакансий",
+            )
             counters["claimed_enrichment"] += len(items)
             await self._renew(run_id, "enrichment", items)
             async with self._lease_heartbeat(run_id, "enrichment", items):
@@ -133,6 +168,13 @@ class WorkerPipelineResumeService:
                     if int(stats.get("failed_count", 0)):
                         raise RuntimeError("final persistence returned failed items")
             counters["processed_enrichment"] += len(items)
+            counters["enrichment_progress_current"] += len(items)
+            await progress.checkpoint(
+                "enrichment",
+                current=counters["enrichment_progress_current"],
+                total=counters["enrichment_total"],
+                message="Обогащение вакансий",
+            )
             logger.info("resume_enrichment_batch_completed run_id=%s count=%s", run_id, len(items))
 
     async def _claim(self, run_id: str, stage: str, limit: int) -> dict[str, Any]:
@@ -247,6 +289,10 @@ class WorkerPipelineResumeService:
         if decision == PreliminaryDecision.KEEP_ALT:
             return PreliminaryRecommendedTrack.ALT_TECHNICAL
         return PreliminaryRecommendedTrack.UNCLEAR
+
+    @staticmethod
+    def _progress_integer(value: Any) -> int | None:
+        return value if isinstance(value, int) and value >= 0 else None
 
     @staticmethod
     def _result(status: str, initial: dict[str, int], remaining: dict[str, int], counters: dict[str, int]) -> WorkerPipelineResumeResult:

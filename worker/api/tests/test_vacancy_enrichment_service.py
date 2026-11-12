@@ -382,6 +382,28 @@ async def test_enrichment_callback_runs_once_per_outer_chunk_in_candidate_order(
 
 
 @pytest.mark.anyio
+async def test_enrichment_progress_uses_small_monotonic_terminal_batches_including_failures() -> None:
+    items = [filtered(vacancy(str(index)), PreliminaryDecision.KEEP_MAIN) for index in range(15)]
+    enrichment_service = service(preliminary_result(items), max_items=50, fetch_failures={"4"})
+    progress: list[tuple[int, int]] = []
+
+    async def record(current: int, total: int) -> None:
+        progress.append((current, total))
+
+    request = HHCollectFilterAndEnrichRequest()
+    collection = await enrichment_service.collect_collection(request)
+    result = await enrichment_service.filter_and_enrich_collection(
+        collection,
+        request,
+        on_enrichment_progress=record,
+    )
+
+    assert progress == [(0, 15), (5, 15), (10, 15), (15, 15)]
+    assert result.enrichment_stats.enriched_count == 14
+    assert result.enrichment_stats.terminal_failed_count == 1
+
+
+@pytest.mark.anyio
 async def test_items_are_sorted_by_priority_and_score() -> None:
     items = [
         filtered(vacancy("1"), PreliminaryDecision.KEEP_MAIN),

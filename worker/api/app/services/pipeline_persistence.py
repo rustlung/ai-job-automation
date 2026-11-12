@@ -104,14 +104,23 @@ class HHCollectFilterEnrichAndPersistService:
         collection_stats = self.enrichment_service.collection_stats(collection)
         await progress(
             "discovery",
-            collection_stats.unique_vacancy_count,
+            0,
             collection_stats.unique_vacancy_count,
             "Сохранение найденных вакансий",
             {"raw_count": collection_stats.raw_vacancy_count},
         )
         discovery_stats: DiscoveryPersistenceStats | None = None
         try:
-            discovery_stats = await self.discovery_persistence_service.persist(run_id, collection.vacancies)
+            discovery_kwargs = {}
+            if on_progress is not None:
+                discovery_kwargs["on_batch_persisted"] = lambda current, total: progress(
+                    "discovery", current, total, "Сохранение найденных вакансий"
+                )
+            discovery_stats = await self.discovery_persistence_service.persist(
+                run_id,
+                collection.vacancies,
+                **discovery_kwargs,
+            )
         except DiscoveryPersistenceBatchError as exc:
             return self._discovery_failure_result(
                 run_id=run_id,
@@ -193,6 +202,9 @@ class HHCollectFilterEnrichAndPersistService:
             "pipeline_run_id": run_id,
         }
         if on_progress is not None:
+            enrichment_kwargs["on_preliminary_progress"] = lambda current, total: progress(
+                "preliminary", current, total, "Предварительная фильтрация"
+            )
             enrichment_kwargs["on_enrichment_progress"] = lambda current, total: progress(
                 "enrichment", current, total, "Обогащение вакансий"
             )

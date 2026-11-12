@@ -178,6 +178,25 @@ async def test_filter_limit_is_a_chunk_size_and_covers_the_full_collection() -> 
 
 
 @pytest.mark.anyio
+async def test_filter_collection_reports_monotonic_progress_after_each_outer_chunk() -> None:
+    vacancies = [vacancy(str(index)) for index in range(5)]
+    collection = FakeCollectionService(collection_result(HHSearchCollectionStatus.SUCCEEDED, vacancies))
+    service = HHCollectAndPreliminaryFilterService(collection, FakeFilterService(filter_result(vacancies[:2]), limit=2))  # type: ignore[arg-type]
+    progress: list[tuple[int, int]] = []
+
+    async def record(current: int, total: int) -> None:
+        progress.append((current, total))
+
+    await service.filter_collection(
+        collection.result,
+        HHCollectAndPreliminaryFilterRequest(profile_ids=["python_expanded_search"], max_filter_items_override=2),
+        on_chunk_complete=record,
+    )
+
+    assert progress == [(2, 5), (4, 5), (5, 5)]
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize("item_count", [50, 100, 101, 250, 355])
 async def test_filter_chunking_gives_every_discovered_vacancy_a_terminal_outcome(item_count: int) -> None:
     vacancies = [vacancy(str(index)) for index in range(item_count)]

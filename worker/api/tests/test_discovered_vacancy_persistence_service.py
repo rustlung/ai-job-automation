@@ -104,6 +104,20 @@ async def test_discovery_persistence_uses_one_utc_seen_at_for_the_collection() -
 
 
 @pytest.mark.anyio
+async def test_discovery_persistence_reports_progress_after_each_batch() -> None:
+    client = FakeDiscoveryClient()
+    service = DiscoveredVacancyPersistenceService(client)  # type: ignore[arg-type]
+    progress: list[tuple[int, int]] = []
+
+    async def record(current: int, total: int) -> None:
+        progress.append((current, total))
+
+    await service.persist("run-001", [vacancy(index) for index in range(201)], on_batch_persisted=record)
+
+    assert progress == [(100, 201), (200, 201), (201, 201)]
+
+
+@pytest.mark.anyio
 async def test_discovery_persistence_stops_on_second_batch_and_preserves_prior_aggregate() -> None:
     client = FakeDiscoveryClient(fail_batch=2)
     service = DiscoveredVacancyPersistenceService(client)  # type: ignore[arg-type]
