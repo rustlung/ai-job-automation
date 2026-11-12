@@ -89,17 +89,17 @@ keyword profiles и configurable selection также приняты.
 Актуальный export:
 
 ``` text
-workflows/n8n/AI Job Automation — Daily Search Digest v15.json
+workflows/n8n/AI Job Automation — Daily Search Digest v16.json
 ```
 
 Workflow name:
 
 ``` text
-AI Job Automation — Daily Search Digest v15
+AI Job Automation — Daily Search Digest v16
 ```
 
 Export не содержит credentials. После import activation управляется n8n
-deployment; v14 и `AI Job Automation — Daily Search CRM Digest v13` сохраняются
+deployment; v14, v15 и `AI Job Automation — Daily Search CRM Digest v13` сохраняются
 как historical exports и не перезаписываются.
 Dedicated CRM workflow exports находятся в `workflows/n8n/archive/` и имеют
 статус historical only: их нельзя импортировать или активировать как runtime
@@ -130,14 +130,12 @@ calculation или canonical persistence. Внутри persistent Worker pipelin
 collection/deduplication все discovered HH preview сохраняются в Orchestrator
 до preliminary/enrichment limits; n8n contract от этого не меняется.
 
-Phase C1 также хранит per-vacancy/run processing work item с безопасным preview
-snapshot. Это только foundation recovery: Daily v14 запускает и poll-ит один
-Worker run как прежде, а automatic backlog resume ещё не включён.
-
-Phase C2 добавляет ручной Worker resume для уже существующего `run_id`, но не
-меняет v14: n8n по-прежнему не обнаруживает stale run и не вызывает resume
-автоматически. Recovery запускается отдельным protected Worker endpoint и
-использует persistent claim/lease backlog без повторного HH search.
+Phase C1 хранит per-vacancy/run processing work item с безопасным preview
+snapshot, а C2 добавляет ручной Worker resume для существующего `run_id`.
+Daily v16 добавляет bounded automatic recovery: после transient polling failure
+он вызывает существующий protected resume endpoint для того же run без нового HH
+search. Terminal business errors Worker не проходят через recovery; manual resume
+остаётся operational fallback.
 
 ### Topology
 

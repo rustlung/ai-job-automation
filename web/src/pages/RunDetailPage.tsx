@@ -6,7 +6,9 @@ import { useRun } from "../hooks/useOrchestrator";
 import { formatDateTime, formatTriggerSource, isTerminalRunStatus } from "../lib/format";
 import type { PipelineRunDiagnostic } from "../types/api";
 
-function StatValue({ label, value }: { label: string; value: unknown }) { return <div><dt className="text-xs font-medium uppercase text-zinc-500">{label}</dt><dd className="mt-1 text-sm text-zinc-800">{typeof value === "number" || typeof value === "string" ? value : "—"}</dd></div>; }
+function StatValue({ label, value }: { label: string; value: unknown }) {
+  return <div className="min-w-0" data-testid="run-stat-value"><dt className="text-xs font-medium uppercase text-zinc-500">{label}</dt><dd className="mt-1 min-w-0 whitespace-pre-wrap break-words text-sm text-zinc-800 [overflow-wrap:anywhere]">{typeof value === "number" || typeof value === "string" ? value : "—"}</dd></div>;
+}
 
 function DiagnosticList({ items }: { items: PipelineRunDiagnostic[] }) {
   return <ul className="mt-3 space-y-2 text-sm text-zinc-700">{items.map((item) => <li key={`${item.code}-${item.summary}`}><span className="font-medium">{item.summary}</span>{item.count > 1 ? `: ${item.count}` : ""}</li>)}</ul>;

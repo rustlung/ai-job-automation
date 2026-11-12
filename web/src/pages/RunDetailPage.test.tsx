@@ -64,4 +64,18 @@ describe("RunDetailPage diagnostics", () => {
     expect(screen.getAllByText("Ошибка")).not.toHaveLength(0);
     expect(screen.getByText("HH session не подтверждена")).toBeInTheDocument();
   });
+
+  it("wraps long statistics and configuration values without shrinking sibling grid cells", () => {
+    const longValue = JSON.stringify({ collection_stats: { nested: "x".repeat(600) }, duration_ms: 123456789 });
+    useRun.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: { ...run("completed", { persistence_stats: longValue, duration_ms: longValue }), config_snapshot: { long_diagnostic_value: longValue } }
+    });
+
+    renderPage();
+
+    expect(screen.getAllByTestId("run-stat-value").every((element) => element.classList.contains("min-w-0"))).toBe(true);
+    expect(screen.getAllByText(longValue).every((element) => element.className.includes("break-words") && element.className.includes("[overflow-wrap:anywhere]"))).toBe(true);
+  });
 });
