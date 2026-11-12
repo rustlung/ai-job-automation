@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RunDetailPage } from "./RunDetailPage";
+import type { PipelineRunStatus } from "../types/api";
 
 const useRun = vi.fn();
 const useCancelRun = vi.fn();
@@ -16,7 +17,7 @@ function renderPage() {
   return render(<MemoryRouter initialEntries={["/runs/run-001"]}><Routes><Route path="/runs/:runId" element={<RunDetailPage />} /></Routes></MemoryRouter>);
 }
 
-function run(status: "completed" | "completed_with_errors" | "failed", statsSnapshot: Record<string, unknown> = {}) {
+function run(status: PipelineRunStatus, statsSnapshot: Record<string, unknown> = {}) {
   return {
     run_id: "run-001",
     trigger_source: "web_ui" as const,
@@ -81,13 +82,40 @@ describe("RunDetailPage diagnostics", () => {
     expect(screen.getAllByText(longValue).every((element) => element.className.includes("break-words") && element.className.includes("[overflow-wrap:anywhere]"))).toBe(true);
   });
 
-  it("shows persisted stage progress for a running run", () => {
+  it("shows the active preliminary stage without numeric progress", () => {
     useRun.mockReturnValue({ isLoading: false, isError: false, data: { ...run("completed", { progress: { stage: "preliminary", current: 12, total: 20, percent: 60, message: "Предварительная фильтрация" } }), status: "running", completed_at: null } });
 
     renderPage();
 
-    expect(screen.getByTestId("run-progress")).toHaveTextContent("Предварительная фильтрация: 12 из 20");
-    expect(screen.getByText("60%")).toBeInTheDocument();
+    const progress = screen.getByTestId("run-progress");
+    expect(progress).toHaveTextContent("Предварительная фильтрация");
+    expect(progress).not.toHaveTextContent("12 из 20");
+    expect(screen.queryByText("60%")).not.toBeInTheDocument();
+    expect(progress.querySelector("[style]")).toBeNull();
     expect(screen.getByRole("button", { name: "Отменить запуск" })).toBeInTheDocument();
+  });
+
+  it.each([
+    ["enrichment", "Обогащение вакансий", "Загрузка полной карточки и AI-анализ"],
+    ["recovery", "Восстановление", "Worker восстанавливает обработку после перезапуска"]
+  ])("shows the %s stage description", (stage, label, description) => {
+    useRun.mockReturnValue({ isLoading: false, isError: false, data: { ...run("completed", { progress: { stage, current: 0, total: 15, percent: 0, message: description } }), status: "running", completed_at: null } });
+
+    renderPage();
+
+    expect(screen.getByTestId("run-progress")).toHaveTextContent(label);
+    expect(screen.getByTestId("run-progress")).toHaveTextContent(description);
+  });
+
+  it.each([
+    ["completed", "Завершено"],
+    ["failed", "Ошибка"],
+    ["cancelled", "Отменено"]
+  ] as const)("shows terminal %s stage when a historical progress snapshot is absent", (status, label) => {
+    useRun.mockReturnValue({ isLoading: false, isError: false, data: run(status) });
+
+    renderPage();
+
+    expect(screen.getByTestId("run-progress")).toHaveTextContent(label);
   });
 });
