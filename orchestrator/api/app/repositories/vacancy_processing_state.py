@@ -77,13 +77,14 @@ class VacancyProcessingStateRepository:
         allowed = {
             # Direct final persistence remains supported for historical and
             # integration callers that predate persisted preliminary outcomes.
-            VacancyWorkState.PRELIMINARY_PENDING: {VacancyWorkState.PRELIMINARY_RUNNING, VacancyWorkState.PRELIMINARY_REJECTED, VacancyWorkState.ENRICHMENT_PENDING, VacancyWorkState.ENRICHED, VacancyWorkState.PROCESSING_FAILED},
-            VacancyWorkState.PRELIMINARY_RUNNING: {VacancyWorkState.PRELIMINARY_REJECTED, VacancyWorkState.ENRICHMENT_PENDING, VacancyWorkState.PROCESSING_FAILED},
+            VacancyWorkState.PRELIMINARY_PENDING: {VacancyWorkState.PRELIMINARY_RUNNING, VacancyWorkState.PRELIMINARY_REJECTED, VacancyWorkState.ENRICHMENT_PENDING, VacancyWorkState.ENRICHED, VacancyWorkState.PROCESSING_FAILED, VacancyWorkState.CANCELLED},
+            VacancyWorkState.PRELIMINARY_RUNNING: {VacancyWorkState.PRELIMINARY_REJECTED, VacancyWorkState.ENRICHMENT_PENDING, VacancyWorkState.PROCESSING_FAILED, VacancyWorkState.CANCELLED},
             VacancyWorkState.PRELIMINARY_REJECTED: set(),
-            VacancyWorkState.ENRICHMENT_PENDING: {VacancyWorkState.ENRICHMENT_RUNNING, VacancyWorkState.PROCESSING_FAILED, VacancyWorkState.ENRICHED},
-            VacancyWorkState.ENRICHMENT_RUNNING: {VacancyWorkState.ENRICHED, VacancyWorkState.PROCESSING_FAILED},
+            VacancyWorkState.ENRICHMENT_PENDING: {VacancyWorkState.ENRICHMENT_RUNNING, VacancyWorkState.PROCESSING_FAILED, VacancyWorkState.ENRICHED, VacancyWorkState.CANCELLED},
+            VacancyWorkState.ENRICHMENT_RUNNING: {VacancyWorkState.ENRICHED, VacancyWorkState.PROCESSING_FAILED, VacancyWorkState.CANCELLED},
             VacancyWorkState.ENRICHED: set(),
             VacancyWorkState.PROCESSING_FAILED: set(),
+            VacancyWorkState.CANCELLED: set(),
         }
         if target not in allowed[current]:
             raise VacancyProcessingStateTransitionError(f"invalid transition: {current.value} -> {target.value}")
@@ -107,6 +108,8 @@ class VacancyProcessingStateRepository:
     ) -> None:
         record = self.get_by_vacancy_run(vacancy_id, run_id)
         if record is None:
+            return
+        if record.state == VacancyWorkState.CANCELLED.value:
             return
         mapping = {
             "preliminary_rejected": VacancyWorkState.PRELIMINARY_REJECTED,
@@ -135,6 +138,8 @@ class VacancyProcessingStateRepository:
     def mark_enriched(self, vacancy_id: int, run_id: str) -> None:
         record = self.get_by_vacancy_run(vacancy_id, run_id)
         if record is not None:
+            if record.state == VacancyWorkState.CANCELLED.value:
+                return
             if record.state == VacancyWorkState.ENRICHMENT_PENDING.value:
                 record.enrichment_attempts += 1
             self.transition(record, VacancyWorkState.ENRICHED)
@@ -142,12 +147,41 @@ class VacancyProcessingStateRepository:
     def mark_failed(self, vacancy_id: int, run_id: str, error_code: str, error_summary: str) -> None:
         record = self.get_by_vacancy_run(vacancy_id, run_id)
         if record is not None:
+            if record.state == VacancyWorkState.CANCELLED.value:
+                return
             self.transition(
                 record,
                 VacancyWorkState.PROCESSING_FAILED,
                 error_code=error_code,
                 error_summary=error_summary,
             )
+
+    def cancel_run_work(self, run_id: str) -> int:
+        """Stop nonterminal work and clear any active claim leases for a cancelled run."""
+        result = self.session.execute(
+            update(VacancyProcessingState)
+            .where(
+                VacancyProcessingState.run_id == run_id,
+                VacancyProcessingState.state.in_(
+                    [
+                        VacancyWorkState.PRELIMINARY_PENDING.value,
+                        VacancyWorkState.PRELIMINARY_RUNNING.value,
+                        VacancyWorkState.ENRICHMENT_PENDING.value,
+                        VacancyWorkState.ENRICHMENT_RUNNING.value,
+                    ]
+                ),
+            )
+            .values(
+                state=VacancyWorkState.CANCELLED.value,
+                claimed_at=None,
+                claim_expires_at=None,
+                claimed_by=None,
+                last_error_code=None,
+                last_error_summary=None,
+            )
+        )
+        self.session.flush()
+        return int(result.rowcount or 0)
 
     @staticmethod
     def _safe_failure_summary(error_code: str, candidate: str | None) -> str:

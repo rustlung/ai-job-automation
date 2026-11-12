@@ -16,6 +16,7 @@ from app.schemas.preliminary_filter import (
 )
 from app.services.pipeline_persistence import HHCollectFilterEnrichAndPersistService, PipelinePersistenceBatchError
 from app.services.preliminary_outcome_persistence import PreliminaryOutcomePersistenceError
+from app.services.pipeline_progress import PipelineProgressReporter, WorkerPipelineCancelledError
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,10 @@ class WorkerPipelineResumeService:
     async def resume(self, run_id: str) -> WorkerPipelineResumeResult:
         started_at = time.perf_counter()
         run = await self.client.get_pipeline_run(run_id)
+        if run.get("status") == "cancelled":
+            return self._result("cancelled", {}, {}, {"claimed_preliminary": 0, "processed_preliminary": 0, "claimed_enrichment": 0, "processed_enrichment": 0, "terminal_failed": 0})
         snapshot = dict(run.get("config_snapshot") or {})
+        progress = PipelineProgressReporter(self.client, run_id)
         initial = await self.client.get_processing_backlog(run_id)
         counters = {
             "claimed_preliminary": 0,
@@ -58,11 +62,11 @@ class WorkerPipelineResumeService:
         }
         logger.info("resume_started run_id=%s worker_id=%s backlog=%s", run_id, self.worker_id, initial["summary"])
 
-        preliminary_status = await self._resume_preliminary(run_id, snapshot, counters)
+        preliminary_status = await self._resume_preliminary(run_id, snapshot, counters, progress)
         if preliminary_status == "in_progress":
             return self._result("in_progress", initial["summary"], await self._summary(run_id), counters)
 
-        enrichment_status = await self._resume_enrichment(run_id, snapshot, counters)
+        enrichment_status = await self._resume_enrichment(run_id, snapshot, counters, progress)
         if enrichment_status == "in_progress":
             return self._result("in_progress", initial["summary"], await self._summary(run_id), counters)
 
@@ -77,9 +81,10 @@ class WorkerPipelineResumeService:
         )
         return self._result(status, initial["summary"], remaining, counters)
 
-    async def _resume_preliminary(self, run_id: str, snapshot: dict[str, Any], counters: dict[str, int]) -> str:
+    async def _resume_preliminary(self, run_id: str, snapshot: dict[str, Any], counters: dict[str, int], progress: PipelineProgressReporter) -> str:
         limit = self._chunk_size(snapshot, "max_filter_items_override", self.pipeline_service.enrichment_service.collect_and_filter_service.filter_service.max_items)
         while True:
+            await progress.checkpoint("preliminary", current=counters["processed_preliminary"], total=None, message="Предварительная фильтрация")
             claimed = await self._claim(run_id, "preliminary", limit)
             items = claimed.get("items", [])
             if not items:
@@ -99,9 +104,10 @@ class WorkerPipelineResumeService:
             counters["processed_preliminary"] += len(result.items)
             logger.info("resume_preliminary_batch_completed run_id=%s count=%s", run_id, len(result.items))
 
-    async def _resume_enrichment(self, run_id: str, snapshot: dict[str, Any], counters: dict[str, int]) -> str:
+    async def _resume_enrichment(self, run_id: str, snapshot: dict[str, Any], counters: dict[str, int], progress: PipelineProgressReporter) -> str:
         limit = self._chunk_size(snapshot, "max_enrich_items_override", self.pipeline_service.enrichment_service.max_items)
         while True:
+            await progress.checkpoint("enrichment", current=counters["processed_enrichment"], total=None, message="Обогащение вакансий")
             claimed = await self._claim(run_id, "enrichment", limit)
             items = claimed.get("items", [])
             if not items:
@@ -245,7 +251,7 @@ class WorkerPipelineResumeService:
     @staticmethod
     def _result(status: str, initial: dict[str, int], remaining: dict[str, int], counters: dict[str, int]) -> WorkerPipelineResumeResult:
         return WorkerPipelineResumeResult(
-            status="succeeded" if status in {"completed", "nothing_to_resume", "in_progress"} else "failed",
+            status="succeeded" if status in {"completed", "nothing_to_resume", "in_progress", "cancelled"} else "failed",
             error_code="resume_in_progress" if status == "in_progress" else None,
             error_summary="Часть backlog удерживается активным Worker." if status == "in_progress" else None,
             summary=WorkerPipelineRunSummary(

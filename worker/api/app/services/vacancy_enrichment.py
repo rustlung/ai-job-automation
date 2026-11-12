@@ -81,14 +81,19 @@ class HHCollectFilterAndEnrichService:
         collection = await self.collect_collection(request)
         return await self.filter_and_enrich_collection(collection, request, on_enriched_chunk=on_enriched_chunk)
 
-    async def collect_collection(self, request: HHCollectFilterAndEnrichRequest) -> HHSearchCollectionResult:
-        return await self.collect_and_filter_service.collect(
-            HHCollectAndPreliminaryFilterRequest(
-                profile_ids=request.profile_ids,
-                max_pages_override=request.max_pages_override,
-                max_filter_items_override=request.max_filter_items_override,
-            )
+    async def collect_collection(
+        self,
+        request: HHCollectFilterAndEnrichRequest,
+        on_profile_complete: Callable[[int, int, int], Awaitable[None]] | None = None,
+    ) -> HHSearchCollectionResult:
+        payload = HHCollectAndPreliminaryFilterRequest(
+            profile_ids=request.profile_ids,
+            max_pages_override=request.max_pages_override,
+            max_filter_items_override=request.max_filter_items_override,
         )
+        if on_profile_complete is None:
+            return await self.collect_and_filter_service.collect(payload)
+        return await self.collect_and_filter_service.collect(payload, on_profile_complete=on_profile_complete)
 
     def collection_stats(self, collection: HHSearchCollectionResult) -> HHCollectionStats:
         return self.collect_and_filter_service.collection_stats(collection)
@@ -100,6 +105,7 @@ class HHCollectFilterAndEnrichService:
         on_enriched_chunk: Callable[[list[EnrichedVacancyAssessment], int, int], Awaitable[None]] | None = None,
         on_preliminary_complete: Callable[[list[PreliminaryFilteredVacancy]], Awaitable[None]] | None = None,
         on_enrichment_failures: Callable[[list[tuple[PreliminaryFilteredVacancy, VacancyEnrichmentError]], int, int], Awaitable[None]] | None = None,
+        on_enrichment_progress: Callable[[int, int], Awaitable[None]] | None = None,
         pipeline_run_id: str | None = None,
     ) -> HHCollectFilterAndEnrichResult:
         started_at = time.perf_counter()
@@ -158,6 +164,8 @@ class HHCollectFilterAndEnrichService:
         ]
         chunk_size = self._effective_limit(request.max_enrich_items_override)
         chunks = [candidates[index : index + chunk_size] for index in range(0, len(candidates), chunk_size)]
+        if on_enrichment_progress is not None:
+            await on_enrichment_progress(0, len(candidates))
         enriched_items: list[EnrichedVacancyAssessment] = []
         failed_fetch_count = 0
         failed_normalization_count = 0
@@ -193,6 +201,8 @@ class HHCollectFilterAndEnrichService:
                     await on_enrichment_failures(failed_items, chunk_index, len(chunks))
             if chunk_result[0] and on_enriched_chunk is not None:
                 await on_enriched_chunk(chunk_result[0], chunk_index, len(chunks))
+            if on_enrichment_progress is not None:
+                await on_enrichment_progress(min(chunk_index * chunk_size, len(candidates)), len(candidates))
             logger.info(
                 "vacancy_enrichment_chunk_completed pipeline_run_id=%s chunk_index=%s chunk_count=%s chunk_size=%s duration_ms=%s",
                 pipeline_run_id,

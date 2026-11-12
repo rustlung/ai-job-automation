@@ -96,6 +96,11 @@ class FakeClient:
         return {"renewed_count": len(payload["work_item_ids"])}
 
 
+class CancelledFakeClient(FakeClient):
+    async def get_pipeline_run(self, _run_id: str):
+        return {"status": "cancelled", "config_snapshot": {}}
+
+
 class FakeFilter:
     max_items = 100
 
@@ -176,3 +181,14 @@ def test_resume_rebuilds_enrichment_candidate_from_persisted_outcome() -> None:
     assert candidate.assessment.decision == PreliminaryDecision.KEEP_MAIN
     assert candidate.vacancy.external_id == "321"
     assert candidate.query_variant_ids == ["python-main"]
+
+
+@pytest.mark.anyio
+async def test_cancelled_run_is_not_resumed() -> None:
+    client = CancelledFakeClient([])
+    service = WorkerPipelineResumeService(pipeline(FakeOutcomePersistence()), client, worker_id="worker-a", lease_seconds=60)
+
+    result = await service.resume("run-cancelled")
+
+    assert result.summary.resume_status == "cancelled"
+    assert client.claims == []

@@ -207,6 +207,9 @@ class OrchestratorClient:
     async def get_pipeline_run(self, run_id: str) -> dict[str, Any]:
         return await self._get_with_retry(f"/internal/pipeline-runs/{run_id}", params=None)
 
+    async def update_pipeline_run(self, run_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return await self._patch_with_retry(f"/internal/pipeline-runs/{run_id}", payload)
+
     async def _get_with_retry(self, endpoint: str, *, params: dict[str, Any] | None) -> dict[str, Any]:
         last_error: Exception | None = None
         headers = {"X-Orchestrator-Internal-Token": self.internal_api_token} if self.internal_api_token else None
@@ -326,6 +329,27 @@ class OrchestratorClient:
         if isinstance(last_error, OrchestratorClientResponseError):
             raise last_error
         raise OrchestratorClientConnectionError("Orchestrator request failed") from last_error
+
+    async def _patch_with_retry(self, endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
+        headers = {"X-Orchestrator-Internal-Token": self.internal_api_token} if self.internal_api_token else None
+        try:
+            async with httpx.AsyncClient(
+                base_url=self.base_url,
+                timeout=self.timeout_seconds,
+                transport=self.transport,
+            ) as client:
+                response = await client.patch(endpoint, json=payload, headers=headers)
+        except httpx.TimeoutException as exc:
+            raise OrchestratorClientTimeoutError("Orchestrator progress update timed out") from exc
+        except httpx.RequestError as exc:
+            raise OrchestratorClientConnectionError("Orchestrator progress update failed") from exc
+        if response.status_code >= 400:
+            raise OrchestratorClientResponseError(
+                "Orchestrator rejected pipeline run update",
+                status_code=response.status_code,
+                validation_details=self._safe_validation_details(response),
+            )
+        return response.json()
 
     @staticmethod
     def _duration_ms(started_at: float) -> int:

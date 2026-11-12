@@ -63,6 +63,7 @@ export const orchestratorApi = {
   getSearchProfiles: () => request<SearchProfilesResponse>("/api/search-profiles"),
   getRuns: (limit = 20, offset = 0) => request<RunsResponse>(`/api/runs?limit=${limit}&offset=${offset}`),
   getRun: (runId: string) => request<PipelineRunDetail>(`/api/runs/${encodeURIComponent(runId)}`),
+  cancelRun: (runId: string) => request<PipelineRunDetail>(`/api/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" }),
   getVacancies: (filters: VacancyFilters) => request<VacancyListResponse>(`/api/vacancies?${vacancyQuery(filters)}`),
   getStatistics: (statistics: StatisticsRequest) => request<VacancyStatistics>(`/api/statistics?${statisticsQuery(statistics)}`),
   getExportSchema: () => request<ExportSchema>("/api/exports/schema"),

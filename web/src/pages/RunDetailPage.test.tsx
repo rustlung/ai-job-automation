@@ -1,14 +1,16 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RunDetailPage } from "./RunDetailPage";
 
 const useRun = vi.fn();
+const useCancelRun = vi.fn();
 
-vi.mock("../hooks/useOrchestrator", () => ({ useRun: (...args: unknown[]) => useRun(...args) }));
+vi.mock("../hooks/useOrchestrator", () => ({ useRun: (...args: unknown[]) => useRun(...args), useCancelRun: () => useCancelRun() }));
 
-afterEach(() => cleanup());
+afterEach(() => { cleanup(); useCancelRun.mockReturnValue({ mutateAsync: vi.fn(), isPending: false }); });
+beforeEach(() => useCancelRun.mockReturnValue({ mutateAsync: vi.fn(), isPending: false }));
 
 function renderPage() {
   return render(<MemoryRouter initialEntries={["/runs/run-001"]}><Routes><Route path="/runs/:runId" element={<RunDetailPage />} /></Routes></MemoryRouter>);
@@ -77,5 +79,15 @@ describe("RunDetailPage diagnostics", () => {
 
     expect(screen.getAllByTestId("run-stat-value").every((element) => element.classList.contains("min-w-0"))).toBe(true);
     expect(screen.getAllByText(longValue).every((element) => element.className.includes("break-words") && element.className.includes("[overflow-wrap:anywhere]"))).toBe(true);
+  });
+
+  it("shows persisted stage progress for a running run", () => {
+    useRun.mockReturnValue({ isLoading: false, isError: false, data: { ...run("completed", { progress: { stage: "preliminary", current: 12, total: 20, percent: 60, message: "Предварительная фильтрация" } }), status: "running", completed_at: null } });
+
+    renderPage();
+
+    expect(screen.getByTestId("run-progress")).toHaveTextContent("Предварительная фильтрация: 12 из 20");
+    expect(screen.getByText("60%")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Отменить запуск" })).toBeInTheDocument();
   });
 });

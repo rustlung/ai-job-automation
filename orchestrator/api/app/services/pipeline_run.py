@@ -4,6 +4,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.repositories.pipeline_run import PipelineRunRepository
+from app.repositories.vacancy_processing_state import VacancyProcessingStateRepository
 from app.schemas.pipeline_run import (
     PipelineRunLifecycleUpdate,
     PipelineRunListItem,
@@ -69,6 +70,9 @@ class PipelineRunService:
             run = self.repository.get_by_run_id(run_id)
             if run is None:
                 raise PipelineRunNotFoundError
+            if run.status == PipelineRunStatus.CANCELLED.value:
+                # Cancellation is durable intent: delayed Worker/n8n updates cannot revive it.
+                return PipelineRunRead.model_validate(run)
             if payload.status is not None:
                 run.status = payload.status.value
             if payload.stats_snapshot is not None:
@@ -77,12 +81,58 @@ class PipelineRunService:
                 run.error_code = payload.error_code
             if "error_summary" in payload.model_fields_set:
                 run.error_summary = payload.error_summary
-            if payload.status in {PipelineRunStatus.COMPLETED, PipelineRunStatus.COMPLETED_WITH_ERRORS, PipelineRunStatus.FAILED}:
+            if payload.status in {
+                PipelineRunStatus.COMPLETED,
+                PipelineRunStatus.COMPLETED_WITH_ERRORS,
+                PipelineRunStatus.FAILED,
+                PipelineRunStatus.CANCELLED,
+            }:
                 run.completed_at = datetime.now(timezone.utc)
             self.session.commit()
             self.session.refresh(run)
             return PipelineRunRead.model_validate(run)
         except PipelineRunNotFoundError:
+            raise
+        except SQLAlchemyError as exc:
+            self.session.rollback()
+            raise PipelineRunDatabaseError from exc
+
+    def cancel(self, run_id: str) -> PipelineRunRead:
+        try:
+            run = self.repository.get_by_run_id(run_id)
+            if run is None:
+                raise PipelineRunNotFoundError
+            if run.status == PipelineRunStatus.CANCELLED.value:
+                return PipelineRunRead.model_validate(run)
+            if run.status in {
+                PipelineRunStatus.COMPLETED.value,
+                PipelineRunStatus.COMPLETED_WITH_ERRORS.value,
+                PipelineRunStatus.FAILED.value,
+            }:
+                raise PipelineRunConflictError
+
+            cancelled_count = VacancyProcessingStateRepository(self.session).cancel_run_work(run_id)
+            run.status = PipelineRunStatus.CANCELLED.value
+            run.completed_at = datetime.now(timezone.utc)
+            run.error_code = None
+            run.error_summary = None
+            run.stats_snapshot = self._merge_stats_snapshot(
+                run.stats_snapshot,
+                {
+                    "progress": {
+                        "stage": "cancelled",
+                        "current": None,
+                        "total": None,
+                        "percent": None,
+                        "message": "Запуск отменён пользователем",
+                    },
+                    "cancelled_work_count": cancelled_count,
+                },
+            )
+            self.session.commit()
+            self.session.refresh(run)
+            return PipelineRunRead.model_validate(run)
+        except (PipelineRunNotFoundError, PipelineRunConflictError):
             raise
         except SQLAlchemyError as exc:
             self.session.rollback()

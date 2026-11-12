@@ -37,7 +37,8 @@ export type PipelineRunStatus =
   | "running"
   | "completed"
   | "completed_with_errors"
-  | "failed";
+  | "failed"
+  | "cancelled";
 
 export type PipelineRunTriggerSource = "manual_n8n" | "web_ui" | "scheduled";
 
@@ -58,6 +59,14 @@ export interface PipelineRunStatsSnapshot {
   warnings?: PipelineRunDiagnostic[];
   partial_failures?: PipelineRunDiagnostic[];
   integration_errors?: PipelineRunDiagnostic[];
+  progress?: {
+    stage: "queued" | "collection" | "discovery" | "preliminary" | "enrichment" | "persistence" | "post_processing" | "recovery" | "completed" | "failed" | "cancelled";
+    current: number | null;
+    total: number | null;
+    percent: number | null;
+    message: string;
+    details?: Record<string, unknown>;
+  };
   [key: string]: unknown;
 }
 

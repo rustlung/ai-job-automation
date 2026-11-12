@@ -1,5 +1,6 @@
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from datetime import datetime, time as datetime_time, timezone
 from uuid import uuid4
 
@@ -77,10 +78,15 @@ class HHCollectFilterEnrichAndPersistService:
     async def collect_filter_enrich_and_persist(
         self,
         request: HHCollectFilterEnrichAndPersistRequest,
+        on_progress: Callable[[str, int | None, int | None, str, dict | None], Awaitable[None]] | None = None,
     ) -> HHCollectFilterEnrichAndPersistResult:
         started_at = time.perf_counter()
         run_id = request.pipeline_run_id or f"hh-pipeline-{uuid4()}"
         logger.info("pipeline_collect_enrich_persist_started run_id=%s", run_id)
+
+        async def progress(stage: str, current: int | None, total: int | None, message: str, details: dict | None = None) -> None:
+            if on_progress is not None:
+                await on_progress(stage, current, total, message, details)
 
         enrichment_request = HHCollectFilterAndEnrichRequest(
             profile_ids=request.profile_ids,
@@ -88,8 +94,21 @@ class HHCollectFilterEnrichAndPersistService:
             max_filter_items_override=request.max_filter_items_override,
             max_enrich_items_override=request.max_enrich_items_override,
         )
-        collection = await self.enrichment_service.collect_collection(enrichment_request)
+        await progress("collection", 0, None, "Сбор вакансий")
+        collection_kwargs = {}
+        if on_progress is not None:
+            collection_kwargs["on_profile_complete"] = lambda current, total, raw: progress(
+                "collection", current, total, "Сбор вакансий", {"raw_count": raw}
+            )
+        collection = await self.enrichment_service.collect_collection(enrichment_request, **collection_kwargs)
         collection_stats = self.enrichment_service.collection_stats(collection)
+        await progress(
+            "discovery",
+            collection_stats.unique_vacancy_count,
+            collection_stats.unique_vacancy_count,
+            "Сохранение найденных вакансий",
+            {"raw_count": collection_stats.raw_vacancy_count},
+        )
         discovery_stats: DiscoveryPersistenceStats | None = None
         try:
             discovery_stats = await self.discovery_persistence_service.persist(run_id, collection.vacancies)
@@ -103,6 +122,13 @@ class HHCollectFilterEnrichAndPersistService:
                 batch_size=exc.batch_size,
                 duration_ms=self._duration_ms(started_at),
             )
+
+        await progress(
+            "preliminary",
+            0,
+            discovery_stats.persisted_count,
+            "Предварительная фильтрация",
+        )
 
         persistence_result: dict | None = None
         persistence_stats: PipelinePersistenceStats | None = None
@@ -118,6 +144,7 @@ class HHCollectFilterEnrichAndPersistService:
                     "orchestrator_preliminary_outcome_persistence_failed",
                     f"Не удалось сохранить preliminary outcomes batch {exc.batch_index} из {exc.batch_count} в Orchestrator",
                 ) from None
+            await progress("preliminary", len(items), discovery_stats.persisted_count, "Предварительная фильтрация")
 
         async def persist_enrichment_failures(failures, chunk_index: int, chunk_count: int) -> None:
             try:
@@ -134,6 +161,7 @@ class HHCollectFilterEnrichAndPersistService:
                 ) from None
 
         async def persist_enrichment_chunk(items, chunk_index: int, chunk_count: int) -> None:
+            await progress("persistence", (chunk_index - 1) * len(items), None, "Сохранение результатов")
             try:
                 chunk_result = await self._persist_in_batches(run_id, items)
             except PipelinePersistenceBatchError as exc:
@@ -156,15 +184,23 @@ class HHCollectFilterEnrichAndPersistService:
                     "orchestrator_persistence_partial_failure",
                     f"Orchestrator не подтвердил полное сохранение enrichment chunk {chunk_index} из {chunk_count}",
                 )
+            await progress("persistence", chunk_index * len(items), None, "Сохранение результатов")
 
+        enrichment_kwargs = {
+            "on_enriched_chunk": persist_enrichment_chunk,
+            "on_preliminary_complete": persist_preliminary_outcomes,
+            "on_enrichment_failures": persist_enrichment_failures,
+            "pipeline_run_id": run_id,
+        }
+        if on_progress is not None:
+            enrichment_kwargs["on_enrichment_progress"] = lambda current, total: progress(
+                "enrichment", current, total, "Обогащение вакансий"
+            )
         try:
             enrichment_result = await self.enrichment_service.filter_and_enrich_collection(
                 collection,
                 enrichment_request,
-                on_enriched_chunk=persist_enrichment_chunk,
-                on_preliminary_complete=persist_preliminary_outcomes,
-                on_enrichment_failures=persist_enrichment_failures,
-                pipeline_run_id=run_id,
+                **enrichment_kwargs,
             )
         except EnrichmentChunkPersistenceError as exc:
             return self._enrichment_persistence_failure_result(

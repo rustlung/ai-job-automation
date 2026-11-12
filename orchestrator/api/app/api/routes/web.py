@@ -30,7 +30,7 @@ from app.schemas.web import (
     WebPipelineRunCreateResponse,
 )
 from app.services.operational_settings import OperationalSettingsDatabaseError, OperationalSettingsService
-from app.services.pipeline_run import PipelineRunDatabaseError, PipelineRunNotFoundError, PipelineRunService
+from app.services.pipeline_run import PipelineRunConflictError, PipelineRunDatabaseError, PipelineRunNotFoundError, PipelineRunService
 from app.services.web_gateway import (
     N8nWebhookClient,
     N8nWebhookError,
@@ -204,6 +204,18 @@ def get_pipeline_run(run_id: str, service: PipelineRunService = Depends(get_pipe
         return service.get(run_id)
     except PipelineRunNotFoundError as exc:
         raise HTTPException(status_code=404, detail={"error_code": "run_not_found"}) from exc
+
+
+@router.post("/runs/{run_id}/cancel", response_model=PipelineRunRead)
+def cancel_pipeline_run(run_id: str, service: PipelineRunService = Depends(get_pipeline_run_service)) -> PipelineRunRead:
+    try:
+        return service.cancel(run_id)
+    except PipelineRunNotFoundError as exc:
+        raise HTTPException(status_code=404, detail={"error_code": "run_not_found"}) from exc
+    except PipelineRunConflictError as exc:
+        raise HTTPException(status_code=409, detail={"error_code": "run_not_cancellable"}) from exc
+    except PipelineRunDatabaseError as exc:
+        raise HTTPException(status_code=500, detail={"error_code": "pipeline_run_storage_failed"}) from exc
 
 
 @router.get("/vacancies", response_model=VacancyListResponse)

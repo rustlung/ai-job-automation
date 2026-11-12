@@ -186,6 +186,62 @@ def test_web_run_generates_id_before_webhook_and_snapshots_overrides(db_session)
     assert webhook.payloads[0]["profile_selection"]["ai_automation_keywords"] is True
 
 
+def test_web_run_cancel_is_idempotent_and_terminal(db_session) -> None:
+    with make_client(db_session) as (client, _, _):
+        started = client.post(
+            "/api/runs",
+            json={"profile_ids": ["ai_automation_keywords"], "overrides": {}},
+        )
+        run_id = started.json()["run"]["run_id"]
+        first = client.post(f"/api/runs/{run_id}/cancel")
+        second = client.post(f"/api/runs/{run_id}/cancel")
+
+    assert first.status_code == 200
+    assert first.json()["status"] == "cancelled"
+    assert first.json()["stats_snapshot"]["progress"]["stage"] == "cancelled"
+    assert second.status_code == 200
+    assert second.json()["status"] == "cancelled"
+
+
+def test_public_run_detail_exposes_persisted_progress_and_completed_run_cannot_be_cancelled(db_session) -> None:
+    with make_client(db_session) as (client, _, _):
+        client.post(
+            "/internal/pipeline-runs",
+            json={
+                "run_id": "progress-run",
+                "trigger_source": "manual_n8n",
+                "profile_ids": ["ai_automation_keywords"],
+                "config_snapshot": {},
+            },
+        )
+        updated = client.patch(
+            "/internal/pipeline-runs/progress-run",
+            json={
+                "status": "running",
+                "stats_snapshot": {
+                    "progress": {
+                        "stage": "preliminary",
+                        "current": 12,
+                        "total": 20,
+                        "percent": 60,
+                        "message": "Предварительная фильтрация",
+                    }
+                },
+            },
+        )
+        detail = client.get("/api/runs/progress-run")
+        client.patch(
+            "/internal/pipeline-runs/progress-run",
+            json={"status": "completed", "stats_snapshot": {}},
+        )
+        conflict = client.post("/api/runs/progress-run/cancel")
+
+    assert updated.status_code == 200
+    assert detail.json()["stats_snapshot"]["progress"]["current"] == 12
+    assert detail.json()["stats_snapshot"]["progress"]["percent"] == 60
+    assert conflict.status_code == 409
+
+
 def test_invalid_disabled_or_non_selectable_profile_creates_no_web_run(db_session) -> None:
     with make_client(db_session) as (client, _, webhook):
         invalid = client.post("/api/runs", json={"profile_ids": ["unknown"]})

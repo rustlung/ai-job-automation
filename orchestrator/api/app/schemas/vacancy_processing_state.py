@@ -15,6 +15,7 @@ class VacancyWorkState(str, Enum):
     ENRICHMENT_RUNNING = "enrichment_running"
     ENRICHED = "enriched"
     PROCESSING_FAILED = "processing_failed"
+    CANCELLED = "cancelled"
 
 
 class ProcessingStage(str, Enum):
@@ -76,6 +77,7 @@ class VacancyProcessingBacklogSummary(BaseModel):
     enrichment_running: int = Field(ge=0)
     enriched: int = Field(ge=0)
     processing_failed: int = Field(ge=0)
+    cancelled: int = Field(ge=0)
 
 
 class VacancyProcessingBacklogRead(BaseModel):

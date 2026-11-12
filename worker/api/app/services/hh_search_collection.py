@@ -1,5 +1,6 @@
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from app.clients.hh_browser import HHBrowserInvalidUrlError, HHBrowserNavigationError, HHBrowserTimeoutError
@@ -107,7 +108,11 @@ class HHSearchCollectionService:
             authenticated_search_service=HHAuthenticatedSearchPreviewService.from_settings(settings),
         )
 
-    async def collect(self, request: HHSearchCollectionRequest) -> HHSearchCollectionResult:
+    async def collect(
+        self,
+        request: HHSearchCollectionRequest,
+        on_profile_complete: Callable[[int, int, int], Awaitable[None]] | None = None,
+    ) -> HHSearchCollectionResult:
         run_id = self._run_id()
         started_at = time.perf_counter()
         try:
@@ -144,6 +149,8 @@ class HHSearchCollectionService:
                         browser_session=browser_session,
                     )
                 )
+                if on_profile_complete is not None:
+                    await on_profile_complete(len(profile_results), len(profiles), len(raw_vacancies))
 
         logger.info("hh_collection_deduplication_started run_id=%s raw_vacancy_count=%s", run_id, len(raw_vacancies))
         try:

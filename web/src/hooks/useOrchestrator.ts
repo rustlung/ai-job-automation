@@ -31,6 +31,18 @@ export function useRun(runId: string) {
   });
 }
 
+export function useCancelRun() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (runId: string) => orchestratorApi.cancelRun(runId),
+    onSuccess: (run) => {
+      queryClient.setQueryData(["run", run.run_id], run);
+      queryClient.invalidateQueries({ queryKey: ["runs"] });
+      queryClient.invalidateQueries({ queryKey: ["diagnostic-run", run.run_id] });
+    }
+  });
+}
+
 export function useVacancies(filters: VacancyFilters) {
   return useQuery({
     queryKey: ["vacancies", filters],

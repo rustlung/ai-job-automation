@@ -18,6 +18,7 @@ from app.services.hh_search_collection import (
 from app.services.hh_search_profiles import HHSearchProfileRegistry, HHUnknownSearchProfileError
 from app.services.pipeline_persistence import HHCollectFilterEnrichAndPersistService
 from app.services.pipeline_resume import WorkerPipelineResumeService
+from app.services.pipeline_progress import PipelineProgressReporter, WorkerPipelineCancelledError
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +165,17 @@ class WorkerPipelineRunManager:
     async def _execute(self, record: _PipelineRunRecord, request: HHCollectFilterEnrichAndPersistRequest) -> None:
         started_at = time.perf_counter()
         try:
-            result = await self._pipeline_service_factory().collect_filter_enrich_and_persist(request)
+            service = self._pipeline_service_factory()
+            client = getattr(service, "orchestrator_client", None)
+            if client is None:
+                result = await service.collect_filter_enrich_and_persist(request)
+            else:
+                reporter = PipelineProgressReporter(client, record.run_id)
+
+                async def report(stage: str, current: int | None, total: int | None, message: str, details: dict | None = None) -> None:
+                    await reporter.checkpoint(stage, current=current, total=total, message=message, details=details)
+
+                result = await service.collect_filter_enrich_and_persist(request, on_progress=report)
             status, result_available, error_code, error_summary = self._result_state(result)
             await self._set_terminal(
                 record,
@@ -181,6 +192,16 @@ class WorkerPipelineRunManager:
                 result_available,
                 self._duration_ms(started_at),
             )
+        except WorkerPipelineCancelledError:
+            await self._set_terminal(
+                record,
+                WorkerPipelineRunStatus.CANCELLED,
+                result_available=False,
+                error_code=None,
+                error_summary=None,
+                summary=None,
+            )
+            logger.info("pipeline_async_cancelled run_id=%s duration_ms=%s", record.run_id, self._duration_ms(started_at))
         except asyncio.CancelledError:
             await self._set_terminal(
                 record,
@@ -257,6 +278,16 @@ class WorkerPipelineRunManager:
                 worker_id=settings.worker_id,
                 lease_seconds=settings.processing_claim_lease_seconds,
             ).resume(record.run_id)
+            if result.summary.resume_status == "cancelled":
+                await self._set_terminal(
+                    record,
+                    WorkerPipelineRunStatus.CANCELLED,
+                    result_available=False,
+                    error_code=None,
+                    error_summary=None,
+                    summary=result.summary,
+                )
+                return
             await self._set_terminal(
                 record,
                 WorkerPipelineRunStatus.COMPLETED,
@@ -266,6 +297,11 @@ class WorkerPipelineRunManager:
                 summary=result.summary,
             )
             logger.info("pipeline_resume_completed run_id=%s status=%s duration_ms=%s", record.run_id, result.summary.resume_status, self._duration_ms(started_at))
+        except WorkerPipelineCancelledError:
+            await self._set_terminal(
+                record, WorkerPipelineRunStatus.CANCELLED, result_available=False,
+                error_code=None, error_summary=None, summary=None,
+            )
         except OrchestratorClientError:
             await self._set_terminal(
                 record, WorkerPipelineRunStatus.FAILED, result_available=False,

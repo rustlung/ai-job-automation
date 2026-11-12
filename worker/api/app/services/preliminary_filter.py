@@ -1,5 +1,6 @@
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -576,13 +577,18 @@ class HHCollectAndPreliminaryFilterService:
         collection = await self.collect(request)
         return await self.filter_collection(collection, request, started_at=started_at)
 
-    async def collect(self, request: HHCollectAndPreliminaryFilterRequest) -> HHSearchCollectionResult:
-        return await self.collection_service.collect(
-            HHSearchCollectionRequest(
-                profile_ids=request.profile_ids,
-                max_pages_override=request.max_pages_override,
-            )
+    async def collect(
+        self,
+        request: HHCollectAndPreliminaryFilterRequest,
+        on_profile_complete: Callable[[int, int, int], Awaitable[None]] | None = None,
+    ) -> HHSearchCollectionResult:
+        payload = HHSearchCollectionRequest(
+            profile_ids=request.profile_ids,
+            max_pages_override=request.max_pages_override,
         )
+        if on_profile_complete is None:
+            return await self.collection_service.collect(payload)
+        return await self.collection_service.collect(payload, on_profile_complete=on_profile_complete)
 
     async def filter_collection(
         self,

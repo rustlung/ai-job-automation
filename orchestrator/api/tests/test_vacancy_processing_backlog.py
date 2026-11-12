@@ -90,6 +90,17 @@ def test_discovery_creates_idempotent_run_scoped_state_and_immutable_snapshot(db
     assert len(list(db_session.scalars(select(VacancyProcessingState)).all())) == 2
 
 
+def test_cancelled_work_is_terminal_and_not_claimable(db_session) -> None:
+    discover(db_session, discovery_item("cancel-me"), run_id="cancelled-run")
+    states = VacancyProcessingStateRepository(db_session)
+    assert states.cancel_run_work("cancelled-run") == 1
+    db_session.commit()
+
+    record = db_session.scalar(select(VacancyProcessingState).where(VacancyProcessingState.run_id == "cancelled-run"))
+    assert record.state == VacancyWorkState.CANCELLED.value
+    assert states.claim("cancelled-run", ProcessingStage.PRELIMINARY, 10, "worker", 60) == []
+
+
 def test_preliminary_and_final_persistence_drive_work_state_transitions(db_session) -> None:
     discover(db_session, discovery_item("rejected"), discovery_item("kept"), discovery_item("failed"), discovery_item("enrichment-failed"))
     persist_outcome(db_session, "rejected", outcome="rejected_by_policy", state="preliminary_rejected")
@@ -269,6 +280,7 @@ def test_backlog_summary_and_internal_read_claim_contract(db_session, monkeypatc
         "enrichment_running": 0,
         "enriched": 1,
         "processing_failed": 1,
+        "cancelled": 0,
     }
     assert [item["preview_snapshot"]["external_id"] for item in backlog.json()["items"]] == ["3", "4", "5"]
     assert len(first_claim.json()["items"]) == 3

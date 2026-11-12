@@ -3,7 +3,7 @@ import type { PipelineRunStatus, PipelineRunTriggerSource } from "../types/api";
 const businessTimeZone = "Europe/Samara";
 
 export const isTerminalRunStatus = (status: PipelineRunStatus): boolean =>
-  ["completed", "completed_with_errors", "failed"].includes(status);
+  ["completed", "completed_with_errors", "failed", "cancelled"].includes(status);
 
 export const runPollingInterval = (status: PipelineRunStatus | undefined): number | false =>
   status && !isTerminalRunStatus(status) ? 4000 : false;
