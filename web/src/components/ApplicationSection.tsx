@@ -1,9 +1,10 @@
-import { Pencil, Plus, X } from "lucide-react";
+import { Pencil, Plus, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import type { ReactNode } from "react";
 
 import { ApplicationStatusBadge } from "./ApplicationStatusBadge";
-import { useCreateApplication, useUpdateApplication } from "../hooks/useOrchestrator";
+import { ConfirmationDialog } from "./ConfirmationDialog";
+import { useCreateApplication, useDeleteApplication, useUpdateApplication } from "../hooks/useOrchestrator";
 import { applicationStatusLabels } from "../lib/applicationStatus";
 import { formatDateTime } from "../lib/format";
 import type { Application, ApplicationCreateRequest, ApplicationPatchRequest, ApplicationStatus, VacancyApplicationDetail } from "../types/api";
@@ -93,13 +94,15 @@ function FieldLabel({ children }: { children: ReactNode }) {
   return <label className="grid gap-1 text-sm font-medium text-zinc-700">{children}</label>;
 }
 
-function ApplicationForm({ vacancyId, application, onCancel, onSaved }: { vacancyId: number; application?: Application; onCancel: () => void; onSaved: () => void }) {
+function ApplicationForm({ vacancyId, application, onCancel, onSaved, onDeleted }: { vacancyId: number; application?: Application; onCancel: () => void; onSaved: () => void; onDeleted?: () => void }) {
   const [values, setValues] = useState(() => formValues(application));
   const [message, setMessage] = useState<string | null>(null);
   const create = useCreateApplication();
   const update = useUpdateApplication();
-  const pending = create.isPending || update.isPending;
-  const error = create.error ?? update.error;
+  const remove = useDeleteApplication();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const pending = create.isPending || update.isPending || remove.isPending;
+  const error = create.error ?? update.error ?? remove.error;
 
   const setValue = <K extends keyof FormValues>(key: K, value: FormValues[K]) => setValues((current) => ({ ...current, [key]: value }));
   const submit = async (event: React.FormEvent) => {
@@ -130,14 +133,15 @@ function ApplicationForm({ vacancyId, application, onCancel, onSaved }: { vacanc
     <FieldLabel>Ответ работодателя<textarea value={values.employer_response} onChange={(event) => setValue("employer_response", event.target.value)} rows={4} className="border border-line bg-white px-3 py-2 font-normal" /></FieldLabel>
     <FieldLabel>Заметки<textarea value={values.notes} onChange={(event) => setValue("notes", event.target.value)} rows={3} className="border border-line bg-white px-3 py-2 font-normal" /></FieldLabel>
     {error && <p role="alert" className="text-sm text-rose-700">Не удалось сохранить отклик. Введённые данные сохранены в форме.</p>}{message && <p role="status" className="text-sm text-emerald-700">{message}</p>}
-    <div className="flex flex-wrap gap-2"><button type="submit" disabled={pending} className="bg-zinc-900 px-3 py-2 text-sm font-medium text-white disabled:bg-zinc-400">{pending ? "Сохранение…" : "Сохранить"}</button><button type="button" onClick={onCancel} disabled={pending} className="inline-flex items-center gap-2 border border-line bg-white px-3 py-2 text-sm font-medium text-zinc-700"><X size={16} />Отмена</button></div>
+    <div className="flex flex-wrap items-center justify-between gap-2">{application ? <button type="button" onClick={() => setConfirmDelete(true)} disabled={pending} className="inline-flex items-center gap-2 border border-danger/40 px-3 py-2 text-sm font-medium text-danger disabled:opacity-50"><Trash2 size={16} />Удалить</button> : <span />}<div className="flex flex-wrap gap-2"><button type="button" onClick={onCancel} disabled={pending} className="inline-flex items-center gap-2 border border-line bg-white px-3 py-2 text-sm font-medium text-zinc-700"><X size={16} />Отмена</button><button type="submit" disabled={pending} className="bg-zinc-900 px-3 py-2 text-sm font-medium text-white disabled:bg-zinc-400">{pending ? "Сохранение…" : "Сохранить"}</button></div></div>
+    {application ? <ConfirmationDialog open={confirmDelete} title="Удалить отклик" onCancel={() => setConfirmDelete(false)} onConfirm={() => remove.mutate(application.id, { onSuccess: () => { setConfirmDelete(false); onDeleted?.(); } })} pending={remove.isPending}>Удалить отклик на эту вакансию? Это действие нельзя отменить.</ConfirmationDialog> : null}
   </form>;
 }
 
 function ApplicationCard({ item }: { item: VacancyApplicationDetail }) {
   const [editing, setEditing] = useState(false);
   const application = item.application;
-  if (editing) return <ApplicationForm key={application.id} vacancyId={application.vacancy_id} application={application} onCancel={() => setEditing(false)} onSaved={() => setEditing(false)} />;
+  if (editing) return <ApplicationForm key={application.id} vacancyId={application.vacancy_id} application={application} onCancel={() => setEditing(false)} onSaved={() => setEditing(false)} onDeleted={() => setEditing(false)} />;
   return <article className="border border-line bg-white p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div className="flex flex-wrap items-center gap-2"><ApplicationStatusBadge status={application.status} />{item.current && <span className="text-xs font-medium text-zinc-500">Текущий отклик</span>}</div><button type="button" onClick={() => setEditing(true)} className="inline-flex items-center gap-2 border border-line bg-white px-3 py-1.5 text-sm font-medium text-zinc-700"><Pencil size={15} />Изменить</button></div><p className="mt-3 text-xs text-zinc-500">{item.source}:{item.external_id}{item.representative_member ? " · вакансия-представитель" : ""}</p><dl className="mt-3 grid gap-3 text-sm md:grid-cols-2"><div><dt className="text-zinc-500">Дата отклика</dt><dd>{formatDateTime(application.applied_at)}</dd></div><div><dt className="text-zinc-500">Платформа</dt><dd>{application.platform ?? "—"}</dd></div>{application.response_received_at && <div><dt className="text-zinc-500">Ответ получен</dt><dd>{formatDateTime(application.response_received_at)}</dd></div>}{application.interview_at && <div><dt className="text-zinc-500">Интервью</dt><dd>{formatDateTime(application.interview_at)}</dd></div>}{application.offer_at && <div><dt className="text-zinc-500">Оффер</dt><dd>{formatDateTime(application.offer_at)}</dd></div>}</dl>{application.application_text && <div className="mt-4"><p className="text-sm font-medium">Текст отклика</p><p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-zinc-700">{application.application_text}</p></div>}{application.employer_response && <div className="mt-4"><p className="text-sm font-medium">Ответ работодателя</p><p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-zinc-700">{application.employer_response}</p></div>}{application.notes && <div className="mt-4"><p className="text-sm font-medium">Заметки</p><p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-zinc-700">{application.notes}</p></div>}</article>;
 }
 

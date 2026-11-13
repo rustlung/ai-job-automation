@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -44,13 +44,15 @@ const useCreateApplication = vi.fn();
 const useUpdateApplication = vi.fn();
 const useUpdateVacancyUserState = vi.fn();
 const useDeleteVacancy = vi.fn();
+const useDeleteApplication = vi.fn();
 vi.mock("../hooks/useOrchestrator", () => ({
   useVacancyDetail: (...args: unknown[]) => useVacancyDetail(...args),
   useSearchProfiles: () => useSearchProfiles(),
   useCreateApplication: () => useCreateApplication(),
   useUpdateApplication: () => useUpdateApplication(),
   useUpdateVacancyUserState: () => useUpdateVacancyUserState(),
-  useDeleteVacancy: () => useDeleteVacancy()
+  useDeleteVacancy: () => useDeleteVacancy(),
+  useDeleteApplication: () => useDeleteApplication()
 }));
 
 function renderPage(entry: string | { pathname: string; state?: unknown } = "/vacancies/business%3Aabc123") {
@@ -65,6 +67,7 @@ describe("VacancyDetailPage", () => {
     useUpdateApplication.mockReturnValue({ isPending: false, error: null, mutateAsync: vi.fn() });
     useUpdateVacancyUserState.mockReturnValue({ isPending: false, isError: false, mutateAsync: vi.fn().mockResolvedValue({}) });
     useDeleteVacancy.mockReturnValue({ isPending: false, isError: false, mutate: vi.fn() });
+    useDeleteApplication.mockReturnValue({ isPending: false, error: null, mutate: vi.fn() });
   });
   afterEach(() => cleanup());
 
@@ -90,6 +93,7 @@ describe("VacancyDetailPage", () => {
     vi.stubGlobal("confirm", vi.fn(() => true));
     renderPage();
     fireEvent.click(screen.getByRole("button", { name: "Удалить" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Удалить" }));
     expect(mutate).toHaveBeenCalledWith("business:abc123", expect.any(Object));
     expect(screen.getByText("Vacancies list")).toBeInTheDocument();
   });

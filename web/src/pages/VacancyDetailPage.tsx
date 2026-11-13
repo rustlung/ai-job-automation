@@ -1,7 +1,9 @@
 import { ArrowLeft, ExternalLink, Trash2 } from "lucide-react";
+import { useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { VacancyDescription } from "../components/VacancyDescription";
+import { ConfirmationDialog } from "../components/ConfirmationDialog";
 import { ApplicationSection } from "../components/ApplicationSection";
 import { VacancyUserStateSection } from "../components/VacancyUserStateSection";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
@@ -42,6 +44,7 @@ export function VacancyDetailPage() {
   const detail = useVacancyDetail(presentationKey);
   const profiles = useSearchProfiles();
   const deleteVacancy = useDeleteVacancy();
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const backTarget = ((location.state as { from?: ListLocation } | null)?.from) ?? { pathname: "/vacancies", search: "" };
   const profileMetadata = profiles.data?.profiles ?? [];
 
@@ -58,18 +61,16 @@ export function VacancyDetailPage() {
   const experience = experienceLabel(vacancy.experience_min_years, vacancy.experience_max_years);
   const analysis = vacancy.analysis;
   const preliminary = vacancy.preliminary_outcome;
-  const removeVacancy = () => {
-    if (!window.confirm(`Удалить вакансию «${vacancy.title}» в компании ${vacancy.company}? Это действие скроет её из списка вакансий. Связанные отклики останутся в CRM.`)) return;
-    deleteVacancy.mutate(vacancy.presentation_key, { onSuccess: () => navigate(backTarget) });
-  };
+  const removeVacancy = () => deleteVacancy.mutate(vacancy.presentation_key, { onSuccess: () => navigate(backTarget) });
 
   return <div className="space-y-6">
     <header className="space-y-4">
       <Link to={backTarget} className="inline-flex items-center gap-2 text-sm font-medium text-zinc-600 hover:text-zinc-950"><ArrowLeft size={16} />Назад к вакансиям</Link>
-      <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-sm font-medium text-zinc-500">{vacancy.company}</p><h1 className="mt-1 max-w-4xl text-2xl font-semibold leading-tight">{vacancy.title}</h1></div><div className="flex flex-wrap gap-2">{vacancy.url && <a href={vacancy.url} target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-2 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-zinc-700"><ExternalLink size={17} />Открыть оригинал</a>}<button type="button" onClick={removeVacancy} disabled={deleteVacancy.isPending} className="inline-flex items-center gap-2 border border-danger/40 px-4 py-2.5 text-sm font-medium text-danger disabled:opacity-50"><Trash2 size={17} />Удалить</button></div></div>
+      <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-sm font-medium text-zinc-500">{vacancy.company}</p><h1 className="mt-1 max-w-4xl text-2xl font-semibold leading-tight">{vacancy.title}</h1></div><div className="flex flex-wrap gap-2">{vacancy.url && <a href={vacancy.url} target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-2 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-zinc-700"><ExternalLink size={17} />Открыть оригинал</a>}<button type="button" onClick={() => setConfirmDelete(true)} disabled={deleteVacancy.isPending} className="inline-flex items-center gap-2 border border-danger/40 px-4 py-2.5 text-sm font-medium text-danger disabled:opacity-50"><Trash2 size={17} />Удалить</button></div></div>
     </header>
 
     {deleteVacancy.isError ? <p role="alert" className="text-sm text-danger">Не удалось удалить вакансию.</p> : null}
+    <ConfirmationDialog open={confirmDelete} title="Удалить вакансию" onCancel={() => setConfirmDelete(false)} onConfirm={removeVacancy} pending={deleteVacancy.isPending}>Удалить вакансию «{vacancy.title}»? Связанные отклики останутся в CRM.</ConfirmationDialog>
 
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
       <main className="min-w-0 space-y-6"><VacancyDescription description={vacancy.description} /><ApplicationSection applications={vacancy.applications} vacancyId={vacancy.vacancy_id} /><VacancyUserStateSection state={vacancy.user_state} />

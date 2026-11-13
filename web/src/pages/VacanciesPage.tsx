@@ -1,34 +1,91 @@
-import { ChevronLeft, ChevronRight, ChevronsLeft, RotateCcw, SlidersHorizontal, Trash2 } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  RotateCcw,
+  SlidersHorizontal,
+  Trash2,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { ApplicationStatusBadge } from "../components/ApplicationStatusBadge";
 import { vacancyStatusLabels } from "../lib/vacancyStatus";
-import { VacancyListUserCommentControl, VacancyListUserPriorityControl, VacancyListVacancyStatusControl } from "../components/VacancyListUserStateControls";
+import {
+  VacancyListUserCommentControl,
+  VacancyListUserPriorityControl,
+  VacancyListVacancyStatusControl,
+} from "../components/VacancyListUserStateControls";
 import { ManualVacancyForm } from "../components/ManualVacancyForm";
+import { ConfirmationDialog } from "../components/ConfirmationDialog";
 import { applicationStatusLabels } from "../lib/applicationStatus";
-import { useDeleteVacancy, useSearchProfiles, useVacancies } from "../hooks/useOrchestrator";
+import {
+  useBulkDeleteVacancies,
+  useSearchProfiles,
+  useVacancies,
+} from "../hooks/useOrchestrator";
 import { formatDate } from "../lib/format";
-import type { ApplicationStatus, VacancyApplicationStatusFilter, VacancyFilters, VacancyPriority, VacancyProcessingFilter, VacancyStatusFilter, VacancyUserPriorityFilter } from "../types/api";
-import { activeDatePreset, dateRangeForPreset, type DatePreset } from "../features/vacancies/dateFilters";
+import type {
+  ApplicationStatus,
+  BulkDeleteResult,
+  VacancyApplicationStatusFilter,
+  VacancyFilters,
+  VacancyPriority,
+  VacancyProcessingFilter,
+  VacancyStatusFilter,
+  VacancyUserPriorityFilter,
+} from "../types/api";
+import {
+  activeDatePreset,
+  dateRangeForPreset,
+  type DatePreset,
+} from "../features/vacancies/dateFilters";
 
 const defaultPageSize = 25;
 const priorityOptions: VacancyPriority[] = ["P1", "P2", "P3", "ALT"];
-const applicationStatusOptions: Array<{ value: VacancyApplicationStatusFilter; label: string }> = [
+const applicationStatusOptions: Array<{
+  value: VacancyApplicationStatusFilter;
+  label: string;
+}> = [
   { value: "none", label: "Без отклика" },
-  ...Object.entries(applicationStatusLabels).map(([value, label]) => ({ value: value as ApplicationStatus, label }))
+  ...Object.entries(applicationStatusLabels).map(([value, label]) => ({
+    value: value as ApplicationStatus,
+    label,
+  })),
 ];
-const vacancyStatusOptions: Array<{ value: VacancyStatusFilter; label: string }> = Object.entries(vacancyStatusLabels).map(([value, label]) => ({ value: value as VacancyStatusFilter, label }));
-const userPriorityOptions: Array<{ value: VacancyUserPriorityFilter; label: string }> = [{ value: "P1", label: "P1" }, { value: "P2", label: "P2" }, { value: "P3", label: "P3" }, { value: "none", label: "Не оценено" }];
-const processingOptions: Array<{ value: VacancyProcessingFilter; label: string }> = [{ value: "working", label: "Рабочие" }, { value: "rejected", label: "Отклонённые" }, { value: "errors", label: "Ошибки обработки" }, { value: "all", label: "Все" }];
+const vacancyStatusOptions: Array<{
+  value: VacancyStatusFilter;
+  label: string;
+}> = Object.entries(vacancyStatusLabels).map(([value, label]) => ({
+  value: value as VacancyStatusFilter,
+  label,
+}));
+const userPriorityOptions: Array<{
+  value: VacancyUserPriorityFilter;
+  label: string;
+}> = [
+  { value: "P1", label: "P1" },
+  { value: "P2", label: "P2" },
+  { value: "P3", label: "P3" },
+  { value: "none", label: "Не оценено" },
+];
+const processingOptions: Array<{
+  value: VacancyProcessingFilter;
+  label: string;
+}> = [
+  { value: "working", label: "Рабочие" },
+  { value: "rejected", label: "Отклонённые" },
+  { value: "errors", label: "Ошибки обработки" },
+  { value: "all", label: "Все" },
+];
 const presets: Array<{ id: DatePreset; label: string }> = [
   { id: "today", label: "Сегодня" },
   { id: "3d", label: "3 дня" },
   { id: "7d", label: "7 дней" },
   { id: "14d", label: "14 дней" },
   { id: "30d", label: "30 дней" },
-  { id: "all", label: "Всё время" }
+  { id: "all", label: "Всё время" },
 ];
 
 function readFilters(searchParams: URLSearchParams): VacancyFilters {
@@ -42,54 +99,88 @@ function readFilters(searchParams: URLSearchParams): VacancyFilters {
     priority: searchParams.getAll("priority") as VacancyPriority[],
     track: searchParams.get("track") || undefined,
     profile_id: searchParams.get("profile_id") || undefined,
-    application_status: searchParams.get("application_status") as VacancyApplicationStatusFilter | undefined,
-    vacancy_status: searchParams.get("vacancy_status") as VacancyStatusFilter | undefined,
-    user_priority: searchParams.get("user_priority") as VacancyUserPriorityFilter | undefined,
-    processing: (searchParams.get("processing") as VacancyProcessingFilter | null) ?? "working",
+    application_status: searchParams.get("application_status") as
+      VacancyApplicationStatusFilter | undefined,
+    vacancy_status: searchParams.get("vacancy_status") as
+      VacancyStatusFilter | undefined,
+    user_priority: searchParams.get("user_priority") as
+      VacancyUserPriorityFilter | undefined,
+    processing:
+      (searchParams.get("processing") as VacancyProcessingFilter | null) ??
+      "working",
     run_id: searchParams.get("run_id") || undefined,
     search: searchParams.get("search") || undefined,
     limit: [25, 50, 100].includes(limit) ? limit : defaultPageSize,
     offset: Math.max(0, offset),
     sort: sort === "final_score" || sort === "priority" ? sort : "first_seen",
-    sort_direction: direction === "asc" ? "asc" : "desc"
+    sort_direction: direction === "asc" ? "asc" : "desc",
   };
 }
 
-function profileLabel(profileId: string, profiles: Array<{ id: string; name: string }>): string {
-  return profiles.find((profile) => profile.id === profileId)?.name ?? profileId;
+function profileLabel(
+  profileId: string,
+  profiles: Array<{ id: string; name: string }>,
+): string {
+  return (
+    profiles.find((profile) => profile.id === profileId)?.name ?? profileId
+  );
 }
 
 export function VacanciesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [manualFormOpen, setManualFormOpen] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [bulkResult, setBulkResult] = useState<string | null>(null);
   const location = useLocation();
   const filters = readFilters(searchParams);
   const profiles = useSearchProfiles();
-  const deleteVacancy = useDeleteVacancy();
-  const enabledProfiles = profiles.data?.profiles.filter((profile) => profile.enabled) ?? [];
+  const bulkDeleteVacancies = useBulkDeleteVacancies();
+  const enabledProfiles =
+    profiles.data?.profiles.filter((profile) => profile.enabled) ?? [];
 
-  const updateFilters = useCallback((updates: Record<string, string | string[] | undefined>, resetOffset = true) => {
-    const next = new URLSearchParams(searchParams);
-    Object.entries(updates).forEach(([key, value]) => {
-      next.delete(key);
-      if (Array.isArray(value)) value.forEach((entry) => next.append(key, entry));
-      else if (value) next.set(key, value);
-    });
-    if (resetOffset) next.delete("offset");
-    setSearchParams(next);
-  }, [searchParams, setSearchParams]);
+  const updateFilters = useCallback(
+    (
+      updates: Record<string, string | string[] | undefined>,
+      resetOffset = true,
+    ) => {
+      const next = new URLSearchParams(searchParams);
+      Object.entries(updates).forEach(([key, value]) => {
+        next.delete(key);
+        if (Array.isArray(value))
+          value.forEach((entry) => next.append(key, entry));
+        else if (value) next.set(key, value);
+      });
+      if (resetOffset) next.delete("offset");
+      setSearchParams(next);
+    },
+    [searchParams, setSearchParams],
+  );
 
   const profileMetadataAvailable = Boolean(profiles.data && !profiles.isError);
   const profileIsInvalid = Boolean(
-    filters.profile_id && profileMetadataAvailable && !enabledProfiles.some((profile) => profile.id === filters.profile_id)
+    filters.profile_id &&
+    profileMetadataAvailable &&
+    !enabledProfiles.some((profile) => profile.id === filters.profile_id),
   );
   useEffect(() => {
     if (profileIsInvalid) updateFilters({ profile_id: undefined });
   }, [profileIsInvalid, updateFilters]);
 
-  const resolvedProfileId = profileMetadataAvailable && !profileIsInvalid ? filters.profile_id : undefined;
+  const resolvedProfileId =
+    profileMetadataAvailable && !profileIsInvalid
+      ? filters.profile_id
+      : undefined;
   const vacancies = useVacancies({ ...filters, profile_id: resolvedProfileId });
-  const selectedDatePreset = activeDatePreset(filters.date_from, filters.date_to);
+  const selectionScope = searchParams.toString();
+  useEffect(() => {
+    setSelectedKeys([]);
+    setConfirmBulkDelete(false);
+  }, [selectionScope]);
+  const selectedDatePreset = activeDatePreset(
+    filters.date_from,
+    filters.date_to,
+  );
 
   const setPreset = (preset: DatePreset) => {
     const range = dateRangeForPreset(preset);
@@ -102,37 +193,494 @@ export function VacanciesPage() {
     updateFilters({ priority: next });
   };
   const hasPreviousPage = filters.offset > 0;
-  const hasNextPage = Boolean(vacancies.data && filters.offset + vacancies.data.items.length < vacancies.data.total);
-  const deleteCurrentVacancy = (vacancy: { presentation_key: string; company: string; title: string }) => {
-    if (!window.confirm(`Удалить вакансию «${vacancy.title}» в компании ${vacancy.company}? Это действие скроет её из списка вакансий. Связанные отклики останутся в CRM.`)) return;
-    deleteVacancy.mutate(vacancy.presentation_key);
-  };
+  const hasNextPage = Boolean(
+    vacancies.data &&
+    filters.offset + vacancies.data.items.length < vacancies.data.total,
+  );
+  const pageKeys =
+    vacancies.data?.items.map((vacancy) => vacancy.presentation_key) ?? [];
+  const allPageSelected =
+    pageKeys.length > 0 && pageKeys.every((key) => selectedKeys.includes(key));
+  const toggleSelection = (presentationKey: string) =>
+    setSelectedKeys((current) =>
+      current.includes(presentationKey)
+        ? current.filter((key) => key !== presentationKey)
+        : [...current, presentationKey],
+    );
+  const toggleAll = () => setSelectedKeys(allPageSelected ? [] : pageKeys);
+  const selectedVacancy =
+    selectedKeys.length === 1
+      ? vacancies.data?.items.find(
+          (vacancy) => vacancy.presentation_key === selectedKeys[0],
+        )
+      : undefined;
+  const bulkResultMessage = (result: BulkDeleteResult) =>
+    `Удалено: ${result.deleted_count}${result.already_deleted_count ? ` · Уже удалено: ${result.already_deleted_count}` : ""}${result.not_found_count ? ` · Не найдено: ${result.not_found_count}` : ""}`;
+  const deleteSelected = () =>
+    bulkDeleteVacancies.mutate(selectedKeys, {
+      onSuccess: (result) => {
+        setSelectedKeys([]);
+        setConfirmBulkDelete(false);
+        setBulkResult(bulkResultMessage(result));
+      },
+    });
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
-        <div><p className="text-sm font-medium text-zinc-500">Логические вакансии</p><h1 className="mt-1 text-2xl font-semibold">Vacancies</h1></div>
-        <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setManualFormOpen(true)} className="bg-zinc-900 px-3 py-2 text-sm font-medium text-white">Добавить вакансию</button><button type="button" onClick={() => setSearchParams(new URLSearchParams())} className="inline-flex items-center gap-2 border border-line bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"><RotateCcw size={16} />Сбросить фильтры</button></div>
+        <div>
+          <p className="text-sm font-medium text-zinc-500">
+            Логические вакансии
+          </p>
+          <h1 className="mt-1 text-2xl font-semibold">Vacancies</h1>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setManualFormOpen(true)}
+            className="bg-zinc-900 px-3 py-2 text-sm font-medium text-white"
+          >
+            Добавить вакансию
+          </button>
+          <button
+            type="button"
+            onClick={() => setSearchParams(new URLSearchParams())}
+            className="inline-flex items-center gap-2 border border-line bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+          >
+            <RotateCcw size={16} />
+            Сбросить фильтры
+          </button>
+        </div>
       </header>
 
       <section className="space-y-4 border border-line bg-white p-4">
-        <div><p className="text-sm font-medium text-zinc-800">Период первого обнаружения</p><div className="mt-2 flex flex-wrap gap-2">{presets.map((preset) => { const isActive = selectedDatePreset === preset.id; return <button key={preset.id} type="button" aria-pressed={isActive} onClick={() => setPreset(preset.id)} className={`border px-3 py-1.5 text-sm ${isActive ? "border-zinc-900 bg-zinc-900 font-semibold text-white shadow-sm" : "border-line text-zinc-700 hover:border-zinc-500 hover:bg-zinc-50"}`}>{preset.label}</button>; })}</div></div>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <label className="grid gap-1 text-sm font-medium text-zinc-700">С даты<input type="date" value={filters.date_from ?? ""} onChange={(event) => updateFilters({ date_from: event.target.value || undefined })} className="border border-line px-3 py-2 font-normal" /></label>
-          <label className="grid gap-1 text-sm font-medium text-zinc-700">По дату<input type="date" value={filters.date_to ?? ""} onChange={(event) => updateFilters({ date_to: event.target.value || undefined })} className="border border-line px-3 py-2 font-normal" /></label>
-          <label className="grid gap-1 text-sm font-medium text-zinc-700">Профиль поиска<select value={resolvedProfileId ?? ""} disabled={profiles.isLoading || profiles.isError} onChange={(event) => updateFilters({ profile_id: event.target.value || undefined })} className="border border-line bg-white px-3 py-2 font-normal disabled:cursor-not-allowed disabled:bg-zinc-100"><option value="">{profiles.isLoading ? "Загрузка профилей…" : profiles.isError ? "Профили недоступны" : "Все профили"}</option>{enabledProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select>{profiles.isError && <span role="status" className="text-xs font-normal text-zinc-500">Фильтр профилей недоступен.</span>}</label>
-          <label className="grid gap-1 text-sm font-medium text-zinc-700">Статус отклика<select value={filters.application_status ?? ""} onChange={(event) => updateFilters({ application_status: event.target.value || undefined })} className="border border-line bg-white px-3 py-2 font-normal"><option value="">Все</option>{applicationStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-          <label className="grid gap-1 text-sm font-medium text-zinc-700">Статус вакансии<select value={filters.vacancy_status ?? ""} onChange={(event) => updateFilters({ vacancy_status: event.target.value || undefined })} className="border border-line bg-white px-3 py-2 font-normal"><option value="">Все</option>{vacancyStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-          <label className="grid gap-1 text-sm font-medium text-zinc-700">Мой приоритет<select value={filters.user_priority ?? ""} onChange={(event) => updateFilters({ user_priority: event.target.value || undefined })} className="border border-line bg-white px-3 py-2 font-normal"><option value="">Все</option>{userPriorityOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-          <label className="grid gap-1 text-sm font-medium text-zinc-700">Обработка<select value={filters.processing ?? "working"} onChange={(event) => updateFilters({ processing: event.target.value })} className="border border-line bg-white px-3 py-2 font-normal">{processingOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-          <label className="grid gap-1 text-sm font-medium text-zinc-700">Поиск по компании или вакансии<input value={filters.search ?? ""} onChange={(event) => updateFilters({ search: event.target.value || undefined })} className="border border-line px-3 py-2 font-normal" placeholder="Например, Python" /></label>
+        <div>
+          <p className="text-sm font-medium text-zinc-800">
+            Период первого обнаружения
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {presets.map((preset) => {
+              const isActive = selectedDatePreset === preset.id;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  aria-pressed={isActive}
+                  onClick={() => setPreset(preset.id)}
+                  className={`border px-3 py-1.5 text-sm ${isActive ? "border-zinc-900 bg-zinc-900 font-semibold text-white shadow-sm" : "border-line text-zinc-700 hover:border-zinc-500 hover:bg-zinc-50"}`}
+                >
+                  {preset.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
-        <fieldset><legend className="text-sm font-medium text-zinc-700">Приоритет</legend><div className="mt-2 flex flex-wrap gap-3">{priorityOptions.map((priority) => <label key={priority} className="inline-flex items-center gap-2 text-sm text-zinc-700"><input type="checkbox" checked={filters.priority?.includes(priority) ?? false} onChange={() => togglePriority(priority)} />{priority}</label>)}</div></fieldset>
-        <details className="border-t border-line pt-3"><summary className="flex cursor-pointer items-center gap-2 text-sm font-medium text-zinc-700"><SlidersHorizontal size={16} />Дополнительные фильтры</summary><div className="mt-3 grid gap-3 md:grid-cols-3"><label className="grid gap-1 text-sm font-medium text-zinc-700">Track<input value={filters.track ?? ""} onChange={(event) => updateFilters({ track: event.target.value || undefined })} className="border border-line px-3 py-2 font-normal" placeholder="Например, main" /></label><label className="grid gap-1 text-sm font-medium text-zinc-700">Run ID<input value={filters.run_id ?? ""} onChange={(event) => updateFilters({ run_id: event.target.value || undefined })} className="border border-line px-3 py-2 font-normal" /></label><label className="grid gap-1 text-sm font-medium text-zinc-700">Сортировка<select value={`${filters.sort}:${filters.sort_direction}`} onChange={(event) => { const [sort, sort_direction] = event.target.value.split(":"); updateFilters({ sort, sort_direction }); }} className="border border-line bg-white px-3 py-2 font-normal"><option value="first_seen:desc">Сначала новые</option><option value="first_seen:asc">Сначала старые</option><option value="final_score:desc">Score: выше</option><option value="final_score:asc">Score: ниже</option><option value="priority:asc">Priority: выше</option><option value="priority:desc">Priority: ниже</option></select></label></div></details>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <label className="grid gap-1 text-sm font-medium text-zinc-700">
+            С даты
+            <input
+              type="date"
+              value={filters.date_from ?? ""}
+              onChange={(event) =>
+                updateFilters({ date_from: event.target.value || undefined })
+              }
+              className="border border-line px-3 py-2 font-normal"
+            />
+          </label>
+          <label className="grid gap-1 text-sm font-medium text-zinc-700">
+            По дату
+            <input
+              type="date"
+              value={filters.date_to ?? ""}
+              onChange={(event) =>
+                updateFilters({ date_to: event.target.value || undefined })
+              }
+              className="border border-line px-3 py-2 font-normal"
+            />
+          </label>
+          <label className="grid gap-1 text-sm font-medium text-zinc-700">
+            Профиль поиска
+            <select
+              value={resolvedProfileId ?? ""}
+              disabled={profiles.isLoading || profiles.isError}
+              onChange={(event) =>
+                updateFilters({ profile_id: event.target.value || undefined })
+              }
+              className="border border-line bg-white px-3 py-2 font-normal disabled:cursor-not-allowed disabled:bg-zinc-100"
+            >
+              <option value="">
+                {profiles.isLoading
+                  ? "Загрузка профилей…"
+                  : profiles.isError
+                    ? "Профили недоступны"
+                    : "Все профили"}
+              </option>
+              {enabledProfiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.name}
+                </option>
+              ))}
+            </select>
+            {profiles.isError && (
+              <span role="status" className="text-xs font-normal text-zinc-500">
+                Фильтр профилей недоступен.
+              </span>
+            )}
+          </label>
+          <label className="grid gap-1 text-sm font-medium text-zinc-700">
+            Статус отклика
+            <select
+              value={filters.application_status ?? ""}
+              onChange={(event) =>
+                updateFilters({
+                  application_status: event.target.value || undefined,
+                })
+              }
+              className="border border-line bg-white px-3 py-2 font-normal"
+            >
+              <option value="">Все</option>
+              {applicationStatusOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1 text-sm font-medium text-zinc-700">
+            Статус вакансии
+            <select
+              value={filters.vacancy_status ?? ""}
+              onChange={(event) =>
+                updateFilters({
+                  vacancy_status: event.target.value || undefined,
+                })
+              }
+              className="border border-line bg-white px-3 py-2 font-normal"
+            >
+              <option value="">Все</option>
+              {vacancyStatusOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1 text-sm font-medium text-zinc-700">
+            Мой приоритет
+            <select
+              value={filters.user_priority ?? ""}
+              onChange={(event) =>
+                updateFilters({
+                  user_priority: event.target.value || undefined,
+                })
+              }
+              className="border border-line bg-white px-3 py-2 font-normal"
+            >
+              <option value="">Все</option>
+              {userPriorityOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1 text-sm font-medium text-zinc-700">
+            Обработка
+            <select
+              value={filters.processing ?? "working"}
+              onChange={(event) =>
+                updateFilters({ processing: event.target.value })
+              }
+              className="border border-line bg-white px-3 py-2 font-normal"
+            >
+              {processingOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1 text-sm font-medium text-zinc-700">
+            Поиск по компании или вакансии
+            <input
+              value={filters.search ?? ""}
+              onChange={(event) =>
+                updateFilters({ search: event.target.value || undefined })
+              }
+              className="border border-line px-3 py-2 font-normal"
+              placeholder="Например, Python"
+            />
+          </label>
+        </div>
+        <fieldset>
+          <legend className="text-sm font-medium text-zinc-700">
+            Приоритет
+          </legend>
+          <div className="mt-2 flex flex-wrap gap-3">
+            {priorityOptions.map((priority) => (
+              <label
+                key={priority}
+                className="inline-flex items-center gap-2 text-sm text-zinc-700"
+              >
+                <input
+                  type="checkbox"
+                  checked={filters.priority?.includes(priority) ?? false}
+                  onChange={() => togglePriority(priority)}
+                />
+                {priority}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <details className="border-t border-line pt-3">
+          <summary className="flex cursor-pointer items-center gap-2 text-sm font-medium text-zinc-700">
+            <SlidersHorizontal size={16} />
+            Дополнительные фильтры
+          </summary>
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
+            <label className="grid gap-1 text-sm font-medium text-zinc-700">
+              Track
+              <input
+                value={filters.track ?? ""}
+                onChange={(event) =>
+                  updateFilters({ track: event.target.value || undefined })
+                }
+                className="border border-line px-3 py-2 font-normal"
+                placeholder="Например, main"
+              />
+            </label>
+            <label className="grid gap-1 text-sm font-medium text-zinc-700">
+              Run ID
+              <input
+                value={filters.run_id ?? ""}
+                onChange={(event) =>
+                  updateFilters({ run_id: event.target.value || undefined })
+                }
+                className="border border-line px-3 py-2 font-normal"
+              />
+            </label>
+            <label className="grid gap-1 text-sm font-medium text-zinc-700">
+              Сортировка
+              <select
+                value={`${filters.sort}:${filters.sort_direction}`}
+                onChange={(event) => {
+                  const [sort, sort_direction] = event.target.value.split(":");
+                  updateFilters({ sort, sort_direction });
+                }}
+                className="border border-line bg-white px-3 py-2 font-normal"
+              >
+                <option value="first_seen:desc">Сначала новые</option>
+                <option value="first_seen:asc">Сначала старые</option>
+                <option value="final_score:desc">Score: выше</option>
+                <option value="final_score:asc">Score: ниже</option>
+                <option value="priority:asc">Priority: выше</option>
+                <option value="priority:desc">Priority: ниже</option>
+              </select>
+            </label>
+          </div>
+        </details>
       </section>
 
-      {deleteVacancy.isError ? <p role="alert" className="text-sm text-danger">Не удалось удалить вакансию.</p> : null}
-      {vacancies.isLoading ? <LoadingState /> : vacancies.isError ? <ErrorState message="Не удалось загрузить список вакансий." /> : !vacancies.data?.items.length ? <EmptyState title="Вакансий не найдено" detail="За выбранный период или с указанными фильтрами вакансий нет." /> : <><section className="overflow-x-auto border border-line bg-white"><table className="w-full min-w-[1600px] text-left text-sm"><thead className="border-b border-line bg-zinc-50 text-xs uppercase text-zinc-500"><tr><th className="px-4 py-3 font-medium">Дата</th><th className="px-4 py-3 font-medium">Компания</th><th className="px-4 py-3 font-medium">Вакансия</th><th className="px-4 py-3 font-medium">Обработка</th><th className="px-4 py-3 font-medium">Зарплата</th><th className="px-4 py-3 font-medium">Статус вакансии</th><th className="px-4 py-3 font-medium">Статус отклика</th><th className="px-4 py-3 font-medium">AI Priority</th><th className="px-4 py-3 font-medium">Мой приоритет</th><th className="px-4 py-3 font-medium">Мой комментарий</th><th className="px-4 py-3 font-medium">Score</th><th className="px-4 py-3 font-medium">Track</th><th className="px-4 py-3 font-medium">Профили поиска</th><th className="px-4 py-3 font-medium">Действия</th></tr></thead><tbody>{vacancies.data.items.map((vacancy) => <tr key={vacancy.presentation_key} className="border-b border-line last:border-0 hover:bg-zinc-50 focus-within:bg-zinc-50"><td className="whitespace-nowrap px-4 py-3 text-zinc-600">{formatDate(vacancy.first_seen_at)}</td><td className="px-4 py-3 font-medium">{vacancy.company}</td><td className="max-w-80 px-4 py-3"><Link className="font-medium text-zinc-900 underline decoration-zinc-300 underline-offset-4 hover:decoration-zinc-900" to={`/vacancies/${encodeURIComponent(vacancy.presentation_key)}`} state={{ from: { pathname: location.pathname, search: location.search } }}>{vacancy.title}</Link>{vacancy.member_count > 1 && <span className="ml-2 text-xs text-zinc-500">{vacancy.member_count} copies</span>}</td><td className="px-4 py-3 text-zinc-600">{vacancy.preliminary_outcome?.outcome === "rejected_by_policy" ? "Отклонено правилом" : vacancy.preliminary_outcome?.outcome === "rejected_by_ai" ? "Отклонено AI" : vacancy.processing_state === "enrichment_failed" || vacancy.processing_state === "processing_failed" ? "Ошибка обработки" : vacancy.processing_state === "enriched" ? "Обработано" : vacancy.processing_state === "preliminary_kept" ? "Допущено" : "История"}</td><td className="px-4 py-3 text-zinc-600">{vacancy.salary_text ?? "—"}</td><VacancyListVacancyStatusControl presentationKey={vacancy.presentation_key} vacancyStatus={vacancy.vacancy_status} /><td className="px-4 py-3"><ApplicationStatusBadge status={vacancy.application_status} /></td><td className="px-4 py-3">{vacancy.priority ?? "—"}</td><VacancyListUserPriorityControl presentationKey={vacancy.presentation_key} userPriority={vacancy.user_priority} /><VacancyListUserCommentControl presentationKey={vacancy.presentation_key} comment={vacancy.user_comment} /><td className="px-4 py-3">{vacancy.final_score ?? "—"}</td><td className="px-4 py-3 text-zinc-600">{vacancy.track ?? "—"}</td><td className="max-w-64 px-4 py-3 text-zinc-600">{vacancy.profile_ids.map((id) => profileLabel(id, enabledProfiles)).join(", ") || "—"}</td><td className="px-4 py-3"><button type="button" aria-label={`Удалить вакансию ${vacancy.title}`} onClick={() => deleteCurrentVacancy(vacancy)} disabled={deleteVacancy.isPending} className="inline-flex size-8 items-center justify-center border border-danger/40 text-danger disabled:opacity-50"><Trash2 size={15} /></button></td></tr>)}</tbody></table></section><div className="flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-500"><span>Показано {filters.offset + 1}-{filters.offset + vacancies.data.items.length} из {vacancies.data.total}</span><div className="flex flex-wrap items-center gap-2"><label className="inline-flex items-center gap-2">На странице<select value={filters.limit} onChange={(event) => updateFilters({ limit: event.target.value })} className="border border-line bg-white px-2 py-1"><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></label><button type="button" title="На первую страницу" onClick={() => updateFilters({ offset: undefined }, false)} disabled={!hasPreviousPage} className="inline-flex size-8 items-center justify-center border border-line bg-white disabled:text-zinc-300" aria-label="На первую страницу"><ChevronsLeft size={16} /></button><button type="button" onClick={() => updateFilters({ offset: filters.offset - filters.limit > 0 ? String(filters.offset - filters.limit) : undefined }, false)} disabled={!hasPreviousPage} className="inline-flex size-8 items-center justify-center border border-line bg-white disabled:text-zinc-300" aria-label="Предыдущая страница"><ChevronLeft size={16} /></button><button type="button" onClick={() => updateFilters({ offset: String(filters.offset + filters.limit) }, false)} disabled={!hasNextPage} className="inline-flex size-8 items-center justify-center border border-line bg-white disabled:text-zinc-300" aria-label="Следующая страница"><ChevronRight size={16} /></button></div></div></>}
-      {manualFormOpen && <ManualVacancyForm onClose={() => setManualFormOpen(false)} />}
+      {bulkDeleteVacancies.isError ? (
+        <p role="alert" className="text-sm text-danger">
+          Не удалось удалить выбранные вакансии.
+        </p>
+      ) : null}
+      {bulkResult ? (
+        <p role="status" className="text-sm text-zinc-600">
+          {bulkResult}
+        </p>
+      ) : null}
+      {vacancies.isLoading ? (
+        <LoadingState />
+      ) : vacancies.isError ? (
+        <ErrorState message="Не удалось загрузить список вакансий." />
+      ) : !vacancies.data?.items.length ? (
+        <EmptyState
+          title="Вакансий не найдено"
+          detail="За выбранный период или с указанными фильтрами вакансий нет."
+        />
+      ) : (
+        <>
+          <section className="flex flex-wrap items-center justify-between gap-3 border border-line bg-white p-3">
+            <span className="text-sm text-zinc-600">Выбрано: {selectedKeys.length}</span>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setSelectedKeys([])} disabled={!selectedKeys.length || bulkDeleteVacancies.isPending} className="border border-line px-3 py-2 text-sm disabled:opacity-50">Снять выбор</button>
+              <button type="button" onClick={() => setConfirmBulkDelete(true)} disabled={!selectedKeys.length || bulkDeleteVacancies.isPending} className="inline-flex items-center gap-2 bg-danger px-3 py-2 text-sm font-medium text-white disabled:opacity-50"><Trash2 size={16} />Удалить</button>
+            </div>
+          </section>
+          <section className="overflow-x-auto border border-line bg-white">
+            <table className="w-full min-w-[1600px] text-left text-sm">
+              <thead className="border-b border-line bg-zinc-50 text-xs uppercase text-zinc-500">
+                <tr>
+                  <th className="w-12 px-4 py-3"><input type="checkbox" aria-label="Выбрать все на странице" checked={allPageSelected} onChange={toggleAll} /></th>
+                  <th className="px-4 py-3 font-medium">Дата</th>
+                  <th className="px-4 py-3 font-medium">Компания</th>
+                  <th className="px-4 py-3 font-medium">Вакансия</th>
+                  <th className="px-4 py-3 font-medium">Обработка</th>
+                  <th className="px-4 py-3 font-medium">Зарплата</th>
+                  <th className="px-4 py-3 font-medium">Статус вакансии</th>
+                  <th className="px-4 py-3 font-medium">Статус отклика</th>
+                  <th className="px-4 py-3 font-medium">AI Priority</th>
+                  <th className="px-4 py-3 font-medium">Мой приоритет</th>
+                  <th className="px-4 py-3 font-medium">Мой комментарий</th>
+                  <th className="px-4 py-3 font-medium">Score</th>
+                  <th className="px-4 py-3 font-medium">Track</th>
+                  <th className="px-4 py-3 font-medium">Профили поиска</th>
+                </tr>
+              </thead>
+              <tbody>
+                {vacancies.data.items.map((vacancy) => (
+                  <tr
+                    key={vacancy.presentation_key}
+                    className="border-b border-line last:border-0 hover:bg-zinc-50 focus-within:bg-zinc-50"
+                  >
+                    <td className="px-4 py-3"><input type="checkbox" aria-label={`Выбрать вакансию ${vacancy.title}`} checked={selectedKeys.includes(vacancy.presentation_key)} onChange={() => toggleSelection(vacancy.presentation_key)} /></td>
+                    <td className="whitespace-nowrap px-4 py-3 text-zinc-600">
+                      {formatDate(vacancy.first_seen_at)}
+                    </td>
+                    <td className="px-4 py-3 font-medium">{vacancy.company}</td>
+                    <td className="max-w-80 px-4 py-3">
+                      <Link
+                        className="font-medium text-zinc-900 underline decoration-zinc-300 underline-offset-4 hover:decoration-zinc-900"
+                        to={`/vacancies/${encodeURIComponent(vacancy.presentation_key)}`}
+                        state={{
+                          from: {
+                            pathname: location.pathname,
+                            search: location.search,
+                          },
+                        }}
+                      >
+                        {vacancy.title}
+                      </Link>
+                      {vacancy.member_count > 1 && (
+                        <span className="ml-2 text-xs text-zinc-500">
+                          {vacancy.member_count} copies
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-zinc-600">
+                      {vacancy.preliminary_outcome?.outcome ===
+                      "rejected_by_policy"
+                        ? "Отклонено правилом"
+                        : vacancy.preliminary_outcome?.outcome ===
+                            "rejected_by_ai"
+                          ? "Отклонено AI"
+                          : vacancy.processing_state === "enrichment_failed" ||
+                              vacancy.processing_state === "processing_failed"
+                            ? "Ошибка обработки"
+                            : vacancy.processing_state === "enriched"
+                              ? "Обработано"
+                              : vacancy.processing_state === "preliminary_kept"
+                                ? "Допущено"
+                                : "История"}
+                    </td>
+                    <td className="px-4 py-3 text-zinc-600">
+                      {vacancy.salary_text ?? "—"}
+                    </td>
+                    <VacancyListVacancyStatusControl
+                      presentationKey={vacancy.presentation_key}
+                      vacancyStatus={vacancy.vacancy_status}
+                    />
+                    <td className="px-4 py-3">
+                      <ApplicationStatusBadge
+                        status={vacancy.application_status}
+                      />
+                    </td>
+                    <td className="px-4 py-3">{vacancy.priority ?? "—"}</td>
+                    <VacancyListUserPriorityControl
+                      presentationKey={vacancy.presentation_key}
+                      userPriority={vacancy.user_priority}
+                    />
+                    <VacancyListUserCommentControl
+                      presentationKey={vacancy.presentation_key}
+                      comment={vacancy.user_comment}
+                    />
+                    <td className="px-4 py-3">{vacancy.final_score ?? "—"}</td>
+                    <td className="px-4 py-3 text-zinc-600">
+                      {vacancy.track ?? "—"}
+                    </td>
+                    <td className="max-w-64 px-4 py-3 text-zinc-600">
+                      {vacancy.profile_ids
+                        .map((id) => profileLabel(id, enabledProfiles))
+                        .join(", ") || "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-500">
+            <span>
+              Показано {filters.offset + 1}-
+              {filters.offset + vacancies.data.items.length} из{" "}
+              {vacancies.data.total}
+            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="inline-flex items-center gap-2">
+                На странице
+                <select
+                  value={filters.limit}
+                  onChange={(event) =>
+                    updateFilters({ limit: event.target.value })
+                  }
+                  className="border border-line bg-white px-2 py-1"
+                >
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+              </label>
+              <button
+                type="button"
+                title="На первую страницу"
+                onClick={() => updateFilters({ offset: undefined }, false)}
+                disabled={!hasPreviousPage}
+                className="inline-flex size-8 items-center justify-center border border-line bg-white disabled:text-zinc-300"
+                aria-label="На первую страницу"
+              >
+                <ChevronsLeft size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  updateFilters(
+                    {
+                      offset:
+                        filters.offset - filters.limit > 0
+                          ? String(filters.offset - filters.limit)
+                          : undefined,
+                    },
+                    false,
+                  )
+                }
+                disabled={!hasPreviousPage}
+                className="inline-flex size-8 items-center justify-center border border-line bg-white disabled:text-zinc-300"
+                aria-label="Предыдущая страница"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  updateFilters(
+                    { offset: String(filters.offset + filters.limit) },
+                    false,
+                  )
+                }
+                disabled={!hasNextPage}
+                className="inline-flex size-8 items-center justify-center border border-line bg-white disabled:text-zinc-300"
+                aria-label="Следующая страница"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+      <ConfirmationDialog open={confirmBulkDelete} title={selectedKeys.length === 1 ? "Удалить вакансию" : `Удалить выбранные вакансии: ${selectedKeys.length}?`} onCancel={() => setConfirmBulkDelete(false)} onConfirm={deleteSelected} pending={bulkDeleteVacancies.isPending}>{selectedKeys.length === 1 ? <>Удалить вакансию «{selectedVacancy?.title ?? "эту вакансию"}»? Связанные отклики останутся в CRM.</> : <>Удалить выбранные вакансии? Связанные отклики останутся в CRM.</>}</ConfirmationDialog>
+      {manualFormOpen && (
+        <ManualVacancyForm onClose={() => setManualFormOpen(false)} />
+      )}
     </div>
   );
 }

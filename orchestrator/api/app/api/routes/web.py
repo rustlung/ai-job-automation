@@ -17,12 +17,14 @@ from app.schemas.pipeline_run import (
 from app.schemas.vacancy_analysis import VacancyAnalysisPriority
 from app.schemas.statistics import StatisticsPeriod, VacancyStatisticsRead
 from app.schemas.web import (
+    BulkDeleteResult,
     DeleteResult,
     SearchProfilesResponse,
     SortDirection,
     SystemHealthResponse,
     VacancyDetail,
     VacancyApplicationStatusFilter,
+    VacancyBulkDeleteRequest,
     VacancyStatusFilter,
     VacancyUserPriorityFilter,
     VacancyProcessingFilter,
@@ -302,6 +304,14 @@ def delete_vacancy(
         return DeleteResult(id=service.delete(presentation_key))
     except WebVacancyNotFoundError as exc:
         raise HTTPException(status_code=404, detail={"error_code": "vacancy_not_found"}) from exc
+
+
+@router.post("/vacancies/bulk-delete", response_model=BulkDeleteResult)
+def bulk_delete_vacancies(
+    payload: VacancyBulkDeleteRequest,
+    service: WebVacancyListService = Depends(get_web_vacancy_list_service),
+) -> BulkDeleteResult:
+    return BulkDeleteResult(**service.delete_many(payload.presentation_keys))
 
 
 InternalToken = Annotated[str | None, Header(alias="X-Orchestrator-Internal-Token")]

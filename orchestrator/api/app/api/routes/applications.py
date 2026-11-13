@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database.session import get_db_session
 from app.schemas.application import ApplicationCreate, ApplicationListResponse, ApplicationRead, ApplicationStatus, ApplicationUpdate, ApplicationWriteResponse
-from app.schemas.web import DeleteResult
+from app.schemas.web import ApplicationBulkDeleteRequest, BulkDeleteResult, DeleteResult
 from app.services.application import (
     ApplicationDatabaseError,
     ApplicationNotFoundError,
@@ -108,5 +108,16 @@ def delete_application(
         return DeleteResult(id=application_id)
     except ApplicationNotFoundError as exc:
         raise HTTPException(status_code=404, detail={"error_code": "application_not_found"}) from exc
+    except ApplicationDatabaseError as exc:
+        raise HTTPException(status_code=500, detail={"error_code": "application_storage_failed"}) from exc
+
+
+@router.post("/applications/bulk-delete", response_model=BulkDeleteResult)
+def bulk_delete_applications(
+    payload: ApplicationBulkDeleteRequest,
+    service: ApplicationService = Depends(get_application_service),
+) -> BulkDeleteResult:
+    try:
+        return BulkDeleteResult(**service.delete_many(payload.application_ids))
     except ApplicationDatabaseError as exc:
         raise HTTPException(status_code=500, detail={"error_code": "application_storage_failed"}) from exc

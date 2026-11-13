@@ -235,6 +235,13 @@ export interface DeleteResult {
   status: "deleted";
 }
 
+export interface BulkDeleteResult {
+  requested_count: number;
+  deleted_count: number;
+  already_deleted_count: number;
+  not_found_count: number;
+}
+
 export interface ApplicationListResponse {
   items: ApplicationListItem[];
   total: number;

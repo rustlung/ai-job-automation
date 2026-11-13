@@ -21,6 +21,11 @@ class ApplicationRepository:
     def get_by_id(self, application_id: int) -> Application | None:
         return self.session.get(Application, application_id)
 
+    def list_by_ids(self, application_ids: list[int]) -> list[Application]:
+        if not application_ids:
+            return []
+        return list(self.session.scalars(select(Application).where(Application.id.in_(application_ids))).all())
+
     def list_for_vacancy(self, vacancy_id: int) -> list[Application]:
         statement = (
             select(Application)

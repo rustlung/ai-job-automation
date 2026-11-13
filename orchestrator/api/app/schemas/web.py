@@ -43,6 +43,27 @@ class DeleteResult(BaseModel):
     status: str = "deleted"
 
 
+class VacancyBulkDeleteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    presentation_keys: list[str] = Field(min_length=1, max_length=100)
+
+
+class ApplicationBulkDeleteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    application_ids: list[int] = Field(min_length=1, max_length=100)
+
+
+class BulkDeleteResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    requested_count: int = Field(ge=0)
+    deleted_count: int = Field(ge=0)
+    already_deleted_count: int = Field(ge=0)
+    not_found_count: int = Field(ge=0)
+
+
 class ComponentHealth(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

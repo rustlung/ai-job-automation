@@ -102,3 +102,33 @@ def test_application_hard_delete_preserves_its_vacancy_and_is_not_repeatable(db_
         pass
     else:
         raise AssertionError("repeat application delete must return not found")
+
+
+def test_bulk_vacancy_delete_reports_deleted_already_deleted_and_not_found(db_session) -> None:
+    first = vacancy(db_session, "bulk-first")
+    second = vacancy(db_session, "bulk-second")
+    db_session.commit()
+    service = WebVacancyListService(db_session)
+    service.delete("hh:bulk-first")
+
+    result = service.delete_many(["hh:bulk-first", "hh:bulk-second", "hh:missing"])
+
+    assert result == {"requested_count": 3, "deleted_count": 1, "already_deleted_count": 1, "not_found_count": 1}
+    assert VacancyRepository(db_session).get_by_id(first.id) is None
+    assert VacancyRepository(db_session).get_by_id(second.id) is None
+
+
+def test_bulk_application_delete_keeps_vacancies_and_reports_missing(db_session) -> None:
+    first = vacancy(db_session, "bulk-application-first")
+    second = vacancy(db_session, "bulk-application-second")
+    first_application = Application(vacancy_id=first.id, status="submitted", applied_at=NOW, created_at=NOW, updated_at=NOW)
+    second_application = Application(vacancy_id=second.id, status="submitted", applied_at=NOW, created_at=NOW, updated_at=NOW)
+    db_session.add_all([first_application, second_application])
+    db_session.commit()
+
+    result = ApplicationService(db_session).delete_many([first_application.id, second_application.id, 999999])
+
+    assert result == {"requested_count": 3, "deleted_count": 2, "already_deleted_count": 0, "not_found_count": 1}
+    assert VacancyRepository(db_session).get_by_id(first.id) is not None
+    assert VacancyRepository(db_session).get_by_id(second.id) is not None
+    assert ExportService(db_session).applications_dataset(ExportRequest()).rows == []

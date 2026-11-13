@@ -75,19 +75,28 @@ class ApplicationService:
             raise ApplicationDatabaseError from exc
 
     def delete(self, application_id: int) -> None:
+        result = self.delete_many([application_id])
+        if result["deleted_count"] == 0:
+            raise ApplicationNotFoundError
+
+    def delete_many(self, application_ids: list[int]) -> dict[str, int]:
+        unique_ids = list(dict.fromkeys(application_ids))
         try:
-            application = self.application_repository.get_by_id(application_id)
-            if application is None:
-                raise ApplicationNotFoundError
-            vacancy_id = application.vacancy_id
-            self.application_repository.delete(application)
+            applications = {application.id: application for application in self.application_repository.list_by_ids(unique_ids)}
+            for application in applications.values():
+                self.application_repository.delete(application)
             self.session.commit()
-            logger.info("application_deleted application_id=%s vacancy_id=%s", application_id, vacancy_id)
-        except ApplicationNotFoundError:
-            raise
+            result = {
+                "requested_count": len(unique_ids),
+                "deleted_count": len(applications),
+                "already_deleted_count": 0,
+                "not_found_count": len(unique_ids) - len(applications),
+            }
+            logger.info("applications_deleted requested_count=%s deleted_count=%s not_found_count=%s", result["requested_count"], result["deleted_count"], result["not_found_count"])
+            return result
         except SQLAlchemyError as exc:
             self.session.rollback()
-            logger.exception("application_delete_failed application_id=%s", application_id)
+            logger.exception("applications_delete_failed requested_count=%s", len(unique_ids))
             raise ApplicationDatabaseError from exc
 
     @staticmethod

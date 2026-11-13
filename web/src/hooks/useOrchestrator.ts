@@ -91,6 +91,18 @@ export function useDeleteVacancy() {
   });
 }
 
+export function useBulkDeleteVacancies() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (presentationKeys: string[]) => orchestratorApi.bulkDeleteVacancies(presentationKeys),
+    onSuccess: () => Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["vacancy"] }),
+      queryClient.invalidateQueries({ queryKey: ["vacancies"] }),
+      queryClient.invalidateQueries({ queryKey: ["statistics"] })
+    ])
+  });
+}
+
 export function useCreateManualVacancy() {
   const queryClient = useQueryClient();
   return useMutation({ mutationFn: (payload: ManualVacancyCreateRequest) => orchestratorApi.createManualVacancy(payload), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["vacancies"] }) });
@@ -129,6 +141,11 @@ export function useUpdateApplication() {
 export function useDeleteApplication() {
   const invalidate = useApplicationInvalidation();
   return useMutation({ mutationFn: (applicationId: number) => orchestratorApi.deleteApplication(applicationId), onSuccess: invalidate });
+}
+
+export function useBulkDeleteApplications() {
+  const invalidate = useApplicationInvalidation();
+  return useMutation({ mutationFn: (applicationIds: number[]) => orchestratorApi.bulkDeleteApplications(applicationIds), onSuccess: invalidate });
 }
 
 export function useUpdateVacancyUserState() {

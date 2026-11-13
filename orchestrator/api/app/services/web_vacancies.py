@@ -266,22 +266,42 @@ class WebVacancyListService:
 
     def delete(self, presentation_key: str) -> int:
         group = self.find_group(presentation_key)
-        self.vacancy_repository.mark_deleted(group.members)
+        self._mark_group_deleted(group)
         self.vacancy_repository.session.commit()
         return group.representative.id
 
-    def find_group(self, presentation_key: str):
+    def delete_many(self, presentation_keys: list[str]) -> dict[str, int]:
+        unique_keys = list(dict.fromkeys(presentation_keys))
+        result = {"requested_count": len(unique_keys), "deleted_count": 0, "already_deleted_count": 0, "not_found_count": 0}
+        for presentation_key in unique_keys:
+            try:
+                group = self.find_group(presentation_key, include_deleted=True)
+            except WebVacancyNotFoundError:
+                result["not_found_count"] += 1
+                continue
+            if all(member.deleted_at is not None for member in group.members):
+                result["already_deleted_count"] += 1
+                continue
+            self._mark_group_deleted(group)
+            result["deleted_count"] += 1
+        self.vacancy_repository.session.commit()
+        return result
+
+    def _mark_group_deleted(self, group) -> None:
+        self.vacancy_repository.mark_deleted(group.members)
+
+    def find_group(self, presentation_key: str, *, include_deleted: bool = False):
         if presentation_key.startswith("business:"):
             fingerprint = presentation_key.removeprefix("business:")
             if not fingerprint:
                 raise WebVacancyNotFoundError
-            members = self.vacancy_repository.list_by_business_fingerprints([fingerprint])
+            members = self.vacancy_repository.list_by_business_fingerprints([fingerprint], include_deleted=include_deleted)
         else:
             source, separator, external_id = presentation_key.partition(":")
             if not separator or not source or not external_id:
                 raise WebVacancyNotFoundError
             vacancy = self.vacancy_repository.get_by_source_external_id(source, external_id)
-            members = [vacancy] if vacancy is not None and vacancy.deleted_at is None and vacancy.business_fingerprint is None else []
+            members = [vacancy] if vacancy is not None and (include_deleted or vacancy.deleted_at is None) and vacancy.business_fingerprint is None else []
 
         for group in group_business_vacancies(members):
             if group.presentation_key == presentation_key:

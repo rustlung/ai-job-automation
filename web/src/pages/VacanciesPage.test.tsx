@@ -36,12 +36,14 @@ const useSearchProfiles = vi.fn();
 const useUpdateVacancyUserState = vi.fn();
 const useCreateManualVacancy = vi.fn();
 const useDeleteVacancy = vi.fn();
+const useBulkDeleteVacancies = vi.fn();
 vi.mock("../hooks/useOrchestrator", () => ({
   useVacancies: (...args: unknown[]) => useVacancies(...args),
   useSearchProfiles: () => useSearchProfiles(),
   useUpdateVacancyUserState: () => useUpdateVacancyUserState(),
   useCreateManualVacancy: () => useCreateManualVacancy(),
-  useDeleteVacancy: () => useDeleteVacancy()
+  useDeleteVacancy: () => useDeleteVacancy(),
+  useBulkDeleteVacancies: () => useBulkDeleteVacancies()
 }));
 
 function LocationProbe() {
@@ -72,6 +74,7 @@ describe("VacanciesPage", () => {
     useUpdateVacancyUserState.mockReturnValue({ isPending: false, isError: false, mutate: vi.fn() });
     useCreateManualVacancy.mockReturnValue({ isPending: false, mutateAsync: vi.fn() });
     useDeleteVacancy.mockReturnValue({ isPending: false, isError: false, mutate: vi.fn() });
+    useBulkDeleteVacancies.mockReturnValue({ isPending: false, isError: false, mutate: vi.fn() });
   });
   afterEach(() => cleanup());
 
@@ -91,13 +94,14 @@ describe("VacanciesPage", () => {
     expect(screen.queryByRole("button", { name: /Экспортировать текущую выборку/i })).not.toBeInTheDocument();
   });
 
-  it("confirms and submits one logical vacancy delete", () => {
+  it("selects and submits one logical vacancy bulk delete", () => {
     const mutate = vi.fn();
-    useDeleteVacancy.mockReturnValue({ isPending: false, isError: false, mutate });
-    vi.stubGlobal("confirm", vi.fn(() => true));
+    useBulkDeleteVacancies.mockReturnValue({ isPending: false, isError: false, mutate });
     renderPage();
-    fireEvent.click(screen.getByRole("button", { name: "Удалить вакансию Python Developer" }));
-    expect(mutate).toHaveBeenCalledWith("business:abc123");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Выбрать вакансию Python Developer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Удалить" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Удалить" }));
+    expect(mutate).toHaveBeenCalledWith(["business:abc123"], expect.anything());
   });
 
   it("redirects to the DB-created manual vacancy", async () => {
@@ -125,17 +129,17 @@ describe("VacanciesPage", () => {
     const { container } = renderPage();
     const headers = Array.from(container.querySelectorAll("thead th")).map((header) => header.textContent);
     const cells = Array.from(container.querySelectorAll("tbody tr:first-child > td"));
-    const vacancyStatusSelect = cells[5]?.querySelector("select") as HTMLSelectElement | null;
-    const userPrioritySelect = cells[8]?.querySelector("select") as HTMLSelectElement | null;
+    const vacancyStatusSelect = cells[6]?.querySelector("select") as HTMLSelectElement | null;
+    const userPrioritySelect = cells[9]?.querySelector("select") as HTMLSelectElement | null;
 
-    expect(headers).toEqual(["Дата", "Компания", "Вакансия", "Обработка", "Зарплата", "Статус вакансии", "Статус отклика", "AI Priority", "Мой приоритет", "Мой комментарий", "Score", "Track", "Профили поиска", "Действия"]);
+    expect(headers).toEqual(["", "Дата", "Компания", "Вакансия", "Обработка", "Зарплата", "Статус вакансии", "Статус отклика", "AI Priority", "Мой приоритет", "Мой комментарий", "Score", "Track", "Профили поиска"]);
     expect(cells).toHaveLength(headers.length);
     expect(vacancyStatusSelect).toHaveValue("active");
-    expect(cells[6]).toHaveTextContent("Без отклика");
-    expect(cells[7]).toHaveTextContent("P1");
+    expect(cells[7]).toHaveTextContent("Без отклика");
+    expect(cells[8]).toHaveTextContent("P1");
     expect(userPrioritySelect).toHaveValue("");
-    expect(cells[9]).toHaveTextContent("Добавить комментарий");
-    expect(cells[10]).toHaveTextContent("95");
+    expect(cells[10]).toHaveTextContent("Добавить комментарий");
+    expect(cells[11]).toHaveTextContent("95");
   });
 
   it("clears both dates and activates all time", () => {
