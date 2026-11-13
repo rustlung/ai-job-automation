@@ -383,7 +383,10 @@ export interface ExportRequest {
   date_from?: string;
   date_to?: string;
   columns: string[];
+  vacancy_filters?: VacancyExportFilters;
 }
+
+export type VacancyExportFilters = Omit<VacancyFilters, "limit" | "offset">;
 
 export interface ExportDownload {
   blob: Blob;

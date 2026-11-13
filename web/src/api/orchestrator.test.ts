@@ -13,4 +13,21 @@ describe("orchestratorApi.getVacancies", () => {
 
     expect(String(fetchMock.mock.calls[0][0])).toContain("processing=rejected");
   });
+
+  it("serializes the current vacancy filters in the export payload", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("file", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await orchestratorApi.downloadVacancyExport({
+      format: "xlsx",
+      period: "all",
+      columns: [],
+      vacancy_filters: { processing: "errors", priority: ["P1"], search: "Python", sort: "first_seen", sort_direction: "desc" }
+    });
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/api/exports/vacancies");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
+      vacancy_filters: { processing: "errors", priority: ["P1"], search: "Python" }
+    });
+  });
 });

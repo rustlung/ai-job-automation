@@ -1,7 +1,7 @@
 from datetime import date, datetime, timezone
 
 from app.models.vacancy import Vacancy
-from app.schemas.exports import ExportPeriod, ExportRequest
+from app.schemas.exports import ExportPeriod, ExportRequest, VacancyExportFilters
 from app.schemas.statistics import StatisticsPeriod
 from app.schemas.web import SortDirection, VacancyListSort, VacancyProcessingFilter
 from app.services.exports import ExportService
@@ -88,12 +88,12 @@ def test_list_statistics_and_export_share_reliable_logical_cohorts(db_session) -
     date_from, date_to = preset_period_range("7d", today=TODAY)
     listed = vacancy_list_total(db_session, date_from=date_from, date_to=date_to)
     statistics = VacancyStatisticsService(db_session, today=TODAY).get(period=StatisticsPeriod.DAYS_7)
-    exported = ExportService(db_session, today=TODAY).vacancies_dataset(ExportRequest(period=ExportPeriod.DAYS_7))
+    exported = ExportService(db_session, today=TODAY).vacancies_dataset(ExportRequest(period=ExportPeriod.DAYS_7, vacancy_filters=VacancyExportFilters(processing="all")))
 
     assert listed == statistics.found == len(exported.rows) == 3
     assert vacancy_list_total(db_session, date_from=None, date_to=None) == 4
     assert VacancyStatisticsService(db_session, today=TODAY).get(period=StatisticsPeriod.ALL).found == 4
-    assert len(ExportService(db_session, today=TODAY).vacancies_dataset(ExportRequest(period=ExportPeriod.ALL)).rows) == 4
+    assert len(ExportService(db_session, today=TODAY).vacancies_dataset(ExportRequest(period=ExportPeriod.ALL, vacancy_filters=VacancyExportFilters(processing="all"))).rows) == 4
 
 
 def test_30_day_and_custom_ranges_match_across_surfaces(db_session) -> None:
@@ -107,7 +107,7 @@ def test_30_day_and_custom_ranges_match_across_surfaces(db_session) -> None:
     ]:
         listed = vacancy_list_total(db_session, date_from=start, date_to=end)
         statistics = VacancyStatisticsService(db_session, today=TODAY).get(period=statistics_period, date_from=start if period == "custom" else None, date_to=end if period == "custom" else None)
-        request = ExportRequest(period=export_period, date_from=start if period == "custom" else None, date_to=end if period == "custom" else None)
+        request = ExportRequest(period=export_period, date_from=start if period == "custom" else None, date_to=end if period == "custom" else None, vacancy_filters=VacancyExportFilters(processing="all"))
         exported = ExportService(db_session, today=TODAY).vacancies_dataset(request)
         assert listed == statistics.found == len(exported.rows) == 1
 

@@ -23,6 +23,7 @@ from app.schemas.exports import ExportColumnRead, ExportFormat, ExportPeriod, Ex
 from app.schemas.vacancy_user_state import VacancyStatus
 from app.services.business_vacancy_grouping import BusinessVacancyGroup, group_business_vacancies, merge_profile_ids
 from app.services.logical_vacancy_dates import SAMARA_TIMEZONE, as_utc, logical_vacancy_cohort_date, preset_period_range, samara_today
+from app.services.web_vacancies import WebVacancyListService
 
 
 class ExportValidationError(ValueError):
@@ -133,6 +134,7 @@ APPLICATION_COLUMNS = [
 
 class ExportService:
     def __init__(self, session: Session, *, today: date | None = None) -> None:
+        self.session = session
         self.vacancies = VacancyRepository(session)
         self.applications = ApplicationRepository(session)
         self.analyses = VacancyAnalysisRepository(session)
@@ -151,8 +153,28 @@ class ExportService:
     def vacancies_dataset(self, request: ExportRequest) -> ExportDataset:
         columns = self._select_columns(VACANCY_COLUMNS, request.columns)
         start, end = self._range(request)
+        filters = request.vacancy_filters
         vacancies = self.vacancies.list_all()
         groups = group_business_vacancies(vacancies)
+        groups_by_key = {group.presentation_key: group for group in groups}
+        filtered_items = WebVacancyListService(self.session).list(
+            date_from=filters.date_from,
+            date_to=filters.date_to,
+            priorities=filters.priority,
+            track=filters.track,
+            profile_id=filters.profile_id,
+            application_status=filters.application_status,
+            vacancy_status=filters.vacancy_status,
+            user_priority=filters.user_priority,
+            processing=filters.processing,
+            run_id=filters.run_id,
+            search=filters.search,
+            limit=2_147_483_647,
+            offset=0,
+            sort=filters.sort,
+            sort_direction=filters.sort_direction,
+        )
+        filtered_groups = [groups_by_key[item.presentation_key] for item in filtered_items.items]
         analyses = self.analyses.list_by_vacancy_ids([vacancy.id for vacancy in vacancies])
         applications = self.applications.list_by_vacancy_ids([vacancy.id for vacancy in vacancies])
         analyses_by_vacancy = self._by_vacancy(analyses)
@@ -163,7 +185,7 @@ class ExportService:
         }
 
         rows: list[tuple[date | None, str, dict[str, Any]]] = []
-        for group in groups:
+        for group in filtered_groups:
             cohort_date = logical_vacancy_cohort_date(group)
             if cohort_date is None:
                 if request.period != ExportPeriod.ALL:
@@ -171,8 +193,6 @@ class ExportService:
             elif start is not None and (cohort_date < start or cohort_date > end):
                 continue
             rows.append((cohort_date, group.presentation_key, self._vacancy_row(group, analyses_by_vacancy, applications_by_vacancy, states)))
-
-        rows.sort(key=lambda item: (item[0] is None, -(item[0].toordinal() if item[0] else 0), item[1]))
         contexts = []
         for index, (_, _, row) in enumerate(rows, start=1):
             row["row_number"] = index

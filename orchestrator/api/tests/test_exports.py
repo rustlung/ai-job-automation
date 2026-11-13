@@ -10,7 +10,8 @@ from app.models.application import Application
 from app.models.vacancy import Vacancy
 from app.models.vacancy_analysis import VacancyAnalysis
 from app.models.vacancy_user_state import VacancyUserState
-from app.schemas.exports import ExportFormat, ExportPeriod, ExportRequest
+from app.models.vacancy_preliminary_outcome import VacancyPreliminaryOutcome
+from app.schemas.exports import ExportFormat, ExportPeriod, ExportRequest, VacancyExportFilters
 from app.services.exports import ExportService
 from app.services.logical_vacancy_dates import SAMARA_TIMEZONE
 
@@ -74,6 +75,20 @@ def add_analysis(db_session, vacancy: Vacancy, *, priority: str = "P1", score: i
     return analysis
 
 
+def add_outcome(db_session, vacancy: Vacancy, *, outcome: str, processing_state: str) -> VacancyPreliminaryOutcome:
+    item = VacancyPreliminaryOutcome(
+        vacancy_id=vacancy.id,
+        run_id=f"run-{vacancy.external_id}",
+        outcome=outcome,
+        outcome_source="ai",
+        processing_state=processing_state,
+        summary="Safe outcome",
+    )
+    db_session.add(item)
+    db_session.flush()
+    return item
+
+
 def add_application(db_session, vacancy: Vacancy, *, applied_at: datetime | None, status: str = "submitted", text: str | None = "Текст") -> Application:
     application = Application(
         vacancy_id=vacancy.id,
@@ -120,21 +135,60 @@ def test_vacancies_export_handles_manual_legacy_periods_order_and_optional_colum
     legacy = add_vacancy(db_session, external_id="legacy", description="", first_seen_at=NOW)
     db_session.commit()
 
-    all_time = service(db_session).vacancies_dataset(ExportRequest(format=ExportFormat.CSV, columns=["source", "origin", "date", "url"]))
+    all_time = service(db_session).vacancies_dataset(ExportRequest(format=ExportFormat.CSV, columns=["source", "origin", "date", "url"], vacancy_filters=VacancyExportFilters(processing="all")))
     assert len(all_time.rows) == 3
-    assert all_time.rows[-1] == [legacy.source, None, None, legacy.url]
-    assert [row[0] for row in all_time.rows[:2]] == [manual.source, recent.source]
+    assert [legacy.source, None, None, legacy.url] in all_time.rows
+    assert [row[0] for row in all_time.rows] == [legacy.source, recent.source, manual.source]
 
-    seven_days = service(db_session).vacancies_dataset(ExportRequest(period=ExportPeriod.DAYS_7))
+    seven_days = service(db_session).vacancies_dataset(ExportRequest(period=ExportPeriod.DAYS_7, vacancy_filters=VacancyExportFilters(processing="all")))
     assert len(seven_days.rows) == 2
-    assert [row[1] for row in seven_days.rows] == [manual.company, recent.company]
+    assert [row[1] for row in seven_days.rows] == [recent.company, manual.company]
 
-    thirty_days = service(db_session).vacancies_dataset(ExportRequest(period=ExportPeriod.DAYS_30))
+    thirty_days = service(db_session).vacancies_dataset(ExportRequest(period=ExportPeriod.DAYS_30, vacancy_filters=VacancyExportFilters(processing="all")))
     assert len(thirty_days.rows) == 2
 
-    custom = service(db_session).vacancies_dataset(ExportRequest(period=ExportPeriod.CUSTOM, date_from=NOW.date(), date_to=NOW.date()))
+    custom = service(db_session).vacancies_dataset(ExportRequest(period=ExportPeriod.CUSTOM, date_from=NOW.date(), date_to=NOW.date(), vacancy_filters=VacancyExportFilters(processing="all")))
     assert len(custom.rows) == 1
     assert custom.rows[0][1] == manual.company
+
+
+def test_vacancy_export_reuses_list_processing_and_combined_filters_without_pagination(db_session) -> None:
+    working = add_vacancy(db_session, external_id="working-python", first_seen_at=NOW)
+    rejected = add_vacancy(db_session, external_id="rejected-python", first_seen_at=NOW)
+    failed = add_vacancy(db_session, external_id="failed-python", first_seen_at=NOW)
+    old = add_vacancy(db_session, external_id="old-python", first_seen_at=NOW - timedelta(days=2))
+    add_analysis(db_session, working, priority="P1")
+    add_outcome(db_session, working, outcome="keep_main", processing_state="enriched")
+    add_outcome(db_session, rejected, outcome="rejected_by_ai", processing_state="preliminary_rejected")
+    add_outcome(db_session, failed, outcome="keep_main", processing_state="enrichment_failed")
+    add_analysis(db_session, old, priority="P2")
+    add_outcome(db_session, old, outcome="keep_main", processing_state="enriched")
+    db_session.commit()
+
+    export_service = service(db_session)
+    columns = ["external_id"]
+    assert export_service.vacancies_dataset(ExportRequest(columns=columns, vacancy_filters=VacancyExportFilters())).rows == [["working-python"], ["old-python"]]
+    assert export_service.vacancies_dataset(ExportRequest(columns=columns, vacancy_filters=VacancyExportFilters(processing="rejected"))).rows == [["rejected-python"]]
+    assert export_service.vacancies_dataset(ExportRequest(columns=columns, vacancy_filters=VacancyExportFilters(processing="errors"))).rows == [["failed-python"]]
+    assert export_service.vacancies_dataset(ExportRequest(columns=columns, vacancy_filters=VacancyExportFilters(processing="all"))).rows == [
+        ["failed-python"], ["rejected-python"], ["working-python"], ["old-python"]
+    ]
+    filtered = export_service.vacancies_dataset(
+        ExportRequest(
+            columns=columns,
+            vacancy_filters=VacancyExportFilters(
+                processing="working",
+                priority=["P1"],
+                search="working",
+                date_from=NOW.date(),
+                date_to=NOW.date(),
+            ),
+        )
+    )
+    assert filtered.rows == [["working-python"]]
+    assert export_service.vacancies_dataset(
+        ExportRequest(columns=columns, vacancy_filters=VacancyExportFilters(processing="working", search="missing"))
+    ).rows == []
 
 
 def test_applications_export_keeps_real_rows_and_applied_period_semantics(db_session) -> None:
@@ -171,7 +225,7 @@ def test_export_renderers_create_usable_xlsx_and_utf8_sig_csv(db_session) -> Non
     vacancy = add_vacancy(db_session, external_id="кириллица", url="https://example.test/вакансия")
     db_session.commit()
     export_service = service(db_session)
-    dataset = export_service.vacancies_dataset(ExportRequest(format=ExportFormat.XLSX))
+    dataset = export_service.vacancies_dataset(ExportRequest(format=ExportFormat.XLSX, vacancy_filters=VacancyExportFilters(processing="all")))
 
     xlsx, xlsx_media_type = export_service.render(dataset, ExportFormat.XLSX)
     workbook = load_workbook(BytesIO(xlsx))
@@ -195,6 +249,7 @@ def test_export_api_schema_download_validation_and_empty_dataset(db_session) -> 
         with TestClient(app) as client:
             schema = client.get("/api/exports/schema")
             empty = client.post("/api/exports/vacancies", json={"format": "csv", "period": "7d"})
+            filtered_empty = client.post("/api/exports/vacancies", json={"format": "csv", "vacancy_filters": {"processing": "working", "search": "missing"}})
             invalid_column = client.post("/api/exports/vacancies", json={"columns": ["unknown"]})
             duplicate_column = client.post("/api/exports/applications", json={"columns": ["company", "company"]})
             invalid_range = client.post("/api/exports/applications", json={"period": "custom", "date_from": "2026-10-31", "date_to": "2026-10-01"})
@@ -207,6 +262,8 @@ def test_export_api_schema_download_validation_and_empty_dataset(db_session) -> 
     assert empty.status_code == 200
     assert empty.headers["content-disposition"] == 'attachment; filename="vacancies-2026-10-31.csv"'
     assert empty.content.decode("utf-8-sig").splitlines() == ["№;Компания;Должность;Приоритет AI;ЗП;Статус вакансии;Статус отклика;Дата;Мой приоритет;Комментарий;Ссылка"]
+    assert filtered_empty.status_code == 200
+    assert filtered_empty.content.decode("utf-8-sig").splitlines() == ["№;Компания;Должность;Приоритет AI;ЗП;Статус вакансии;Статус отклика;Дата;Мой приоритет;Комментарий;Ссылка"]
     assert invalid_column.status_code == 422
     assert invalid_column.json()["detail"]["error_code"] == "invalid_export_columns"
     assert duplicate_column.status_code == 422

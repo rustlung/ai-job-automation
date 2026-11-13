@@ -3,6 +3,16 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.schemas.vacancy_analysis import VacancyAnalysisPriority
+from app.schemas.web import (
+    SortDirection,
+    VacancyApplicationStatusFilter,
+    VacancyListSort,
+    VacancyProcessingFilter,
+    VacancyStatusFilter,
+    VacancyUserPriorityFilter,
+)
+
 
 class ExportFormat(str, Enum):
     XLSX = "xlsx"
@@ -16,6 +26,26 @@ class ExportPeriod(str, Enum):
     CUSTOM = "custom"
 
 
+class VacancyExportFilters(BaseModel):
+    """The list filters reused by a full, unpaginated vacancy export."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    date_from: date | None = None
+    date_to: date | None = None
+    priority: list[VacancyAnalysisPriority] | None = None
+    track: str | None = None
+    profile_id: str | None = None
+    application_status: VacancyApplicationStatusFilter | None = None
+    vacancy_status: VacancyStatusFilter | None = None
+    user_priority: VacancyUserPriorityFilter | None = None
+    processing: VacancyProcessingFilter = VacancyProcessingFilter.WORKING
+    run_id: str | None = None
+    search: str | None = None
+    sort: VacancyListSort = VacancyListSort.FIRST_SEEN
+    sort_direction: SortDirection = SortDirection.DESC
+
+
 class ExportRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -24,6 +54,7 @@ class ExportRequest(BaseModel):
     date_from: date | None = None
     date_to: date | None = None
     columns: list[str] | None = Field(default=None, max_length=32)
+    vacancy_filters: VacancyExportFilters = Field(default_factory=VacancyExportFilters)
 
     @model_validator(mode="after")
     def validate_period(self) -> "ExportRequest":
