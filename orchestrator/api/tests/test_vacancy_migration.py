@@ -39,12 +39,14 @@ def test_vacancy_migration_upgrade_and_downgrade(tmp_path, monkeypatch) -> None:
     assert "ix_vacancies_first_seen_at" in indexes
     assert "ix_vacancies_last_seen_at" in indexes
     assert "ix_vacancies_business_fingerprint" in indexes
+    assert "ix_vacancies_deleted_at" in indexes
     vacancy_columns = {column["name"]: column for column in inspector.get_columns("vacancies")}
     assert vacancy_columns["first_seen_at"]["nullable"] is False
     assert vacancy_columns["last_seen_at"]["nullable"] is False
     assert vacancy_columns["seen_count"]["nullable"] is False
     assert vacancy_columns["business_fingerprint"]["nullable"] is True
     assert vacancy_columns["description"]["nullable"] is True
+    assert vacancy_columns["deleted_at"]["nullable"] is True
     check_constraints = {constraint["name"] for constraint in inspector.get_check_constraints("vacancies")}
     assert "ck_vacancies_seen_count_positive" in check_constraints
     analysis_indexes = {index["name"] for index in inspector.get_indexes("vacancy_analyses")}

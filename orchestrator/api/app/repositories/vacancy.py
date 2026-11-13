@@ -14,25 +14,35 @@ class VacancyRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def get_by_id(self, vacancy_id: int) -> Vacancy | None:
-        return self.session.get(Vacancy, vacancy_id)
+    def get_by_id(self, vacancy_id: int, *, include_deleted: bool = False) -> Vacancy | None:
+        vacancy = self.session.get(Vacancy, vacancy_id)
+        return vacancy if vacancy is not None and (include_deleted or vacancy.deleted_at is None) else None
 
     def get_by_source_external_id(self, source: str, external_id: str) -> Vacancy | None:
         statement = select(Vacancy).where(Vacancy.source == source, Vacancy.external_id == external_id)
         return self.session.scalar(statement)
 
-    def list_by_ids(self, vacancy_ids: list[int]) -> list[Vacancy]:
+    def list_by_ids(self, vacancy_ids: list[int], *, include_deleted: bool = False) -> list[Vacancy]:
         if not vacancy_ids:
             return []
-        return list(self.session.scalars(select(Vacancy).where(Vacancy.id.in_(vacancy_ids))).all())
+        statement = select(Vacancy).where(Vacancy.id.in_(vacancy_ids))
+        if not include_deleted:
+            statement = statement.where(Vacancy.deleted_at.is_(None))
+        return list(self.session.scalars(statement).all())
 
-    def list_all(self) -> list[Vacancy]:
-        return list(self.session.scalars(select(Vacancy).order_by(Vacancy.id)).all())
+    def list_all(self, *, include_deleted: bool = False) -> list[Vacancy]:
+        statement = select(Vacancy)
+        if not include_deleted:
+            statement = statement.where(Vacancy.deleted_at.is_(None))
+        return list(self.session.scalars(statement.order_by(Vacancy.id)).all())
 
-    def list_by_business_fingerprints(self, fingerprints: list[str]) -> list[Vacancy]:
+    def list_by_business_fingerprints(self, fingerprints: list[str], *, include_deleted: bool = False) -> list[Vacancy]:
         if not fingerprints:
             return []
-        statement = select(Vacancy).where(Vacancy.business_fingerprint.in_(fingerprints)).order_by(Vacancy.id)
+        statement = select(Vacancy).where(Vacancy.business_fingerprint.in_(fingerprints))
+        if not include_deleted:
+            statement = statement.where(Vacancy.deleted_at.is_(None))
+        statement = statement.order_by(Vacancy.id)
         return list(self.session.scalars(statement).all())
 
     def count(self) -> int:
@@ -159,6 +169,14 @@ class VacancyRepository:
         vacancy.updated_at = self._now()
         self.session.flush()
         return changed
+
+    def mark_deleted(self, vacancies: list[Vacancy]) -> None:
+        now = self._now()
+        for vacancy in vacancies:
+            if vacancy.deleted_at is None:
+                vacancy.deleted_at = now
+                vacancy.updated_at = now
+        self.session.flush()
 
     @staticmethod
     def _now() -> datetime:

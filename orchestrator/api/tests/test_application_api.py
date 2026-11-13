@@ -102,6 +102,22 @@ def test_application_write_does_not_depend_on_crm_sync(db_session, vacancy_paylo
     assert "crm_sync" not in created.json()
 
 
+def test_application_api_delete_removes_only_application_and_returns_not_found_on_repeat(db_session, vacancy_payload: dict[str, object]) -> None:
+    with make_client(db_session) as client:
+        vacancy = create_vacancy(client, vacancy_payload)
+        created = client.post(f"/api/vacancies/{vacancy['id']}/applications", json=application_payload()).json()["application"]
+        deleted = client.delete(f"/api/applications/{created['id']}")
+        missing = client.get(f"/api/applications/{created['id']}")
+        repeated = client.delete(f"/api/applications/{created['id']}")
+        vacancy_after = client.get(f"/vacancies/{vacancy['id']}")
+
+    assert deleted.status_code == 200
+    assert deleted.json() == {"id": created["id"], "status": "deleted"}
+    assert missing.status_code == 404
+    assert repeated.status_code == 404
+    assert vacancy_after.status_code == 200
+
+
 def test_application_service_keeps_historical_dates_optional_and_normalizes_utc(db_session, vacancy_payload: dict[str, object]) -> None:
     from app.services.vacancy import VacancyService
     from app.schemas.application import ApplicationCreate, ApplicationStatus

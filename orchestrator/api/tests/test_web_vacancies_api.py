@@ -307,6 +307,24 @@ def test_manual_vacancy_without_url_or_analysis_supports_list_filters_detail_and
     assert user_state.json()["presentation_key"] == created.presentation_key
 
 
+def test_vacancy_api_delete_hides_logical_group_and_is_not_repeatable(db_session) -> None:
+    created = ManualVacancyService(db_session).create(
+        ManualVacancyCreate(company="Delete Co", title="Delete role", description="Delete me", origin="telegram")
+    )
+    encoded_key = created.presentation_key.replace(":", "%3A")
+
+    with make_client(db_session) as client:
+        deleted = client.delete(f"/api/vacancies/{encoded_key}")
+        listed = client.get("/api/vacancies?limit=25&offset=0&sort=first_seen&sort_direction=desc")
+        repeated = client.delete(f"/api/vacancies/{encoded_key}")
+
+    assert deleted.status_code == 200
+    assert deleted.json() == {"id": created.vacancy_id, "status": "deleted"}
+    assert listed.status_code == 200
+    assert listed.json()["items"] == []
+    assert repeated.status_code == 404
+
+
 def test_business_vacancy_detail_uses_samara_representative_and_group_provenance(db_session) -> None:
     add_vacancy(
         db_session,

@@ -79,6 +79,18 @@ export function useVacancyDetail(presentationKey: string) {
   });
 }
 
+export function useDeleteVacancy() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (presentationKey: string) => orchestratorApi.deleteVacancy(presentationKey),
+    onSuccess: () => Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["vacancy"] }),
+      queryClient.invalidateQueries({ queryKey: ["vacancies"] }),
+      queryClient.invalidateQueries({ queryKey: ["statistics"] })
+    ])
+  });
+}
+
 export function useCreateManualVacancy() {
   const queryClient = useQueryClient();
   return useMutation({ mutationFn: (payload: ManualVacancyCreateRequest) => orchestratorApi.createManualVacancy(payload), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["vacancies"] }) });
@@ -93,7 +105,8 @@ function useApplicationInvalidation() {
   return () => Promise.all([
     queryClient.invalidateQueries({ queryKey: ["vacancy"] }),
     queryClient.invalidateQueries({ queryKey: ["vacancies"] }),
-    queryClient.invalidateQueries({ queryKey: ["applications"] })
+    queryClient.invalidateQueries({ queryKey: ["applications"] }),
+    queryClient.invalidateQueries({ queryKey: ["statistics"] })
   ]);
 }
 
@@ -111,6 +124,11 @@ export function useUpdateApplication() {
     mutationFn: ({ applicationId, payload }: { applicationId: number; payload: ApplicationPatchRequest }) => orchestratorApi.updateApplication(applicationId, payload),
     onSuccess: invalidate
   });
+}
+
+export function useDeleteApplication() {
+  const invalidate = useApplicationInvalidation();
+  return useMutation({ mutationFn: (applicationId: number) => orchestratorApi.deleteApplication(applicationId), onSuccess: invalidate });
 }
 
 export function useUpdateVacancyUserState() {

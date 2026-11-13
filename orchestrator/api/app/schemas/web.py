@@ -36,6 +36,13 @@ class SearchProfilesResponse(BaseModel):
     profiles: list[SearchProfileRead]
 
 
+class DeleteResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str | int
+    status: str = "deleted"
+
+
 class ComponentHealth(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

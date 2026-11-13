@@ -10,7 +10,7 @@ import type {
   RunsResponse,
   SearchProfilesResponse,
   SystemHealth,
-  VacancyDetail,
+  VacancyDetail, DeleteResult,
   VacancyFilters,
   VacancyListResponse, VacancyUserState, VacancyUserStatePatchRequest, VacancyUserStateWriteResponse, ManualVacancyCreateRequest, ManualVacancyCreateResponse, StatisticsRequest, VacancyStatistics, ExportRequest, ExportSchema, ExportDownload
 } from "../types/api";
@@ -70,6 +70,7 @@ export const orchestratorApi = {
   downloadVacancyExport: (payload: ExportRequest) => requestBlob("/api/exports/vacancies", { method: "POST", body: JSON.stringify(payload) }) as Promise<ExportDownload>,
   downloadApplicationExport: (payload: ExportRequest) => requestBlob("/api/exports/applications", { method: "POST", body: JSON.stringify(payload) }) as Promise<ExportDownload>,
   getVacancyDetail: (presentationKey: string) => request<VacancyDetail>(`/api/vacancies/${encodeURIComponent(presentationKey)}`),
+  deleteVacancy: (presentationKey: string) => request<DeleteResult>(`/api/vacancies/${encodeURIComponent(presentationKey)}`, { method: "DELETE" }),
   createManualVacancy: (payload: ManualVacancyCreateRequest) => request<ManualVacancyCreateResponse>("/api/vacancies/manual", { method: "POST", body: JSON.stringify(payload) }),
   getVacancyUserState: (presentationKey: string) => request<VacancyUserState>(`/api/vacancies/${encodeURIComponent(presentationKey)}/user-state`),
   updateVacancyUserState: (presentationKey: string, payload: VacancyUserStatePatchRequest) => request<VacancyUserStateWriteResponse>(`/api/vacancies/${encodeURIComponent(presentationKey)}/user-state`, { method: "PATCH", body: JSON.stringify(payload) }),
@@ -78,6 +79,7 @@ export const orchestratorApi = {
     request<ApplicationWriteResponse>(`/api/vacancies/${vacancyId}/applications`, { method: "POST", body: JSON.stringify(payload) }),
   updateApplication: (applicationId: number, payload: ApplicationPatchRequest) =>
     request<ApplicationWriteResponse>(`/api/applications/${applicationId}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  deleteApplication: (applicationId: number) => request<DeleteResult>(`/api/applications/${applicationId}`, { method: "DELETE" }),
   startRun: (payload: RunCreateRequest) =>
     request<RunCreateResponse>("/api/runs", { method: "POST", body: JSON.stringify(payload) }),
   getDiagnosticsHealth: () => request<Record<string, DiagnosticHealthItem>>("/api/diagnostics/health"),

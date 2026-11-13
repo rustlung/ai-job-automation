@@ -17,6 +17,7 @@ from app.schemas.pipeline_run import (
 from app.schemas.vacancy_analysis import VacancyAnalysisPriority
 from app.schemas.statistics import StatisticsPeriod, VacancyStatisticsRead
 from app.schemas.web import (
+    DeleteResult,
     SearchProfilesResponse,
     SortDirection,
     SystemHealthResponse,
@@ -288,6 +289,17 @@ def get_vacancy_detail(
 ) -> VacancyDetail:
     try:
         return service.get(presentation_key)
+    except WebVacancyNotFoundError as exc:
+        raise HTTPException(status_code=404, detail={"error_code": "vacancy_not_found"}) from exc
+
+
+@router.delete("/vacancies/{presentation_key}", response_model=DeleteResult)
+def delete_vacancy(
+    presentation_key: str,
+    service: WebVacancyListService = Depends(get_web_vacancy_list_service),
+) -> DeleteResult:
+    try:
+        return DeleteResult(id=service.delete(presentation_key))
     except WebVacancyNotFoundError as exc:
         raise HTTPException(status_code=404, detail={"error_code": "vacancy_not_found"}) from exc
 

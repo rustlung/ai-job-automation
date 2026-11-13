@@ -43,12 +43,14 @@ const useSearchProfiles = vi.fn();
 const useCreateApplication = vi.fn();
 const useUpdateApplication = vi.fn();
 const useUpdateVacancyUserState = vi.fn();
+const useDeleteVacancy = vi.fn();
 vi.mock("../hooks/useOrchestrator", () => ({
   useVacancyDetail: (...args: unknown[]) => useVacancyDetail(...args),
   useSearchProfiles: () => useSearchProfiles(),
   useCreateApplication: () => useCreateApplication(),
   useUpdateApplication: () => useUpdateApplication(),
-  useUpdateVacancyUserState: () => useUpdateVacancyUserState()
+  useUpdateVacancyUserState: () => useUpdateVacancyUserState(),
+  useDeleteVacancy: () => useDeleteVacancy()
 }));
 
 function renderPage(entry: string | { pathname: string; state?: unknown } = "/vacancies/business%3Aabc123") {
@@ -62,6 +64,7 @@ describe("VacancyDetailPage", () => {
     useCreateApplication.mockReturnValue({ isPending: false, error: null, mutateAsync: vi.fn() });
     useUpdateApplication.mockReturnValue({ isPending: false, error: null, mutateAsync: vi.fn() });
     useUpdateVacancyUserState.mockReturnValue({ isPending: false, isError: false, mutateAsync: vi.fn().mockResolvedValue({}) });
+    useDeleteVacancy.mockReturnValue({ isPending: false, isError: false, mutate: vi.fn() });
   });
   afterEach(() => cleanup());
 
@@ -79,6 +82,16 @@ describe("VacancyDetailPage", () => {
     expect(screen.getByText("Отклик не отправлен")).toBeInTheDocument();
     expect(screen.getByText("Не оценено")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Открыть оригинал" })).toHaveAttribute("href", vacancy.url);
+  });
+
+  it("confirms deletion from detail and returns to the vacancy list", () => {
+    const mutate = vi.fn((_key, options) => options.onSuccess());
+    useDeleteVacancy.mockReturnValue({ isPending: false, isError: false, mutate });
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Удалить" }));
+    expect(mutate).toHaveBeenCalledWith("business:abc123", expect.any(Object));
+    expect(screen.getByText("Vacancies list")).toBeInTheDocument();
   });
 
   it("edits user state independently from AI priority", async () => {

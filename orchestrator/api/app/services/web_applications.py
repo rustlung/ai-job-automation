@@ -29,7 +29,7 @@ class WebApplicationListService:
         limit: int,
         offset: int,
     ) -> ApplicationListResponse:
-        vacancies = self.vacancy_repository.list_all()
+        vacancies = self.vacancy_repository.list_all(include_deleted=True)
         group_by_vacancy_id = {
             member.id: group
             for group in group_business_vacancies(vacancies)

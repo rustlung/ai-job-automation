@@ -74,6 +74,22 @@ class ApplicationService:
             logger.exception("application_update_failed application_id=%s", application_id)
             raise ApplicationDatabaseError from exc
 
+    def delete(self, application_id: int) -> None:
+        try:
+            application = self.application_repository.get_by_id(application_id)
+            if application is None:
+                raise ApplicationNotFoundError
+            vacancy_id = application.vacancy_id
+            self.application_repository.delete(application)
+            self.session.commit()
+            logger.info("application_deleted application_id=%s vacancy_id=%s", application_id, vacancy_id)
+        except ApplicationNotFoundError:
+            raise
+        except SQLAlchemyError as exc:
+            self.session.rollback()
+            logger.exception("application_delete_failed application_id=%s", application_id)
+            raise ApplicationDatabaseError from exc
+
     @staticmethod
     def to_read(application: Application) -> ApplicationRead:
         return ApplicationRead(

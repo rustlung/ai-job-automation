@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database.session import get_db_session
 from app.schemas.application import ApplicationCreate, ApplicationListResponse, ApplicationRead, ApplicationStatus, ApplicationUpdate, ApplicationWriteResponse
+from app.schemas.web import DeleteResult
 from app.services.application import (
     ApplicationDatabaseError,
     ApplicationNotFoundError,
@@ -91,6 +92,20 @@ def update_application(
     try:
         application = service.update(application_id, application_input)
         return ApplicationWriteResponse(application=application)
+    except ApplicationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail={"error_code": "application_not_found"}) from exc
+    except ApplicationDatabaseError as exc:
+        raise HTTPException(status_code=500, detail={"error_code": "application_storage_failed"}) from exc
+
+
+@router.delete("/applications/{application_id}", response_model=DeleteResult)
+def delete_application(
+    application_id: int,
+    service: ApplicationService = Depends(get_application_service),
+) -> DeleteResult:
+    try:
+        service.delete(application_id)
+        return DeleteResult(id=application_id)
     except ApplicationNotFoundError as exc:
         raise HTTPException(status_code=404, detail={"error_code": "application_not_found"}) from exc
     except ApplicationDatabaseError as exc:

@@ -230,6 +230,11 @@ export interface ApplicationWriteResponse {
   application: Application;
 }
 
+export interface DeleteResult {
+  id: string | number;
+  status: "deleted";
+}
+
 export interface ApplicationListResponse {
   items: ApplicationListItem[];
   total: number;

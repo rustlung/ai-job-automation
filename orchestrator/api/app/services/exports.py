@@ -219,7 +219,7 @@ class ExportService:
             limit=2_147_483_647,
             offset=0,
         ).items
-        vacancy_by_id = {vacancy.id: vacancy for vacancy in self.vacancies.list_by_ids([item.vacancy_id for item in applications])}
+        vacancy_by_id = {vacancy.id: vacancy for vacancy in self.vacancies.list_by_ids([item.vacancy_id for item in applications], include_deleted=True)}
         states = {
             state.presentation_key: state
             for state in self.user_states.list_by_presentation_keys([item.presentation_key for item in applications])

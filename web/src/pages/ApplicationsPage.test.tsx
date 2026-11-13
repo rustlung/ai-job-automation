@@ -5,8 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApplicationsPage } from "./ApplicationsPage";
 
 const useApplications = vi.fn();
+const useDeleteApplication = vi.fn();
 vi.mock("../hooks/useOrchestrator", () => ({
-  useApplications: (...args: unknown[]) => useApplications(...args)
+  useApplications: (...args: unknown[]) => useApplications(...args),
+  useDeleteApplication: () => useDeleteApplication()
 }));
 
 function LocationProbe() {
@@ -20,6 +22,7 @@ function renderPage(entry = "/applications") {
 describe("ApplicationsPage", () => {
   beforeEach(() => {
     useApplications.mockReturnValue({ data: { total: 1, limit: 25, offset: 0, items: [{ id: 7, vacancy_id: 2, presentation_key: "business:abc", company: "Example Company", title: "Python Developer", vacancy_url: "https://hh.ru/vacancy/2", status: "interview", applied_at: "2026-09-04T10:00:00Z", application_text: null, employer_response: null, response_received_at: null, interview_at: "2026-09-10T10:00:00Z", offer_at: null, notes: null, platform: "hh", created_at: "2026-09-04T10:00:00Z", updated_at: "2026-09-05T10:00:00Z" }] }, isLoading: false, isError: false });
+    useDeleteApplication.mockReturnValue({ isPending: false, isError: false, mutate: vi.fn() });
   });
   afterEach(() => cleanup());
 
@@ -42,5 +45,14 @@ describe("ApplicationsPage", () => {
     useApplications.mockReturnValue({ data: { items: [], total: 0, limit: 25, offset: 0 }, isLoading: false, isError: false });
     renderPage();
     expect(screen.getByText("Откликов не найдено")).toBeInTheDocument();
+  });
+
+  it("confirms and submits one application delete", () => {
+    const mutate = vi.fn();
+    useDeleteApplication.mockReturnValue({ isPending: false, isError: false, mutate });
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Удалить отклик Python Developer" }));
+    expect(mutate).toHaveBeenCalledWith(7);
   });
 });

@@ -264,6 +264,12 @@ class WebVacancyListService:
             ),
         )
 
+    def delete(self, presentation_key: str) -> int:
+        group = self.find_group(presentation_key)
+        self.vacancy_repository.mark_deleted(group.members)
+        self.vacancy_repository.session.commit()
+        return group.representative.id
+
     def find_group(self, presentation_key: str):
         if presentation_key.startswith("business:"):
             fingerprint = presentation_key.removeprefix("business:")
@@ -275,7 +281,7 @@ class WebVacancyListService:
             if not separator or not source or not external_id:
                 raise WebVacancyNotFoundError
             vacancy = self.vacancy_repository.get_by_source_external_id(source, external_id)
-            members = [vacancy] if vacancy is not None and vacancy.business_fingerprint is None else []
+            members = [vacancy] if vacancy is not None and vacancy.deleted_at is None and vacancy.business_fingerprint is None else []
 
         for group in group_business_vacancies(members):
             if group.presentation_key == presentation_key:

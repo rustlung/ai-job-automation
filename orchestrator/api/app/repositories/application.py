@@ -87,3 +87,7 @@ class ApplicationRepository:
             application.updated_at = datetime.now(timezone.utc)
             self.session.flush()
         return changed
+
+    def delete(self, application: Application) -> None:
+        self.session.delete(application)
+        self.session.flush()

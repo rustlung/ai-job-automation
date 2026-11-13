@@ -35,11 +35,13 @@ const useVacancies = vi.fn();
 const useSearchProfiles = vi.fn();
 const useUpdateVacancyUserState = vi.fn();
 const useCreateManualVacancy = vi.fn();
+const useDeleteVacancy = vi.fn();
 vi.mock("../hooks/useOrchestrator", () => ({
   useVacancies: (...args: unknown[]) => useVacancies(...args),
   useSearchProfiles: () => useSearchProfiles(),
   useUpdateVacancyUserState: () => useUpdateVacancyUserState(),
-  useCreateManualVacancy: () => useCreateManualVacancy()
+  useCreateManualVacancy: () => useCreateManualVacancy(),
+  useDeleteVacancy: () => useDeleteVacancy()
 }));
 
 function LocationProbe() {
@@ -69,6 +71,7 @@ describe("VacanciesPage", () => {
     useSearchProfiles.mockReturnValue(profileQuery());
     useUpdateVacancyUserState.mockReturnValue({ isPending: false, isError: false, mutate: vi.fn() });
     useCreateManualVacancy.mockReturnValue({ isPending: false, mutateAsync: vi.fn() });
+    useDeleteVacancy.mockReturnValue({ isPending: false, isError: false, mutate: vi.fn() });
   });
   afterEach(() => cleanup());
 
@@ -86,6 +89,15 @@ describe("VacanciesPage", () => {
   it("does not duplicate export controls from the dedicated exports page", () => {
     renderPage();
     expect(screen.queryByRole("button", { name: /Экспортировать текущую выборку/i })).not.toBeInTheDocument();
+  });
+
+  it("confirms and submits one logical vacancy delete", () => {
+    const mutate = vi.fn();
+    useDeleteVacancy.mockReturnValue({ isPending: false, isError: false, mutate });
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Удалить вакансию Python Developer" }));
+    expect(mutate).toHaveBeenCalledWith("business:abc123");
   });
 
   it("redirects to the DB-created manual vacancy", async () => {
@@ -116,7 +128,7 @@ describe("VacanciesPage", () => {
     const vacancyStatusSelect = cells[5]?.querySelector("select") as HTMLSelectElement | null;
     const userPrioritySelect = cells[8]?.querySelector("select") as HTMLSelectElement | null;
 
-    expect(headers).toEqual(["Дата", "Компания", "Вакансия", "Обработка", "Зарплата", "Статус вакансии", "Статус отклика", "AI Priority", "Мой приоритет", "Мой комментарий", "Score", "Track", "Профили поиска"]);
+    expect(headers).toEqual(["Дата", "Компания", "Вакансия", "Обработка", "Зарплата", "Статус вакансии", "Статус отклика", "AI Priority", "Мой приоритет", "Мой комментарий", "Score", "Track", "Профили поиска", "Действия"]);
     expect(cells).toHaveLength(headers.length);
     expect(vacancyStatusSelect).toHaveValue("active");
     expect(cells[6]).toHaveTextContent("Без отклика");
