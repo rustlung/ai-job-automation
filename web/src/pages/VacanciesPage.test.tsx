@@ -35,18 +35,11 @@ const useVacancies = vi.fn();
 const useSearchProfiles = vi.fn();
 const useUpdateVacancyUserState = vi.fn();
 const useCreateManualVacancy = vi.fn();
-const useDownloadVacancyExport = vi.fn();
-const downloadBlob = vi.fn();
 vi.mock("../hooks/useOrchestrator", () => ({
   useVacancies: (...args: unknown[]) => useVacancies(...args),
   useSearchProfiles: () => useSearchProfiles(),
   useUpdateVacancyUserState: () => useUpdateVacancyUserState(),
-  useCreateManualVacancy: () => useCreateManualVacancy(),
-  useDownloadVacancyExport: () => useDownloadVacancyExport()
-}));
-vi.mock("../lib/download", () => ({
-  downloadBlob: (...args: unknown[]) => downloadBlob(...args),
-  filenameFromContentDisposition: (header: string | null, fallback: string) => header?.match(/filename="([^"]+)"/)?.[1] ?? fallback
+  useCreateManualVacancy: () => useCreateManualVacancy()
 }));
 
 function LocationProbe() {
@@ -76,7 +69,6 @@ describe("VacanciesPage", () => {
     useSearchProfiles.mockReturnValue(profileQuery());
     useUpdateVacancyUserState.mockReturnValue({ isPending: false, isError: false, mutate: vi.fn() });
     useCreateManualVacancy.mockReturnValue({ isPending: false, mutateAsync: vi.fn() });
-    useDownloadVacancyExport.mockReturnValue({ isPending: false, mutateAsync: vi.fn().mockResolvedValue({ blob: new Blob(["file"]), filename: null }) });
   });
   afterEach(() => cleanup());
 
@@ -91,35 +83,9 @@ describe("VacanciesPage", () => {
     expect(screen.getByText("Detail route")).toBeInTheDocument();
   });
 
-  it("exports the current filters without UI pagination", async () => {
-    const mutateAsync = vi.fn().mockResolvedValue({ blob: new Blob(["file"]), filename: null });
-    useDownloadVacancyExport.mockReturnValue({ isPending: false, mutateAsync });
-    renderPage("/vacancies?processing=rejected&priority=P1&search=Python&limit=25&offset=50&sort=priority&sort_direction=asc");
-
-    fireEvent.click(screen.getByRole("button", { name: "Экспортировать текущую выборку" }));
-
-    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
-      format: "xlsx",
-      period: "all",
-      columns: [],
-      vacancy_filters: expect.objectContaining({ processing: "rejected", priority: ["P1"], search: "Python", sort: "priority", sort_direction: "asc" })
-    }));
-    expect(mutateAsync.mock.calls[0][0].vacancy_filters).not.toHaveProperty("limit");
-    expect(mutateAsync.mock.calls[0][0].vacancy_filters).not.toHaveProperty("offset");
-    expect(downloadBlob).toHaveBeenCalled();
-    expect(screen.getByTestId("location")).toHaveTextContent("processing=rejected");
-  });
-
-  it("exports the default working filter", async () => {
-    const mutateAsync = vi.fn().mockResolvedValue({ blob: new Blob(["file"]), filename: null });
-    useDownloadVacancyExport.mockReturnValue({ isPending: false, mutateAsync });
+  it("does not duplicate export controls from the dedicated exports page", () => {
     renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "Экспортировать текущую выборку" }));
-
-    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
-      vacancy_filters: expect.objectContaining({ processing: "working" })
-    })));
+    expect(screen.queryByRole("button", { name: /Экспортировать текущую выборку/i })).not.toBeInTheDocument();
   });
 
   it("redirects to the DB-created manual vacancy", async () => {

@@ -3,7 +3,7 @@ from datetime import date, datetime, timezone
 from app.models.application import Application
 from app.models.vacancy import Vacancy
 from app.repositories.application import ApplicationRepository
-from app.schemas.exports import ExportPeriod, ExportRequest, VacancyExportFilters
+from app.schemas.exports import ApplicationExportFilters, ExportPeriod, ExportRequest, VacancyExportFilters
 from app.schemas.statistics import StatisticsPeriod
 from app.schemas.web import SortDirection, VacancyListSort, VacancyProcessingFilter
 from app.services.business_vacancy_grouping import group_business_vacancies
@@ -87,10 +87,10 @@ def test_manual_vacancy_and_application_custom_ranges_use_samara_dates(db_sessio
     assert ApplicationRepository(db_session).list_filtered(status=None, date_from=october_30, date_to=october_30, platform=None) == []
 
     application_export = ExportService(db_session).applications_dataset(
-        ExportRequest(period=ExportPeriod.CUSTOM, date_from=october_31, date_to=october_31, vacancy_filters=VacancyExportFilters(processing="all"))
+        ExportRequest(period=ExportPeriod.CUSTOM, date_from=october_31, date_to=october_31, application_filters=ApplicationExportFilters())
     )
     previous_application_export = ExportService(db_session).applications_dataset(
-        ExportRequest(period=ExportPeriod.CUSTOM, date_from=october_30, date_to=october_30, vacancy_filters=VacancyExportFilters(processing="all"))
+        ExportRequest(period=ExportPeriod.CUSTOM, date_from=october_30, date_to=october_30, application_filters=ApplicationExportFilters())
     )
     vacancy_export = ExportService(db_session).vacancies_dataset(
         ExportRequest(period=ExportPeriod.CUSTOM, date_from=october_31, date_to=october_31, vacancy_filters=VacancyExportFilters(processing="all"))

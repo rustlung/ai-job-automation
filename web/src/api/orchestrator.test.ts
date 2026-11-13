@@ -30,4 +30,22 @@ describe("orchestratorApi.getVacancies", () => {
       vacancy_filters: { processing: "errors", priority: ["P1"], search: "Python" }
     });
   });
+
+  it("serializes application filters independently from vacancy filters", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("file", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await orchestratorApi.downloadApplicationExport({
+      format: "csv",
+      period: "all",
+      columns: [],
+      application_filters: { status: "interview", platform: "hh", search: "Python" }
+    });
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/api/exports/applications");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual(expect.objectContaining({
+      application_filters: { status: "interview", platform: "hh", search: "Python" }
+    }));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty("vacancy_filters");
+  });
 });

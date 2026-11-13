@@ -19,11 +19,12 @@ from app.repositories.application import ApplicationRepository
 from app.repositories.vacancy import VacancyRepository
 from app.repositories.vacancy_analysis import VacancyAnalysisRepository
 from app.repositories.vacancy_user_state import VacancyUserStateRepository
-from app.schemas.exports import ExportColumnRead, ExportFormat, ExportPeriod, ExportRequest, ExportSchemaRead
+from app.schemas.exports import ApplicationExportFilters, ExportColumnRead, ExportFormat, ExportPeriod, ExportRequest, ExportSchemaRead, VacancyExportFilters
 from app.schemas.vacancy_user_state import VacancyStatus
 from app.services.business_vacancy_grouping import BusinessVacancyGroup, group_business_vacancies, merge_profile_ids
 from app.services.logical_vacancy_dates import SAMARA_TIMEZONE, as_utc, logical_vacancy_cohort_date, preset_period_range, samara_today
 from app.services.web_vacancies import WebVacancyListService
+from app.services.web_applications import WebApplicationListService
 
 
 class ExportValidationError(ValueError):
@@ -153,7 +154,9 @@ class ExportService:
     def vacancies_dataset(self, request: ExportRequest) -> ExportDataset:
         columns = self._select_columns(VACANCY_COLUMNS, request.columns)
         start, end = self._range(request)
-        filters = request.vacancy_filters
+        if request.application_filters is not None:
+            raise ExportValidationError("application filters cannot be used for a vacancy export")
+        filters = request.vacancy_filters or VacancyExportFilters()
         vacancies = self.vacancies.list_all()
         groups = group_business_vacancies(vacancies)
         groups_by_key = {group.presentation_key: group for group in groups}
@@ -202,28 +205,36 @@ class ExportService:
     def applications_dataset(self, request: ExportRequest) -> ExportDataset:
         columns = self._select_columns(APPLICATION_COLUMNS, request.columns)
         start, end = self._range(request)
-        applications = self.applications.list_filtered(status=None, date_from=start, date_to=end, platform=None)
+        if request.vacancy_filters is not None:
+            raise ExportValidationError("vacancy filters cannot be used for an application export")
+        filters = request.application_filters or ApplicationExportFilters()
+        date_from = max(value for value in (filters.date_from, start) if value is not None) if filters.date_from is not None or start is not None else None
+        date_to = min(value for value in (filters.date_to, end) if value is not None) if filters.date_to is not None or end is not None else None
+        applications = WebApplicationListService(self.session).list(
+            status=filters.status,
+            date_from=date_from,
+            date_to=date_to,
+            platform=filters.platform,
+            search=filters.search,
+            limit=2_147_483_647,
+            offset=0,
+        ).items
         vacancy_by_id = {vacancy.id: vacancy for vacancy in self.vacancies.list_by_ids([item.vacancy_id for item in applications])}
-        groups = group_business_vacancies(list(vacancy_by_id.values()))
-        group_by_member_id = {member.id: group for group in groups for member in group.members}
         states = {
             state.presentation_key: state
-            for state in self.user_states.list_by_presentation_keys([group.presentation_key for group in groups])
+            for state in self.user_states.list_by_presentation_keys([item.presentation_key for item in applications])
         }
-        applications.sort(key=lambda item: (item.applied_at is None, -(as_utc(item.applied_at).timestamp() if item.applied_at else 0), -item.id))
         contexts = []
         for index, application in enumerate(applications, start=1):
-            vacancy = vacancy_by_id[application.vacancy_id]
-            group = group_by_member_id[application.vacancy_id]
-            state = states.get(group.presentation_key)
+            state = states.get(application.presentation_key)
             contexts.append({
                 "row_number": index,
-                "company": vacancy.company,
-                "title": vacancy.title,
+                "company": application.company,
+                "title": application.title,
                 "applied_at": self._datetime(application.applied_at),
                 "status": _APPLICATION_STATUS_LABELS.get(application.status, application.status),
                 "application_text": application.application_text,
-                "url": vacancy.url,
+                "url": application.vacancy_url,
                 "employer_response": application.employer_response,
                 "response_received_at": self._datetime(application.response_received_at),
                 "interview_at": self._datetime(application.interview_at),
@@ -235,10 +246,10 @@ class ExportService:
                     VacancyStatus.ACTIVE.value,
                 ),
                 "user_priority": state.user_priority if state is not None else None,
-                "source": vacancy.source,
-                "external_id": vacancy.external_id,
+                "source": vacancy_by_id[application.vacancy_id].source,
+                "external_id": vacancy_by_id[application.vacancy_id].external_id,
                 "application_id": application.id,
-                "vacancy_id": vacancy.id,
+                "vacancy_id": application.vacancy_id,
                 "created_at": self._datetime(application.created_at),
                 "updated_at": self._datetime(application.updated_at),
             })

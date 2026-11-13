@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, ChevronsLeft, Download, RotateCcw, SlidersHorizontal } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, RotateCcw, SlidersHorizontal } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 
@@ -8,10 +8,9 @@ import { vacancyStatusLabels } from "../lib/vacancyStatus";
 import { VacancyListUserCommentControl, VacancyListUserPriorityControl, VacancyListVacancyStatusControl } from "../components/VacancyListUserStateControls";
 import { ManualVacancyForm } from "../components/ManualVacancyForm";
 import { applicationStatusLabels } from "../lib/applicationStatus";
-import { useDownloadVacancyExport, useSearchProfiles, useVacancies } from "../hooks/useOrchestrator";
+import { useSearchProfiles, useVacancies } from "../hooks/useOrchestrator";
 import { formatDate } from "../lib/format";
-import { downloadBlob, filenameFromContentDisposition } from "../lib/download";
-import type { ApplicationStatus, VacancyApplicationStatusFilter, VacancyExportFilters, VacancyFilters, VacancyPriority, VacancyProcessingFilter, VacancyStatusFilter, VacancyUserPriorityFilter } from "../types/api";
+import type { ApplicationStatus, VacancyApplicationStatusFilter, VacancyFilters, VacancyPriority, VacancyProcessingFilter, VacancyStatusFilter, VacancyUserPriorityFilter } from "../types/api";
 import { activeDatePreset, dateRangeForPreset, type DatePreset } from "../features/vacancies/dateFilters";
 
 const defaultPageSize = 25;
@@ -63,11 +62,9 @@ function profileLabel(profileId: string, profiles: Array<{ id: string; name: str
 export function VacanciesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [manualFormOpen, setManualFormOpen] = useState(false);
-  const [exportError, setExportError] = useState(false);
   const location = useLocation();
   const filters = readFilters(searchParams);
   const profiles = useSearchProfiles();
-  const vacancyExport = useDownloadVacancyExport();
   const enabledProfiles = profiles.data?.profiles.filter((profile) => profile.enabled) ?? [];
 
   const updateFilters = useCallback((updates: Record<string, string | string[] | undefined>, resetOffset = true) => {
@@ -105,30 +102,11 @@ export function VacanciesPage() {
   };
   const hasPreviousPage = filters.offset > 0;
   const hasNextPage = Boolean(vacancies.data && filters.offset + vacancies.data.items.length < vacancies.data.total);
-  const exportCurrentSelection = async () => {
-    const exportSource: Partial<VacancyFilters> = { ...filters, profile_id: resolvedProfileId };
-    delete exportSource.limit;
-    delete exportSource.offset;
-    const vacancy_filters = exportSource as VacancyExportFilters;
-    setExportError(false);
-    try {
-      const result = await vacancyExport.mutateAsync({
-        format: "xlsx",
-        period: "all",
-        columns: [],
-        vacancy_filters
-      });
-      downloadBlob(result.blob, filenameFromContentDisposition(result.filename, "vacancies-export.xlsx"));
-    } catch {
-      setExportError(true);
-    }
-  };
-
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div><p className="text-sm font-medium text-zinc-500">Логические вакансии</p><h1 className="mt-1 text-2xl font-semibold">Vacancies</h1></div>
-        <div className="flex flex-wrap gap-2"><button type="button" onClick={exportCurrentSelection} disabled={vacancyExport.isPending} className="inline-flex items-center gap-2 border border-line bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:text-zinc-400"><Download size={16} />{vacancyExport.isPending ? "Формирование файла..." : "Экспортировать текущую выборку"}</button><button type="button" onClick={() => setManualFormOpen(true)} className="bg-zinc-900 px-3 py-2 text-sm font-medium text-white">Добавить вакансию</button><button type="button" onClick={() => setSearchParams(new URLSearchParams())} className="inline-flex items-center gap-2 border border-line bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"><RotateCcw size={16} />Сбросить фильтры</button></div>
+        <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setManualFormOpen(true)} className="bg-zinc-900 px-3 py-2 text-sm font-medium text-white">Добавить вакансию</button><button type="button" onClick={() => setSearchParams(new URLSearchParams())} className="inline-flex items-center gap-2 border border-line bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"><RotateCcw size={16} />Сбросить фильтры</button></div>
       </header>
 
       <section className="space-y-4 border border-line bg-white p-4">
@@ -146,8 +124,6 @@ export function VacanciesPage() {
         <fieldset><legend className="text-sm font-medium text-zinc-700">Приоритет</legend><div className="mt-2 flex flex-wrap gap-3">{priorityOptions.map((priority) => <label key={priority} className="inline-flex items-center gap-2 text-sm text-zinc-700"><input type="checkbox" checked={filters.priority?.includes(priority) ?? false} onChange={() => togglePriority(priority)} />{priority}</label>)}</div></fieldset>
         <details className="border-t border-line pt-3"><summary className="flex cursor-pointer items-center gap-2 text-sm font-medium text-zinc-700"><SlidersHorizontal size={16} />Дополнительные фильтры</summary><div className="mt-3 grid gap-3 md:grid-cols-3"><label className="grid gap-1 text-sm font-medium text-zinc-700">Track<input value={filters.track ?? ""} onChange={(event) => updateFilters({ track: event.target.value || undefined })} className="border border-line px-3 py-2 font-normal" placeholder="Например, main" /></label><label className="grid gap-1 text-sm font-medium text-zinc-700">Run ID<input value={filters.run_id ?? ""} onChange={(event) => updateFilters({ run_id: event.target.value || undefined })} className="border border-line px-3 py-2 font-normal" /></label><label className="grid gap-1 text-sm font-medium text-zinc-700">Сортировка<select value={`${filters.sort}:${filters.sort_direction}`} onChange={(event) => { const [sort, sort_direction] = event.target.value.split(":"); updateFilters({ sort, sort_direction }); }} className="border border-line bg-white px-3 py-2 font-normal"><option value="first_seen:desc">Сначала новые</option><option value="first_seen:asc">Сначала старые</option><option value="final_score:desc">Score: выше</option><option value="final_score:asc">Score: ниже</option><option value="priority:asc">Priority: выше</option><option value="priority:desc">Priority: ниже</option></select></label></div></details>
       </section>
-
-      {exportError && <p role="alert" className="text-sm text-danger">Не удалось сформировать выгрузку.</p>}
 
       {vacancies.isLoading ? <LoadingState /> : vacancies.isError ? <ErrorState message="Не удалось загрузить список вакансий." /> : !vacancies.data?.items.length ? <EmptyState title="Вакансий не найдено" detail="За выбранный период или с указанными фильтрами вакансий нет." /> : <><section className="overflow-x-auto border border-line bg-white"><table className="w-full min-w-[1500px] text-left text-sm"><thead className="border-b border-line bg-zinc-50 text-xs uppercase text-zinc-500"><tr><th className="px-4 py-3 font-medium">Дата</th><th className="px-4 py-3 font-medium">Компания</th><th className="px-4 py-3 font-medium">Вакансия</th><th className="px-4 py-3 font-medium">Обработка</th><th className="px-4 py-3 font-medium">Зарплата</th><th className="px-4 py-3 font-medium">Статус вакансии</th><th className="px-4 py-3 font-medium">Статус отклика</th><th className="px-4 py-3 font-medium">AI Priority</th><th className="px-4 py-3 font-medium">Мой приоритет</th><th className="px-4 py-3 font-medium">Мой комментарий</th><th className="px-4 py-3 font-medium">Score</th><th className="px-4 py-3 font-medium">Track</th><th className="px-4 py-3 font-medium">Профили поиска</th></tr></thead><tbody>{vacancies.data.items.map((vacancy) => <tr key={vacancy.presentation_key} className="border-b border-line last:border-0 hover:bg-zinc-50 focus-within:bg-zinc-50"><td className="whitespace-nowrap px-4 py-3 text-zinc-600">{formatDate(vacancy.first_seen_at)}</td><td className="px-4 py-3 font-medium">{vacancy.company}</td><td className="max-w-80 px-4 py-3"><Link className="font-medium text-zinc-900 underline decoration-zinc-300 underline-offset-4 hover:decoration-zinc-900" to={`/vacancies/${encodeURIComponent(vacancy.presentation_key)}`} state={{ from: { pathname: location.pathname, search: location.search } }}>{vacancy.title}</Link>{vacancy.member_count > 1 && <span className="ml-2 text-xs text-zinc-500">{vacancy.member_count} copies</span>}</td><td className="px-4 py-3 text-zinc-600">{vacancy.preliminary_outcome?.outcome === "rejected_by_policy" ? "Отклонено правилом" : vacancy.preliminary_outcome?.outcome === "rejected_by_ai" ? "Отклонено AI" : vacancy.processing_state === "enrichment_failed" || vacancy.processing_state === "processing_failed" ? "Ошибка обработки" : vacancy.processing_state === "enriched" ? "Обработано" : vacancy.processing_state === "preliminary_kept" ? "Допущено" : "История"}</td><td className="px-4 py-3 text-zinc-600">{vacancy.salary_text ?? "—"}</td><VacancyListVacancyStatusControl presentationKey={vacancy.presentation_key} vacancyStatus={vacancy.vacancy_status} /><td className="px-4 py-3"><ApplicationStatusBadge status={vacancy.application_status} /></td><td className="px-4 py-3">{vacancy.priority ?? "—"}</td><VacancyListUserPriorityControl presentationKey={vacancy.presentation_key} userPriority={vacancy.user_priority} /><VacancyListUserCommentControl presentationKey={vacancy.presentation_key} comment={vacancy.user_comment} /><td className="px-4 py-3">{vacancy.final_score ?? "—"}</td><td className="px-4 py-3 text-zinc-600">{vacancy.track ?? "—"}</td><td className="max-w-64 px-4 py-3 text-zinc-600">{vacancy.profile_ids.map((id) => profileLabel(id, enabledProfiles)).join(", ") || "—"}</td></tr>)}</tbody></table></section><div className="flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-500"><span>Показано {filters.offset + 1}-{filters.offset + vacancies.data.items.length} из {vacancies.data.total}</span><div className="flex flex-wrap items-center gap-2"><label className="inline-flex items-center gap-2">На странице<select value={filters.limit} onChange={(event) => updateFilters({ limit: event.target.value })} className="border border-line bg-white px-2 py-1"><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></label><button type="button" title="На первую страницу" onClick={() => updateFilters({ offset: undefined }, false)} disabled={!hasPreviousPage} className="inline-flex size-8 items-center justify-center border border-line bg-white disabled:text-zinc-300" aria-label="На первую страницу"><ChevronsLeft size={16} /></button><button type="button" onClick={() => updateFilters({ offset: filters.offset - filters.limit > 0 ? String(filters.offset - filters.limit) : undefined }, false)} disabled={!hasPreviousPage} className="inline-flex size-8 items-center justify-center border border-line bg-white disabled:text-zinc-300" aria-label="Предыдущая страница"><ChevronLeft size={16} /></button><button type="button" onClick={() => updateFilters({ offset: String(filters.offset + filters.limit) }, false)} disabled={!hasNextPage} className="inline-flex size-8 items-center justify-center border border-line bg-white disabled:text-zinc-300" aria-label="Следующая страница"><ChevronRight size={16} /></button></div></div></>}
       {manualFormOpen && <ManualVacancyForm onClose={() => setManualFormOpen(false)} />}

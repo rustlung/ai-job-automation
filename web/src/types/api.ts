@@ -384,9 +384,11 @@ export interface ExportRequest {
   date_to?: string;
   columns: string[];
   vacancy_filters?: VacancyExportFilters;
+  application_filters?: ApplicationExportFilters;
 }
 
 export type VacancyExportFilters = Omit<VacancyFilters, "limit" | "offset">;
+export type ApplicationExportFilters = Omit<ApplicationFilters, "limit" | "offset">;
 
 export interface ExportDownload {
   blob: Blob;

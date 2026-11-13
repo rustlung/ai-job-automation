@@ -4,6 +4,7 @@ from enum import Enum
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.vacancy_analysis import VacancyAnalysisPriority
+from app.schemas.application import ApplicationStatus
 from app.schemas.web import (
     SortDirection,
     VacancyApplicationStatusFilter,
@@ -46,6 +47,24 @@ class VacancyExportFilters(BaseModel):
     sort_direction: SortDirection = SortDirection.DESC
 
 
+class ApplicationExportFilters(BaseModel):
+    """The list filters reused by a full, unpaginated application export."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: ApplicationStatus | None = None
+    date_from: date | None = None
+    date_to: date | None = None
+    platform: str | None = None
+    search: str | None = None
+
+    @model_validator(mode="after")
+    def validate_date_range(self) -> "ApplicationExportFilters":
+        if self.date_from is not None and self.date_to is not None and self.date_from > self.date_to:
+            raise ValueError("date_from must not be after date_to")
+        return self
+
+
 class ExportRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -54,7 +73,8 @@ class ExportRequest(BaseModel):
     date_from: date | None = None
     date_to: date | None = None
     columns: list[str] | None = Field(default=None, max_length=32)
-    vacancy_filters: VacancyExportFilters = Field(default_factory=VacancyExportFilters)
+    vacancy_filters: VacancyExportFilters | None = None
+    application_filters: ApplicationExportFilters | None = None
 
     @model_validator(mode="after")
     def validate_period(self) -> "ExportRequest":
@@ -65,6 +85,8 @@ class ExportRequest(BaseModel):
                 raise ValueError("date_from must not be after date_to")
         elif self.date_from is not None or self.date_to is not None:
             raise ValueError("preset periods do not accept custom dates")
+        if self.vacancy_filters is not None and self.application_filters is not None:
+            raise ValueError("only one export filter set may be provided")
         return self
 
 

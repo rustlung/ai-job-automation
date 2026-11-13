@@ -11,7 +11,7 @@ from app.models.vacancy import Vacancy
 from app.models.vacancy_analysis import VacancyAnalysis
 from app.models.vacancy_user_state import VacancyUserState
 from app.models.vacancy_preliminary_outcome import VacancyPreliminaryOutcome
-from app.schemas.exports import ExportFormat, ExportPeriod, ExportRequest, VacancyExportFilters
+from app.schemas.exports import ApplicationExportFilters, ExportFormat, ExportPeriod, ExportRequest, VacancyExportFilters
 from app.services.exports import ExportService
 from app.services.logical_vacancy_dates import SAMARA_TIMEZONE
 
@@ -202,9 +202,8 @@ def test_applications_export_keeps_real_rows_and_applied_period_semantics(db_ses
     all_time = service(db_session).applications_dataset(ExportRequest())
     assert [column.label for column in all_time.columns] == ["№", "Компания", "Должность", "Дата отклика", "Статус отклика", "Текст отклика", "Ссылка"]
     assert len(all_time.rows) == 3
-    assert all_time.rows[0][3] == NOW.astimezone(SAMARA_TIMEZONE).replace(tzinfo=None)
-    assert all_time.rows[0][4] == "Интервью"
-    assert all_time.rows[-1][3] is None
+    assert [row[3] for row in all_time.rows] == [None, NOW.astimezone(SAMARA_TIMEZONE).replace(tzinfo=None), (NOW - timedelta(days=1)).astimezone(SAMARA_TIMEZONE).replace(tzinfo=None)]
+    assert all_time.rows[1][4] == "Интервью"
     assert first.id != second.id != null_date.id
 
     bounded = service(db_session).applications_dataset(ExportRequest(period=ExportPeriod.DAYS_7, columns=["application_id", "vacancy_status", "user_priority"]))
@@ -219,6 +218,44 @@ def test_applications_export_keeps_real_rows_and_applied_period_semantics(db_ses
     assert len(thirty_days.rows) == 2
     assert len(custom.rows) == 1
     assert custom.rows[0][0] == 1
+
+
+def test_applications_export_reuses_list_filters_without_pagination(db_session) -> None:
+    first_vacancy = add_vacancy(db_session, external_id="python-hh")
+    second_vacancy = add_vacancy(db_session, external_id="java-habr")
+    matching = add_application(db_session, first_vacancy, applied_at=NOW, status="interview")
+    add_application(db_session, first_vacancy, applied_at=NOW - timedelta(days=2), status="submitted")
+    add_application(db_session, second_vacancy, applied_at=NOW, status="interview")
+    db_session.commit()
+
+    dataset = service(db_session).applications_dataset(
+        ExportRequest(
+            columns=["application_id", "company", "title"],
+            application_filters=ApplicationExportFilters(
+                status="interview",
+                date_from=NOW.date(),
+                date_to=NOW.date(),
+                platform="hh",
+                search="python",
+            ),
+        )
+    )
+
+    assert dataset.rows == [[matching.id, first_vacancy.company, first_vacancy.title]]
+    assert service(db_session).applications_dataset(
+        ExportRequest(columns=["application_id"], application_filters=ApplicationExportFilters(search="missing"))
+    ).rows == []
+
+
+def test_applications_export_is_not_limited_by_web_list_page_size(db_session) -> None:
+    vacancy = add_vacancy(db_session, external_id="many-applications")
+    for _ in range(101):
+        add_application(db_session, vacancy, applied_at=NOW)
+    db_session.commit()
+
+    dataset = service(db_session).applications_dataset(ExportRequest(columns=["application_id"]))
+
+    assert len(dataset.rows) == 101
 
 
 def test_export_renderers_create_usable_xlsx_and_utf8_sig_csv(db_session) -> None:
@@ -253,6 +290,7 @@ def test_export_api_schema_download_validation_and_empty_dataset(db_session) -> 
             invalid_column = client.post("/api/exports/vacancies", json={"columns": ["unknown"]})
             duplicate_column = client.post("/api/exports/applications", json={"columns": ["company", "company"]})
             invalid_range = client.post("/api/exports/applications", json={"period": "custom", "date_from": "2026-10-31", "date_to": "2026-10-01"})
+            conflicting_filters = client.post("/api/exports/vacancies", json={"vacancy_filters": {"processing": "working"}, "application_filters": {"status": "interview"}})
     finally:
         app.dependency_overrides.clear()
 
@@ -268,3 +306,4 @@ def test_export_api_schema_download_validation_and_empty_dataset(db_session) -> 
     assert invalid_column.json()["detail"]["error_code"] == "invalid_export_columns"
     assert duplicate_column.status_code == 422
     assert invalid_range.status_code == 422
+    assert conflicting_filters.status_code == 422
